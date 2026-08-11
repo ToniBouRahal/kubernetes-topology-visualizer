@@ -1,0 +1,18 @@
+{{- if .Values.backend.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "topology.backendService" . }}
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  # ClusterIP only: ingestion is never exposed outside the cluster by default (ADR-001 §6).
+  type: {{ .Values.backend.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.backend.service.port }}
+      targetPort: http
+  selector:
+    {{- include "topology.backend.selectorLabels" . | nindent 4 }}
+{{- end }}

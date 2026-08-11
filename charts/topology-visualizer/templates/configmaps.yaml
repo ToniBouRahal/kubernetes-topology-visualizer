@@ -1,0 +1,17 @@
+{{- if .Values.backend.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "topology.fullname" . }}-backend
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+data:
+  # CLUSTER_ID comes from the same chart value as the agent's. One source, no drift.
+  CLUSTER_ID: {{ .Values.clusterId | quote }}
+  RETENTION_HOURS: {{ .Values.backend.retentionHours | quote }}
+  GRAPH_MAX_NODES: {{ .Values.backend.graphMaxNodes | quote }}
+  GRAPH_MAX_EDGES: {{ .Values.backend.graphMaxEdges | quote }}
+  CORS_ALLOWED_ORIGINS: {{ .Values.backend.corsAllowedOrigins | quote }}
+  TOPOLOGY_DIFF_CHANGE_THRESHOLD_PERCENT: {{ .Values.backend.diffChangeThresholdPercent | quote }}
+{{- end }}

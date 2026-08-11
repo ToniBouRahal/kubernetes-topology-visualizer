@@ -1,0 +1,47 @@
+{{- if .Values.agent.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "topology.serviceAccountName" . }}
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: agent
+---
+# Least privilege: get/list/watch only, and only on the resources the resolver actually watches
+# (ADR-007 D-7.3, test T-7.4). Never a wildcard — a blanket rule added "for now" survives to
+# submission.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "topology.fullname" . }}-agent
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets", "deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "topology.fullname" . }}-agent
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "topology.fullname" . }}-agent
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "topology.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

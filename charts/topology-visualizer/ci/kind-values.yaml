@@ -1,0 +1,50 @@
+# Values for the three-node kind demo. Modest requests so the full stack fits on a laptop.
+# Used by `helm lint`/`helm template` in CI (T-7.1, T-7.2) and by `make demo-up`.
+
+clusterId: kind-topology
+
+agent:
+  image:
+    tag: dev
+    pullPolicy: Never      # images are side-loaded with `kind load docker-image`
+  flushIntervalSeconds: 10
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      memory: 256Mi
+
+backend:
+  image:
+    tag: dev
+    pullPolicy: Never
+  corsAllowedOrigins: "http://localhost:5173,http://localhost:8080"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 384Mi
+
+frontend:
+  image:
+    tag: dev
+    pullPolicy: Never
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+# Enabled from Phase 3 (P3-K6). Password is supplied at install time, never committed.
+postgresql:
+  enabled: false
+  mode: internal
+  persistence:
+    enabled: true
+    size: 2Gi
+
+networkPolicy:
+  enabled: false           # kind's default CNI does not enforce these

@@ -1,0 +1,9 @@
+# Three-node cluster: the agent must be proven to run on every node, including the
+# control-plane (ADR-007 D-7.3, test T-7.5). A single-node cluster cannot demonstrate that.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: topology
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker

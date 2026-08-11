@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "cluster_id": "kind-topology",
+  "agent_id": "topology-agent/kind-worker",
+  "batch_id": "01J8ZQ9X7K4M2N6P8R3T5V7W9Y",
+  "observed_at": "2026-08-10T12:00:00Z",
+  "interval_seconds": 10,
+  "edges": [
+    {
+      "source": {
+        "id": "k8s:kind-topology:demo:Deployment:client",
+        "kind": "Deployment",
+        "namespace": "demo",
+        "name": "client"
+      },
+      "target": {
+        "id": "k8s:kind-topology:demo:Service:backend",
+        "kind": "Service",
+        "namespace": "demo",
+        "name": "backend"
+      },
+      "protocol": "TCP",
+      "destination_port": 8080,
+      "connection_count": 30,
+      "first_seen": "2026-08-10T11:59:51Z",
+      "last_seen": "2026-08-10T12:00:00Z"
+    },
+    {
+      "source": {
+        "id": "k8s:kind-topology:demo:Deployment:backend",
+        "kind": "Deployment",
+        "namespace": "demo",
+        "name": "backend"
+      },
+      "target": {
+        "id": "k8s:kind-topology:data:StatefulSet:redis",
+        "kind": "StatefulSet",
+        "namespace": "data",
+        "name": "redis"
+      },
+      "protocol": "TCP",
+      "destination_port": 6379,
+      "connection_count": 143,
+      "first_seen": "2026-08-10T11:59:50Z",
+      "last_seen": "2026-08-10T12:00:00Z"
+    },
+    {
+      "source": {
+        "id": "k8s:kind-topology:demo:Deployment:backend",
+        "kind": "Deployment",
+        "namespace": "demo",
+        "name": "backend"
+      },
+      "target": {
+        "id": "external:EXTERNAL",
+        "kind": "Pod",
+        "namespace": null,
+        "name": "EXTERNAL"
+      },
+      "protocol": "TCP",
+      "destination_port": 443,
+      "connection_count": 4,
+      "first_seen": "2026-08-10T11:59:55Z",
+      "last_seen": "2026-08-10T11:59:58Z"
+    }
+  ]
+}

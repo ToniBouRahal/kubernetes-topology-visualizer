@@ -1,0 +1,1775 @@
+{
+  "components": {
+    "schemas": {
+      "DiffEdge": {
+        "description": "One classified edge. A period with no observation contributes zero, not null.",
+        "properties": {
+          "baseline_bytes_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Bytes Total"
+          },
+          "baseline_connection_count": {
+            "title": "Baseline Connection Count",
+            "type": "integer"
+          },
+          "bytes_percent_delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bytes Percent Delta"
+          },
+          "classification": {
+            "enum": [
+              "NEW",
+              "REMOVED",
+              "CHANGED",
+              "UNCHANGED"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
+          "connection_delta": {
+            "title": "Connection Delta",
+            "type": "integer"
+          },
+          "connection_percent_delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connection Percent Delta"
+          },
+          "current_bytes_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Bytes Total"
+          },
+          "current_connection_count": {
+            "title": "Current Connection Count",
+            "type": "integer"
+          },
+          "destination_port": {
+            "title": "Destination Port",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "protocol": {
+            "const": "TCP",
+            "title": "Protocol",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Human-readable justification for the classification, including the comparison performed and the threshold applied.",
+            "title": "Reason",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_id",
+          "target_id",
+          "protocol",
+          "destination_port",
+          "classification",
+          "baseline_connection_count",
+          "current_connection_count",
+          "connection_delta",
+          "reason"
+        ],
+        "title": "DiffEdge",
+        "type": "object"
+      },
+      "DiffResponse": {
+        "properties": {
+          "baseline": {
+            "$ref": "#/components/schemas/TimeWindow"
+          },
+          "current": {
+            "$ref": "#/components/schemas/TimeWindow"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/DiffEdge"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/EffectiveFilters"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "include_unchanged": {
+            "title": "Include Unchanged",
+            "type": "boolean"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/DiffSummary"
+          },
+          "threshold_percent": {
+            "title": "Threshold Percent",
+            "type": "number"
+          }
+        },
+        "required": [
+          "generated_at",
+          "baseline",
+          "current",
+          "threshold_percent",
+          "filters",
+          "include_unchanged",
+          "edges",
+          "summary"
+        ],
+        "title": "DiffResponse",
+        "type": "object"
+      },
+      "DiffSummary": {
+        "properties": {
+          "changed_count": {
+            "title": "Changed Count",
+            "type": "integer"
+          },
+          "new_count": {
+            "title": "New Count",
+            "type": "integer"
+          },
+          "removed_count": {
+            "title": "Removed Count",
+            "type": "integer"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "unchanged_count": {
+            "title": "Unchanged Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "new_count",
+          "removed_count",
+          "changed_count",
+          "unchanged_count"
+        ],
+        "title": "DiffSummary",
+        "type": "object"
+      },
+      "EdgeDetail": {
+        "properties": {
+          "edge": {
+            "$ref": "#/components/schemas/GraphEdge"
+          },
+          "source": {
+            "$ref": "#/components/schemas/GraphNode"
+          },
+          "target": {
+            "$ref": "#/components/schemas/GraphNode"
+          },
+          "window": {
+            "$ref": "#/components/schemas/TimeWindow"
+          }
+        },
+        "required": [
+          "edge",
+          "window",
+          "source",
+          "target"
+        ],
+        "title": "EdgeDetail",
+        "type": "object"
+      },
+      "EdgeObservation": {
+        "additionalProperties": false,
+        "description": "One aggregated client→server relationship observed during the agent's flush interval.",
+        "properties": {
+          "bytes_received": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bytes Received"
+          },
+          "bytes_sent": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bytes Sent"
+          },
+          "connection_count": {
+            "minimum": 1.0,
+            "title": "Connection Count",
+            "type": "integer"
+          },
+          "destination_port": {
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Destination Port",
+            "type": "integer"
+          },
+          "first_seen": {
+            "format": "date-time",
+            "title": "First Seen",
+            "type": "string"
+          },
+          "last_seen": {
+            "format": "date-time",
+            "title": "Last Seen",
+            "type": "string"
+          },
+          "protocol": {
+            "const": "TCP",
+            "title": "Protocol",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/NodeRef"
+          },
+          "target": {
+            "$ref": "#/components/schemas/NodeRef"
+          }
+        },
+        "required": [
+          "source",
+          "target",
+          "protocol",
+          "destination_port",
+          "connection_count",
+          "first_seen",
+          "last_seen"
+        ],
+        "title": "EdgeObservation",
+        "type": "object"
+      },
+      "EffectiveFilters": {
+        "description": "Filters actually applied, including defaulted values, so the client never has to guess.",
+        "properties": {
+          "include_external": {
+            "default": true,
+            "title": "Include External",
+            "type": "boolean"
+          },
+          "include_unresolved": {
+            "default": false,
+            "title": "Include Unresolved",
+            "type": "boolean"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "Service",
+                  "Deployment",
+                  "StatefulSet",
+                  "DaemonSet",
+                  "Job",
+                  "Pod"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "namespaces": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Namespaces",
+            "type": "array"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query"
+          }
+        },
+        "title": "EffectiveFilters",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "description": "Stable error envelope. Never carries a stack trace, DSN, or credential (ADR-004 D-4.6).",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "error": {
+            "title": "Error",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          }
+        },
+        "required": [
+          "error",
+          "detail"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "GraphEdge": {
+        "properties": {
+          "bytes_received": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bytes Received"
+          },
+          "bytes_sent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bytes Sent"
+          },
+          "connection_count": {
+            "title": "Connection Count",
+            "type": "integer"
+          },
+          "destination_port": {
+            "title": "Destination Port",
+            "type": "integer"
+          },
+          "first_seen": {
+            "format": "date-time",
+            "title": "First Seen",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_seen": {
+            "format": "date-time",
+            "title": "Last Seen",
+            "type": "string"
+          },
+          "protocol": {
+            "const": "TCP",
+            "title": "Protocol",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_id",
+          "target_id",
+          "protocol",
+          "destination_port",
+          "connection_count",
+          "first_seen",
+          "last_seen"
+        ],
+        "title": "GraphEdge",
+        "type": "object"
+      },
+      "GraphNode": {
+        "description": "Identity plus the display fields that make ID parsing unnecessary (contracts/ids.md §2).",
+        "properties": {
+          "attributes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Attributes",
+            "type": "object"
+          },
+          "first_seen": {
+            "format": "date-time",
+            "title": "First Seen",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "Service",
+                  "Deployment",
+                  "StatefulSet",
+                  "DaemonSet",
+                  "Job",
+                  "Pod"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "External",
+                "type": "string"
+              }
+            ],
+            "title": "Kind"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "last_seen": {
+            "format": "date-time",
+            "title": "Last Seen",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "namespace",
+          "name",
+          "label",
+          "first_seen",
+          "last_seen"
+        ],
+        "title": "GraphNode",
+        "type": "object"
+      },
+      "GraphResponse": {
+        "properties": {
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/GraphEdge"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/EffectiveFilters"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNode"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/GraphSummary"
+          },
+          "window": {
+            "$ref": "#/components/schemas/TimeWindow"
+          }
+        },
+        "required": [
+          "generated_at",
+          "window",
+          "filters",
+          "nodes",
+          "edges",
+          "summary"
+        ],
+        "title": "GraphResponse",
+        "type": "object"
+      },
+      "GraphSummary": {
+        "properties": {
+          "edge_count": {
+            "title": "Edge Count",
+            "type": "integer"
+          },
+          "node_count": {
+            "title": "Node Count",
+            "type": "integer"
+          },
+          "total_connections": {
+            "title": "Total Connections",
+            "type": "integer"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "truncation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Truncation Reason"
+          }
+        },
+        "required": [
+          "node_count",
+          "edge_count",
+          "total_connections"
+        ],
+        "title": "GraphSummary",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "properties": {
+          "checks": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Checks",
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "degraded",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "IngestBatch": {
+        "additionalProperties": false,
+        "description": "A retry-safe unit of ingestion. `batch_id` is the idempotency key.",
+        "properties": {
+          "agent_id": {
+            "minLength": 1,
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "batch_id": {
+            "examples": [
+              "01J8ZQ9X7K4M2N6P8R3T5V7W9Y"
+            ],
+            "maxLength": 26,
+            "minLength": 26,
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "cluster_id": {
+            "minLength": 1,
+            "title": "Cluster Id",
+            "type": "string"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/EdgeObservation"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "interval_seconds": {
+            "maximum": 3600.0,
+            "minimum": 1.0,
+            "title": "Interval Seconds",
+            "type": "integer"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "schema_version",
+          "cluster_id",
+          "agent_id",
+          "batch_id",
+          "observed_at",
+          "interval_seconds",
+          "edges"
+        ],
+        "title": "IngestBatch",
+        "type": "object"
+      },
+      "IngestResult": {
+        "description": "202 for a newly stored batch, 200 for one already ingested.",
+        "properties": {
+          "batch_id": {
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "edges_accepted": {
+            "title": "Edges Accepted",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "ingested",
+              "already_ingested"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "batch_id",
+          "status",
+          "edges_accepted"
+        ],
+        "title": "IngestResult",
+        "type": "object"
+      },
+      "NamespaceList": {
+        "properties": {
+          "namespaces": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Namespaces",
+            "type": "array"
+          },
+          "window": {
+            "$ref": "#/components/schemas/TimeWindow"
+          }
+        },
+        "required": [
+          "window",
+          "namespaces"
+        ],
+        "title": "NamespaceList",
+        "type": "object"
+      },
+      "NodeDependency": {
+        "properties": {
+          "bytes_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bytes Total"
+          },
+          "connection_count": {
+            "title": "Connection Count",
+            "type": "integer"
+          },
+          "destination_port": {
+            "title": "Destination Port",
+            "type": "integer"
+          },
+          "first_seen": {
+            "format": "date-time",
+            "title": "First Seen",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "last_seen": {
+            "format": "date-time",
+            "title": "Last Seen",
+            "type": "string"
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "protocol": {
+            "const": "TCP",
+            "title": "Protocol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_id",
+          "label",
+          "protocol",
+          "destination_port",
+          "connection_count",
+          "first_seen",
+          "last_seen"
+        ],
+        "title": "NodeDependency",
+        "type": "object"
+      },
+      "NodeDetail": {
+        "properties": {
+          "incoming": {
+            "items": {
+              "$ref": "#/components/schemas/NodeDependency"
+            },
+            "title": "Incoming",
+            "type": "array"
+          },
+          "node": {
+            "$ref": "#/components/schemas/GraphNode"
+          },
+          "outgoing": {
+            "items": {
+              "$ref": "#/components/schemas/NodeDependency"
+            },
+            "title": "Outgoing",
+            "type": "array"
+          },
+          "window": {
+            "$ref": "#/components/schemas/TimeWindow"
+          }
+        },
+        "required": [
+          "node",
+          "window",
+          "incoming",
+          "outgoing"
+        ],
+        "title": "NodeDetail",
+        "type": "object"
+      },
+      "NodeRef": {
+        "additionalProperties": false,
+        "description": "A node as reported by the agent.",
+        "properties": {
+          "id": {
+            "examples": [
+              "k8s:kind-topology:demo:Deployment:client"
+            ],
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "Service",
+              "Deployment",
+              "StatefulSet",
+              "DaemonSet",
+              "Job",
+              "Pod"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null only for the external node.",
+            "title": "Namespace"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name"
+        ],
+        "title": "NodeRef",
+        "type": "object"
+      },
+      "TimeWindow": {
+        "description": "Half-open, lower-inclusive: [start, end). Fixed by ADR-005 D-5.4.",
+        "properties": {
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "TimeWindow",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Runtime service topology for Kubernetes, collected with eBPF.\n\nThis document is the contract between the backend, the Go node agent, and the React frontend.\nIt is generated from the FastAPI application and committed as `contracts/openapi.json`; CI fails\nif the committed copy drifts. Never hand-edit it.\n\nIdentity, edge keys, status codes, and determinism rules are specified in `contracts/ids.md`.",
+    "title": "Kubernetes Runtime Topology Visualizer",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/diff": {
+      "get": {
+        "description": "Deterministic comparison of two periods.\n\nA period with no observation contributes zero, not null. Percentage delta is undefined when\nthe baseline is zero, and the reason field says so.",
+        "operationId": "get_diff_api_v1_diff_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "baseline_from",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Baseline From",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "baseline_to",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Baseline To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "current_from",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Current From",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "current_to",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Current To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "namespace",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Namespace"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "Service",
+                    "Deployment",
+                    "StatefulSet",
+                    "DaemonSet",
+                    "Job",
+                    "Pod"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_external",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include External",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_unresolved",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Unresolved",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_unchanged",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Unchanged",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiffResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Diff",
+        "tags": [
+          "topology"
+        ]
+      }
+    },
+    "/api/v1/edges/{edge_id}": {
+      "get": {
+        "description": "Edge detail. `edge_id` is `source|target|protocol|port` and must be URL-encoded.",
+        "operationId": "get_edge_api_v1_edges__edge_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edge_id",
+            "required": true,
+            "schema": {
+              "title": "Edge Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "1m",
+                    "5m",
+                    "15m",
+                    "1h",
+                    "6h",
+                    "24h"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EdgeDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Edge",
+        "tags": [
+          "topology"
+        ]
+      }
+    },
+    "/api/v1/graph": {
+      "get": {
+        "description": "Topology for one window. Nodes are derived only from edges inside that window.\n\nSupply exactly one of `window` or the `from`/`to` pair.",
+        "operationId": "get_graph_api_v1_graph_get",
+        "parameters": [
+          {
+            "description": "Preset window. Mutually exclusive with from/to.",
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "1m",
+                    "5m",
+                    "15m",
+                    "1h",
+                    "6h",
+                    "24h"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Preset window. Mutually exclusive with from/to.",
+              "title": "Window"
+            }
+          },
+          {
+            "description": "RFC 3339 UTC, inclusive.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "RFC 3339 UTC, inclusive.",
+              "title": "From"
+            }
+          },
+          {
+            "description": "RFC 3339 UTC, exclusive.",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "RFC 3339 UTC, exclusive.",
+              "title": "To"
+            }
+          },
+          {
+            "description": "Repeatable.",
+            "in": "query",
+            "name": "namespace",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeatable.",
+              "title": "Namespace"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "Service",
+                    "Deployment",
+                    "StatefulSet",
+                    "DaemonSet",
+                    "Job",
+                    "Pod"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "description": "Case-insensitive substring match on label.",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Case-insensitive substring match on label.",
+              "title": "Query"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_external",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include External",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_unresolved",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Unresolved",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Graph",
+        "tags": [
+          "topology"
+        ]
+      }
+    },
+    "/api/v1/ingest/batches": {
+      "post": {
+        "description": "Idempotent ingestion. Re-posting a `batch_id` returns 200 and changes nothing.\n\nVersion checking happens here rather than in the model so that an unsupported version yields\n400 rather than Pydantic's 422 (contracts/ids.md §8).",
+        "operationId": "ingest_batch_api_v1_ingest_batches_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestResult"
+                }
+              }
+            },
+            "description": "batch_id already ingested; no state change"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported schema_version"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Body or edge count over limit"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed batch"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Storage unavailable; retry"
+          }
+        },
+        "summary": "Ingest Batch",
+        "tags": [
+          "topology"
+        ]
+      }
+    },
+    "/api/v1/namespaces": {
+      "get": {
+        "description": "Namespaces observed in the window, for populating the filter panel.",
+        "operationId": "list_namespaces_api_v1_namespaces_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "1m",
+                    "5m",
+                    "15m",
+                    "1h",
+                    "6h",
+                    "24h"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NamespaceList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Namespaces",
+        "tags": [
+          "topology"
+        ]
+      }
+    },
+    "/api/v1/nodes/{node_id}": {
+      "get": {
+        "description": "Node detail. `node_id` contains ':' separators and must be URL-encoded by the client.",
+        "operationId": "get_node_api_v1_nodes__node_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "node_id",
+            "required": true,
+            "schema": {
+              "title": "Node Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "1m",
+                    "5m",
+                    "15m",
+                    "1h",
+                    "6h",
+                    "24h"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Node",
+        "tags": [
+          "topology"
+        ]
+      }
+    },
+    "/health/live": {
+      "get": {
+        "description": "Process liveness only. Never touches storage.",
+        "operationId": "health_live_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health Live",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "description": "Readiness. From Phase 3 this fails if migrations or storage checks fail (ADR-005 D-5.6).",
+        "operationId": "health_ready_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Health Ready",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}

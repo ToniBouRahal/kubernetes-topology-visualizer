@@ -1,0 +1,158 @@
+# Phase 0 skeleton values. Images are placeholders until Phase 1 (agent) and Phase 2
+# (backend/frontend) build real ones. Validated by values.schema.json — see test T-7.3.
+
+nameOverride: ""
+fullnameOverride: ""
+
+# ── Shared identity ─────────────────────────────────────────────────────────────────────────
+# Embedded in every canonical node ID (contracts/ids.md §1). Templated into BOTH the agent and
+# the backend from this single value — a mismatch produces two disjoint graphs that both look
+# empty, with no error anywhere (ADR-007 D-7.5).
+clusterId: kind-topology
+
+# ── Agent (DaemonSet) ───────────────────────────────────────────────────────────────────────
+agent:
+  enabled: true
+  image:
+    repository: topology-agent
+    tag: dev
+    pullPolicy: IfNotPresent
+
+  # Leave empty to derive from the backend Service (see topology.backendIngestUrl).
+  backendIngestUrl: ""
+
+  flushIntervalSeconds: 10
+  maxPendingBatches: 64
+
+  # Kubernetes control-plane ports, excluded as infrastructure noise rather than topology.
+  infrastructurePorts: "2379,2380,4149,6443,10248,10249,10250,10255,10256,10257,10259"
+
+  # Raw source/destination IP logging. Off by default — ADR-001 §6 privacy constraint.
+  debugRawEvents: false
+
+  metricsPort: 9090
+  healthPort: 8081
+
+  # Privileged is required to load and attach eBPF programs on the target setup and is accepted
+  # for the FYP (ADR-001 §5.7). Capability reduction is attempted only after correctness.
+  privileged: true
+  hostPID: true
+
+  # The agent must run on EVERY node including the control-plane, or the three-node validation
+  # in Phase 1 and Phase 5 silently under-reports.
+  tolerations:
+    - operator: Exists
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi   # ADR-001 §6 performance target
+
+# ── Backend ─────────────────────────────────────────────────────────────────────────────────
+backend:
+  enabled: true
+  replicaCount: 1     # HA is deferred (ADR-001 §13)
+  image:
+    repository: topology-backend
+    tag: dev
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 8000
+
+  retentionHours: 24
+  graphMaxNodes: 500
+  graphMaxEdges: 2000
+  diffChangeThresholdPercent: 20
+  corsAllowedOrigins: "http://localhost:5173,http://localhost:8080"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+
+# ── Frontend ────────────────────────────────────────────────────────────────────────────────
+frontend:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: topology-frontend
+    tag: dev
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP   # Default access for kind is port-forwarding (ADR-001 §6)
+    port: 8080
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+
+# ── Database ────────────────────────────────────────────────────────────────────────────────
+# Phase 3 deliverable. Either an in-cluster instance for the self-contained demo, or an
+# external DATABASE_URL for an existing PostgreSQL (ADR-005, ADR-007 D-7.2).
+postgresql:
+  # `internal` deploys in-cluster; `external` uses externalDatabaseUrlSecret.
+  mode: internal
+  enabled: false      # Phase 3 (P3-K6) switches this on
+
+  image:
+    repository: postgres
+    tag: "17-alpine"
+    pullPolicy: IfNotPresent
+
+  auth:
+    database: topology
+    username: topology
+    # Never a real value here. Supplied via --set or an existing Secret; the schema rejects
+    # an empty password when an in-cluster database is enabled (ADR-005 D-5.7).
+    password: ""
+    existingSecret: ""
+
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClass: ""
+
+  service:
+    port: 5432
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+# Name of an existing Secret holding key `database-url`, used when postgresql.mode=external.
+externalDatabaseUrlSecret: ""
+
+# ── Network policy ──────────────────────────────────────────────────────────────────────────
+# Shipped for correctness on real clusters. kind's default CNI does NOT enforce these —
+# stated plainly in docs/limitations.md rather than implying protection that is not there.
+networkPolicy:
+  enabled: false

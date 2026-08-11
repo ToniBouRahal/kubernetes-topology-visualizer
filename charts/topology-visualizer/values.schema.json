@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "topology-visualizer values",
+  "description": "Fails fast on malformed values. Verified by test T-7.3 (ADR-007 D-7.2).",
+  "type": "object",
+  "required": ["clusterId", "agent", "backend", "frontend"],
+  "properties": {
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+
+    "clusterId": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^:]+$",
+      "description": "Embedded in every canonical node ID. Must not contain ':' — that is the ID separator and would make identity ambiguous. Must be identical for agent and backend."
+    },
+
+    "agent": {
+      "type": "object",
+      "required": ["enabled", "image", "flushIntervalSeconds", "maxPendingBatches"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "image": { "$ref": "#/$defs/image" },
+        "backendIngestUrl": { "type": "string" },
+        "flushIntervalSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
+        "maxPendingBatches": { "type": "integer", "minimum": 1 },
+        "infrastructurePorts": { "type": "string" },
+        "debugRawEvents": {
+          "type": "boolean",
+          "description": "Logs raw source/destination IPs. Must stay false outside debugging (ADR-001 §6)."
+        },
+        "metricsPort": { "$ref": "#/$defs/port" },
+        "healthPort": { "$ref": "#/$defs/port" },
+        "privileged": { "type": "boolean" },
+        "hostPID": { "type": "boolean" },
+        "tolerations": { "type": "array" },
+        "resources": { "type": "object" }
+      }
+    },
+
+    "backend": {
+      "type": "object",
+      "required": ["enabled", "image", "service", "retentionHours"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1,
+          "description": "Multi-replica backend is deferred (ADR-001 §13) and would break single-writer assumptions."
+        },
+        "image": { "$ref": "#/$defs/image" },
+        "service": { "$ref": "#/$defs/service" },
+        "retentionHours": { "type": "integer", "minimum": 1 },
+        "graphMaxNodes": { "type": "integer", "minimum": 1 },
+        "graphMaxEdges": { "type": "integer", "minimum": 1 },
+        "diffChangeThresholdPercent": { "type": "number", "minimum": 0 },
+        "corsAllowedOrigins": {
+          "type": "string",
+          "minLength": 1,
+          "not": { "const": "*" },
+          "description": "Never '*' — unrestricted CORS is prototype defect B2 (ADR-004 D-4.6)."
+        },
+        "resources": { "type": "object" },
+        "securityContext": { "type": "object" }
+      }
+    },
+
+    "frontend": {
+      "type": "object",
+      "required": ["enabled", "image", "service"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicaCount": { "type": "integer", "minimum": 1 },
+        "image": { "$ref": "#/$defs/image" },
+        "service": { "$ref": "#/$defs/service" },
+        "resources": { "type": "object" },
+        "securityContext": { "type": "object" }
+      }
+    },
+
+    "postgresql": {
+      "type": "object",
+      "properties": {
+        "mode": { "enum": ["internal", "external"] },
+        "enabled": { "type": "boolean" },
+        "image": { "$ref": "#/$defs/image" },
+        "auth": {
+          "type": "object",
+          "properties": {
+            "database": { "type": "string", "minLength": 1 },
+            "username": { "type": "string", "minLength": 1 },
+            "password": { "type": "string" },
+            "existingSecret": { "type": "string" }
+          }
+        },
+        "persistence": { "type": "object" },
+        "service": { "$ref": "#/$defs/service" },
+        "resources": { "type": "object" }
+      },
+      "allOf": [
+        {
+          "$comment": "An in-cluster database requires a password: either inline or via an existing Secret. An empty one must fail at install, not at first connection.",
+          "if": {
+            "properties": {
+              "enabled": { "const": true },
+              "mode": { "const": "internal" }
+            },
+            "required": ["enabled", "mode"]
+          },
+          "then": {
+            "properties": {
+              "auth": {
+                "type": "object",
+                "anyOf": [
+                  {
+                    "properties": { "password": { "type": "string", "minLength": 1 } },
+                    "required": ["password"]
+                  },
+                  {
+                    "properties": { "existingSecret": { "type": "string", "minLength": 1 } },
+                    "required": ["existingSecret"]
+                  }
+                ]
+              }
+            },
+            "required": ["auth"]
+          }
+        },
+        {
+          "$comment": "An external database must name the Secret holding its URL.",
+          "if": {
+            "properties": { "mode": { "const": "external" } },
+            "required": ["mode"]
+          },
+          "then": {
+            "properties": {
+              "externalDatabaseUrlSecret": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      ]
+    },
+
+    "externalDatabaseUrlSecret": { "type": "string" },
+    "networkPolicy": {
+      "type": "object",
+      "properties": { "enabled": { "type": "boolean" } }
+    }
+  },
+
+  "$defs": {
+    "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+    "image": {
+      "type": "object",
+      "required": ["repository", "tag"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string", "minLength": 1 },
+        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "service": {
+      "type": "object",
+      "required": ["port"],
+      "properties": {
+        "type": { "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    }
+  }
+}

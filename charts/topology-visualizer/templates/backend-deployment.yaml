@@ -1,0 +1,56 @@
+{{- if .Values.backend.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "topology.fullname" . }}-backend
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "topology.backend.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "topology.backend.selectorLabels" . | nindent 8 }}
+    spec:
+      # No Kubernetes API permissions: the backend never talks to the API server (ADR-007 D-7.3).
+      automountServiceAccountToken: false
+      containers:
+        - name: backend
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.backend.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.backend.service.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "topology.fullname" . }}-backend
+          {{- if or .Values.postgresql.enabled .Values.externalDatabaseUrlSecret }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalDatabaseUrlSecret | default (printf "%s-db" (include "topology.fullname" .)) }}
+                  key: database-url
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          readinessProbe:
+            # Fails if migrations did not run or storage is unreachable (ADR-005 D-5.6).
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+{{- end }}

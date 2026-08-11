@@ -1,0 +1,106 @@
+{
+  "description": "Shared contract fixture corpus. Consumed by backend tests (Python), agent tests (Go), and frontend mocks (TypeScript). One corpus, three consumers - see contracts/ids.md and ADR-003 D-3.9.",
+  "ingest_endpoint": "POST /api/v1/ingest/batches",
+  "cases": [
+    {
+      "fixture": "batch.valid.json",
+      "expected_status": 202,
+      "rule": "Canonical batch: workload->Service, workload->StatefulSet, workload->EXTERNAL."
+    },
+    {
+      "fixture": "batch.valid-minimal.json",
+      "expected_status": 202,
+      "rule": "Single edge, no byte fields. Bytes absent is the Phase 0-3 normal case."
+    },
+    {
+      "fixture": "batch.valid-with-bytes.json",
+      "expected_status": 202,
+      "rule": "Byte fields populated. Only valid after the Phase 4 feasibility gate; the schema allows it earlier."
+    },
+    {
+      "fixture": "batch.invalid-schema-version.json",
+      "expected_status": 400,
+      "rule": "Unsupported schema_version is a VERSION problem -> 400, deliberately not 422."
+    },
+    {
+      "fixture": "batch.invalid-batch-id-not-ulid.json",
+      "expected_status": 422,
+      "rule": "batch_id must be 26-char Crockford base32; it is the idempotency key."
+    },
+    {
+      "fixture": "batch.invalid-batch-id-length.json",
+      "expected_status": 422,
+      "rule": "25 characters. Length is checked before the pattern."
+    },
+    {
+      "fixture": "batch.invalid-kind-replicaset.json",
+      "expected_status": 422,
+      "rule": "ReplicaSet is NOT an allowed kind: pods collapse through it to the Deployment."
+    },
+    {
+      "fixture": "batch.invalid-kind-unknown.json",
+      "expected_status": 422,
+      "rule": "Arbitrary kinds are rejected at the API and again by the DB CHECK constraint."
+    },
+    {
+      "fixture": "batch.invalid-protocol-udp.json",
+      "expected_status": 422,
+      "rule": "UDP is out of scope for this release (ADR-001 s4.2)."
+    },
+    {
+      "fixture": "batch.invalid-naive-timestamp.json",
+      "expected_status": 422,
+      "rule": "Timezone-naive datetime. All timestamps are RFC 3339 UTC and aware."
+    },
+    {
+      "fixture": "batch.invalid-connection-count-zero.json",
+      "expected_status": 422,
+      "rule": "connection_count >= 1. An edge with no connections is not an edge."
+    },
+    {
+      "fixture": "batch.invalid-connection-count-negative.json",
+      "expected_status": 422,
+      "rule": "Negative counts would corrupt the bucket sum on upsert."
+    },
+    {
+      "fixture": "batch.invalid-port-zero.json",
+      "expected_status": 422,
+      "rule": "Port range is 1-65535."
+    },
+    {
+      "fixture": "batch.invalid-port-too-large.json",
+      "expected_status": 422,
+      "rule": "Port range is 1-65535."
+    },
+    {
+      "fixture": "batch.invalid-negative-bytes.json",
+      "expected_status": 422,
+      "rule": "Byte counters are non-negative when present."
+    },
+    {
+      "fixture": "batch.invalid-interval-reversed.json",
+      "expected_status": 422,
+      "rule": "last_seen must not precede first_seen."
+    },
+    {
+      "fixture": "batch.invalid-extra-field.json",
+      "expected_status": 422,
+      "rule": "extra=forbid. Source port is deliberately not part of the contract (it is ephemeral)."
+    },
+    {
+      "fixture": "batch.invalid-missing-cluster-id.json",
+      "expected_status": 422,
+      "rule": "cluster_id is required; it is embedded in every canonical node ID."
+    },
+    {
+      "fixture": "batch.invalid-empty-agent-id.json",
+      "expected_status": 422,
+      "rule": "agent_id must be non-empty for delivery diagnostics."
+    },
+    {
+      "fixture": "batch.invalid-interval-seconds-zero.json",
+      "expected_status": 422,
+      "rule": "Aggregation interval must be >= 1 second."
+    }
+  ]
+}
