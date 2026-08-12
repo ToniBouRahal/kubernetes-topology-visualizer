@@ -50,17 +50,36 @@ test-unit: test-go test-python ## Fast tests only — no containers, no cluster
 .PHONY: lint-go
 lint-go: ## go vet + golangci-lint
 	cd $(AGENT) && go vet ./...
-	@command -v golangci-lint >/dev/null 2>&1 \
-	  && (cd $(AGENT) && golangci-lint run ./...) \
-	  || echo "  golangci-lint not on PATH — skipped (install: see docs/prerequisites.md)"
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+	  cd $(AGENT) && golangci-lint run ./...; \
+	else \
+	  echo "  golangci-lint not on PATH — skipped (install: see docs/prerequisites.md)"; \
+	fi
 
 .PHONY: test-go
 test-go: ## Agent unit tests
 	cd $(AGENT) && go test ./... -count=1
 
+BPF_BUILDER := topology-bpf-builder:$(GO_VERSION)
+
+.PHONY: bpf-builder
+bpf-builder: ## Build the pinned container used for BPF compilation
+	docker build -t $(BPF_BUILDER) -f $(AGENT)/build/Dockerfile.bpf-builder $(AGENT)/build
+
 .PHONY: generate
-generate: ## Regenerate bpf2go bindings (requires the builder container; see ADR-002 §4)
-	cd $(AGENT) && go generate ./...
+generate: bpf-builder ## Regenerate bpf2go bindings inside the builder container (ADR-002 §4)
+	docker run --rm \
+	  --user $$(id -u):$$(id -g) \
+	  -v $(AGENT):/build \
+	  -w /build/internal/collector \
+	  $(BPF_BUILDER) \
+	  go generate ./...
+
+.PHONY: vmlinux
+vmlinux: ## Regenerate bpf/vmlinux.h from this kernel's BTF (committed; regenerate deliberately)
+	@test -r /sys/kernel/btf/vmlinux || { echo "FAIL: /sys/kernel/btf/vmlinux not readable"; exit 1; }
+	bpftool btf dump file /sys/kernel/btf/vmlinux format c > $(AGENT)/bpf/vmlinux.h
+	@echo "wrote $(AGENT)/bpf/vmlinux.h ($$(wc -l < $(AGENT)/bpf/vmlinux.h) lines)"
 
 .PHONY: test-ebpf
 test-ebpf: ## Privileged eBPF tests — needs root and a 6.8+ kernel with BTF (ADR-008 D-8.1)
