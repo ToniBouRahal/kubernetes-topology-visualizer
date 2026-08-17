@@ -1,0 +1,142 @@
+# Deterministic demo topology across two namespaces (ADR-007 D-7.7).
+#
+# Expected edges once traffic is flowing:
+#   Deployment/frontend -> Service/backend   TCP:8080   (demo)
+#   Deployment/backend  -> Service/redis     TCP:6379   (demo -> data)
+#   Deployment/backend  -> EXTERNAL          TCP:80
+#
+# Nothing here is instrumented, and no sidecar is injected. That is the point: the agent
+# observes these workloads without them knowing it exists.
+#
+# frontend runs 2 replicas and backend runs 2 replicas deliberately — the graph must still show
+# ONE node and ONE edge per relationship, not one per pod.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+  labels: {topology-demo: "true"}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: data
+  labels: {topology-demo: "true"}
+---
+# ── data/redis ──────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: data
+spec:
+  serviceName: redis
+  replicas: 1
+  selector:
+    matchLabels: {app: redis}
+  template:
+    metadata:
+      labels: {app: redis}
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          args: ["--save", "", "--appendonly", "no"]
+          ports:
+            - {name: redis, containerPort: 6379}
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {memory: 128Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: data
+spec:
+  selector: {app: redis}
+  ports:
+    - {name: redis, port: 6379, targetPort: 6379}
+---
+# ── demo/backend ────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: demo
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: backend}
+  template:
+    metadata:
+      labels: {app: backend}
+    spec:
+      containers:
+        # Serves the frontend.
+        - name: server
+          image: nginx:1.27-alpine
+          ports:
+            - {name: http, containerPort: 80}
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {memory: 128Mi}
+        # Generates backend's own outbound dependencies. A second container in the same pod
+        # shares the pod IP, so its connections attribute to the backend Deployment — which is
+        # exactly how a real service's outbound calls would appear.
+        - name: worker
+          image: redis:7-alpine
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              while true; do
+                redis-cli -h redis.data.svc.cluster.local -p 6379 PING >/dev/null 2>&1 || true
+                # External dependency. Produces a source -> EXTERNAL edge. In an offline
+                # cluster this connection never establishes, so the edge simply does not
+                # appear — it is not an error.
+                (echo > /dev/tcp/example.com/80) >/dev/null 2>&1 || true
+                sleep 5
+              done
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {memory: 128Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: demo
+spec:
+  selector: {app: backend}
+  ports:
+    - {name: http, port: 8080, targetPort: 80}
+---
+# ── demo/frontend ───────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: demo
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: frontend}
+  template:
+    metadata:
+      labels: {app: frontend}
+    spec:
+      containers:
+        - name: client
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              while true; do
+                # A NEW connection each time: the collector records active opens, so a reused
+                # pooled connection would produce no event. wget does not pool.
+                wget -q -T 3 -O /dev/null http://backend.demo.svc.cluster.local:8080/ || true
+                sleep 3
+              done
+          resources:
+            requests: {cpu: 25m, memory: 16Mi}
+            limits: {memory: 64Mi}
