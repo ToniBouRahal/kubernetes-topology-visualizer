@@ -9,7 +9,11 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.dependencies import utc_now
+from app.api.logging import RequestContextMiddleware, configure_logging
 from app.api.routes import api_router, health_router
+from app.persistence.memory import InMemoryRepository
+from app.persistence.protocol import TopologyRepository
 from app.settings import settings
 
 DESCRIPTION = """
@@ -23,7 +27,15 @@ Identity, edge keys, status codes, and determinism rules are specified in `contr
 """.strip()
 
 
-def create_app() -> FastAPI:
+def create_app(repository: TopologyRepository | None = None) -> FastAPI:
+    """Build the application.
+
+    `repository` is injectable so a test can supply its own adapter without touching global
+    state. Phase 2 defaults to the in-memory adapter; Phase 3 (P3-B10) selects PostgreSQL from
+    DATABASE_URL and keeps this one for fast unit tests (ADR-005 D-5.1).
+    """
+    configure_logging()
+
     app = FastAPI(
         title="Kubernetes Runtime Topology Visualizer",
         description=DESCRIPTION,
@@ -39,6 +51,12 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type"],
     )
+
+    # Outermost so every request gets an id before anything else can log.
+    app.add_middleware(RequestContextMiddleware)
+
+    app.state.repository = repository or InMemoryRepository(cluster_id=settings.cluster_id)
+    app.state.clock = utc_now
 
     app.include_router(health_router)
     app.include_router(api_router)

@@ -6,11 +6,13 @@ signatures here are what generate contracts/openapi.json, so they are already no
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
+from app.api.dependencies import RepositoryDep
 from app.domain.models import (
     DiffResponse,
     EdgeDetail,
@@ -23,6 +25,7 @@ from app.domain.models import (
     NodeDetail,
     NodeKind,
 )
+from app.persistence.protocol import IngestOutcome
 from app.settings import settings
 
 WindowPreset = Literal["1m", "5m", "15m", "1h", "6h", "24h"]
@@ -68,7 +71,9 @@ async def health_ready(response: Response) -> HealthResponse:
         503: {"model": ErrorResponse, "description": "Storage unavailable; retry"},
     },
 )
-async def ingest_batch(batch: IngestBatch) -> IngestResult:
+async def ingest_batch(
+    batch: IngestBatch, response: Response, repository: RepositoryDep
+) -> IngestResult:
     """Idempotent ingestion. Re-posting a `batch_id` returns 200 and changes nothing.
 
     Version checking happens here rather than in the model so that an unsupported version yields
@@ -87,7 +92,35 @@ async def ingest_batch(batch: IngestBatch) -> IngestResult:
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"batch contains {len(batch.edges)} edges; limit is {settings.max_batch_edges}",
         )
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=_NOT_IMPLEMENTED)
+
+    # Idempotency is decided inside the repository, in the same transaction as the edge merge.
+    # A read-then-write pre-check here would be a race under two agents retrying at once
+    # (ADR-004 D-4.3).
+    outcome = await repository.ingest_batch(batch)
+
+    # 200 means "already stored": success for the agent, which must drop the batch rather than
+    # retry it forever (contracts/ids.md §8).
+    response.status_code = (
+        status.HTTP_200_OK
+        if outcome is IngestOutcome.ALREADY_INGESTED
+        else status.HTTP_202_ACCEPTED
+    )
+
+    logging.getLogger("api.ingest").info(
+        "batch ingested",
+        extra={
+            "batch_id": batch.batch_id,
+            "agent_id": batch.agent_id,
+            "outcome": outcome.value,
+            "edges": len(batch.edges),
+        },
+    )
+
+    return IngestResult(
+        batch_id=batch.batch_id,
+        status=outcome.value,
+        edges_accepted=len(batch.edges) if outcome is IngestOutcome.INGESTED else 0,
+    )
 
 
 # ── Graph ───────────────────────────────────────────────────────────────────────────────────
