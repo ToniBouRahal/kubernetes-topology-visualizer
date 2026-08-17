@@ -6,7 +6,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -24,19 +23,21 @@ import (
 
 	"github.com/fyp/kubernetes-topology-visualizer/agent/internal/aggregate"
 	"github.com/fyp/kubernetes-topology-visualizer/agent/internal/collector"
+	"github.com/fyp/kubernetes-topology-visualizer/agent/internal/delivery"
 	"github.com/fyp/kubernetes-topology-visualizer/agent/internal/resolver"
 )
 
 type config struct {
-	clusterID       string
-	nodeName        string
-	flushInterval   time.Duration
-	infraPorts      []uint16
-	debugRawEvents  bool
-	healthPort      int
-	metricsPort     int
-	backendIngest   string
-	intervalSeconds int
+	clusterID         string
+	nodeName          string
+	flushInterval     time.Duration
+	infraPorts        []uint16
+	debugRawEvents    bool
+	healthPort        int
+	metricsPort       int
+	backendIngest     string
+	intervalSeconds   int
+	maxPendingBatches int
 }
 
 func loadConfig() (config, error) {
@@ -68,6 +69,12 @@ func loadConfig() (config, error) {
 	}
 	if c.metricsPort, err = strconv.Atoi(env("AGENT_METRICS_PORT", "9090")); err != nil {
 		return c, fmt.Errorf("AGENT_METRICS_PORT: %w", err)
+	}
+
+	if c.maxPendingBatches, err = strconv.Atoi(env("AGENT_MAX_PENDING_BATCHES", "64")); err != nil ||
+		c.maxPendingBatches < 1 {
+		return c, fmt.Errorf("AGENT_MAX_PENDING_BATCHES must be a positive integer, got %q",
+			env("AGENT_MAX_PENDING_BATCHES", ""))
 	}
 
 	c.infraPorts, err = parsePorts(env("INFRASTRUCTURE_PORTS", ""))
@@ -134,10 +141,16 @@ func run(log *slog.Logger) error {
 	var ready atomic.Bool
 	agg := aggregate.New(cfg.clusterID, agentID, cfg.infraPorts)
 
+	if cfg.backendIngest == "" {
+		return fmt.Errorf("BACKEND_INGEST_URL is required")
+	}
+	sender := delivery.New(cfg.backendIngest, cfg.maxPendingBatches, log)
+	log.Info("delivery configured", "url", cfg.backendIngest, "max_pending", cfg.maxPendingBatches)
+
 	// Health and metrics come up first so the kubelet sees a live process while the informer
 	// caches sync, which can take a few seconds on a busy cluster.
 	var collectorRef atomic.Pointer[collector.Collector]
-	healthSrv := startHealthServer(cfg, &ready, agg, &collectorRef, log)
+	healthSrv := startHealthServer(cfg, &ready, agg, sender, &collectorRef, log)
 	defer shutdown(healthSrv, log)
 
 	// ── Kubernetes metadata ─────────────────────────────────────────────────────────────
@@ -181,6 +194,15 @@ func run(log *slog.Logger) error {
 
 	ready.Store(true)
 
+	// ── Delivery loop ───────────────────────────────────────────────────────────────────
+	// Runs independently of collection: a backend outage must never stall the ring-buffer
+	// reader, which would show up as dropped kernel samples (ADR-002 D-2.6).
+	delivered := make(chan struct{})
+	go func() {
+		defer close(delivered)
+		sender.Run(ctx, 15*time.Second)
+	}()
+
 	// ── Flush loop ──────────────────────────────────────────────────────────────────────
 	done := make(chan struct{})
 	go func() {
@@ -191,10 +213,10 @@ func run(log *slog.Logger) error {
 			select {
 			case <-ctx.Done():
 				// Final flush so a shutdown does not discard a partial interval.
-				emitBatch(log, agg, cfg.intervalSeconds, "shutdown")
+				emitBatch(log, agg, sender, cfg.intervalSeconds, "shutdown")
 				return
 			case <-ticker.C:
-				emitBatch(log, agg, cfg.intervalSeconds, "interval")
+				emitBatch(log, agg, sender, cfg.intervalSeconds, "interval")
 			}
 		}
 	}()
@@ -219,12 +241,22 @@ func run(log *slog.Logger) error {
 	})
 
 	<-done
+	// The flush loop has handed its final batch over; let delivery drain before exiting.
+	<-delivered
 	return err
 }
 
-// emitBatch is the Phase 1 sink: normalized batches to structured logs. Phase 2 (P2-A17)
-// replaces this with the bounded, retrying delivery queue.
-func emitBatch(log *slog.Logger, agg *aggregate.Aggregator, intervalSeconds int, trigger string) {
+// emitBatch hands a flushed batch to the delivery queue.
+//
+// The batch is detached from the aggregator before this point, so a delivery failure cannot lose
+// the next interval — the defect the reference prototype had (ADR-002 C7).
+func emitBatch(
+	log *slog.Logger,
+	agg *aggregate.Aggregator,
+	sender *delivery.Client,
+	intervalSeconds int,
+	trigger string,
+) {
 	batch, ok := agg.Flush(intervalSeconds)
 	if !ok {
 		log.Debug("no edges observed in interval", "trigger", trigger)
@@ -237,23 +269,22 @@ func emitBatch(log *slog.Logger, agg *aggregate.Aggregator, intervalSeconds int,
 		return
 	}
 
-	encoded, err := json.Marshal(&batch)
-	if err != nil {
-		log.Error("marshal batch", "error", err, "batch_id", batch.BatchID)
-		return
-	}
+	sender.Enqueue(batch)
 
-	log.Info("batch",
+	// The payload stays out of the log now that it has a real destination; the edge count and
+	// batch id are enough to correlate with the backend's own ingest log line.
+	log.Info("batch queued",
 		"trigger", trigger,
 		"batch_id", batch.BatchID,
 		"edges", len(batch.Edges),
-		"payload", json.RawMessage(encoded))
+		"queue_depth", sender.QueueDepth())
 }
 
 func startHealthServer(
 	cfg config,
 	ready *atomic.Bool,
 	agg *aggregate.Aggregator,
+	sender *delivery.Client,
 	coll *atomic.Pointer[collector.Collector],
 	log *slog.Logger,
 ) *http.Server {
@@ -278,6 +309,7 @@ func startHealthServer(
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		c := agg.Counters()
+		d := sender.Counters()
 
 		var kernel collector.Stats
 		if active := coll.Load(); active != nil {
@@ -301,11 +333,20 @@ func startHealthServer(
 			{"topology_agent_filtered_not_graphable_total", "Observations dropped as host or non-graph traffic", "counter", c.FilteredNotGraphable},
 			{"topology_agent_edges_flushed_total", "Aggregated edges emitted", "counter", c.AggregatedEdgesFlushed},
 			{"topology_agent_batches_flushed_total", "Batches emitted", "counter", c.BatchesFlushed},
+			{"topology_agent_batches_sent_total", "Batches accepted by the backend", "counter", d.Sent},
+			{"topology_agent_batches_duplicate_total", "Batches the backend had already stored", "counter", d.Duplicate},
+			{"topology_agent_batches_retried_total", "Delivery attempts that failed and were retried", "counter", d.Retried},
+			{"topology_agent_batches_dropped_total", "Batches evicted by queue overflow", "counter", d.Dropped},
+			{"topology_agent_batches_rejected_total", "Batches the backend permanently refused", "counter", d.Rejected},
+			{"topology_agent_delivery_queue_high_water", "Peak delivery queue depth", "counter", d.QueueHigh},
 		}
 
 		for _, m := range metrics {
 			_, _ = fmt.Fprintf(w, "# HELP %s %s\n# TYPE %s %s\n%s %d\n", m.name, m.help, m.name, m.typ, m.name, m.value)
 		}
+		_, _ = fmt.Fprintf(w, "# HELP topology_agent_delivery_queue_depth Batches awaiting delivery\n"+
+			"# TYPE topology_agent_delivery_queue_depth gauge\ntopology_agent_delivery_queue_depth %d\n",
+			sender.QueueDepth())
 		_, _ = fmt.Fprintf(w, "# HELP topology_agent_pending_edges Edges accumulated in the current interval\n"+
 			"# TYPE topology_agent_pending_edges gauge\ntopology_agent_pending_edges %d\n", agg.PendingEdges())
 	})
