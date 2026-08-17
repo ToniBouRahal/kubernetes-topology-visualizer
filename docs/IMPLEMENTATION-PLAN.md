@@ -30,8 +30,8 @@ with a recorded reason.
 
 > **Current position:** Phase 1 **complete** — gate passed 2026-08-17, `docs/evaluation/phase-1.md`.
 > All seven acceptance criteria demonstrated on a live three-node kind cluster.
-> **No outstanding items.** Privileged eBPF tests run and passed 2026-08-17.
-> Next: Phase 2 — `P2-B1`, FastAPI layering and app factory.
+> **Phase 2 in progress.** Backend ingestion + graph/namespaces/detail routes live; only /diff remains (Phase 3).
+> Next: `P2-B7` (health/metrics/error handlers), then `P2-A17` agent delivery, then the React frontend.
 
 ### Delegation legend
 
@@ -124,12 +124,12 @@ deterministic filters · transient failure retains last graph · smoke test pass
 
 ### Backend
 
-- [ ] **P2-B1** API/domain/persistence layering, settings, app factory — ADR-004 D-4.1
-- [ ] **P2-B2** Structured JSON logging with request IDs — ADR-004 D-4.6
-- [ ] **P2-B3** `RepositoryProtocol` + `InMemoryRepository` with real semantics — ADR-005 D-5.1
-- [ ] **P2-B4** `POST /api/v1/ingest/batches` with 202/200/400/422/413 — ADR-004 D-4.3, tests T-4.1, T-4.2
-- [ ] **P2-B5** `GET /api/v1/graph`: presets, filters, deterministic order, truncation — ADR-004 D-4.4, tests T-4.7 – T-4.10
-- [ ] **P2-B6** `/api/v1/namespaces`, `/nodes/{id}`, `/edges/{id}` — ADR-004 D-4.7, test T-4.13
+- [x] **P2-B1** API/domain/persistence layering, settings, app factory — ADR-004 D-4.1
+- [x] **P2-B2** Structured JSON logging with request IDs — ADR-004 D-4.6
+- [x] **P2-B3** `RepositoryProtocol` + `InMemoryRepository` with real semantics — ADR-005 D-5.1
+- [x] **P2-B4** `POST /api/v1/ingest/batches` with 202/200/400/422/413 — ADR-004 D-4.3, tests T-4.1, T-4.2
+- [x] **P2-B5** `GET /api/v1/graph`: presets, filters, deterministic order, truncation — ADR-004 D-4.4, tests T-4.7 – T-4.10
+- [x] **P2-B6** `/api/v1/namespaces`, `/nodes/{id}`, `/edges/{id}` — ADR-004 D-4.7, test T-4.13
 - [ ] **P2-B7** `/health/live`, `/health/ready`, `/metrics`, CORS from settings, error handlers, graceful shutdown — ADR-004 D-4.6, tests T-4.11, T-4.12
 
 ### Agent delivery

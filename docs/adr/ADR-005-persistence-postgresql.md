@@ -276,7 +276,7 @@ Mirrors [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md). `[ ]` open · `[~]` in
 
 ### Phase 2 — interface first
 
-- [ ] **P2-B3** `TopologyRepository` protocol + `InMemoryRepository` with real semantics — D-5.1
+- [x] **P2-B3** `TopologyRepository` protocol + `InMemoryRepository` with real semantics — D-5.1
 - [ ] **P2-D0** Contract-test suite written against the in-memory implementation first — D-5.1
 
 Writing the contract suite before any SQL exists is deliberate: it defines the semantics that
