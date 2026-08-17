@@ -67,7 +67,7 @@ else
   printf '%s' "$CLUSTERROLE" | grep 'verbs:'
 fi
 
-for res in pods services namespaces replicasets deployments statefulsets daemonsets jobs endpointslices; do
+for res in pods services namespaces nodes replicasets deployments statefulsets daemonsets jobs endpointslices; do
   if printf '%s' "$CLUSTERROLE" | grep -q "$res"; then
     ok "watches $res"
   else

@@ -18,7 +18,9 @@ metadata:
     {{- include "topology.labels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
-    resources: ["pods", "services", "namespaces"]
+    # nodes is required to classify an address as host traffic: a pod on one node routinely
+    # connects to another node's IP, so the agent needs every node's addresses, not just its own.
+    resources: ["pods", "services", "namespaces", "nodes"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["apps"]
     resources: ["replicasets", "deployments", "statefulsets", "daemonsets"]
