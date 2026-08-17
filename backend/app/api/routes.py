@@ -7,15 +7,18 @@ signatures here are what generate contracts/openapi.json, so they are already no
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
-from app.api.dependencies import RepositoryDep
+from app.api.dependencies import ClockDep, RepositoryDep
+from app.domain import graph
+from app.domain import window as win
 from app.domain.models import (
     DiffResponse,
     EdgeDetail,
+    EffectiveFilters,
     ErrorResponse,
     GraphResponse,
     HealthResponse,
@@ -24,8 +27,10 @@ from app.domain.models import (
     NamespaceList,
     NodeDetail,
     NodeKind,
+    build_edge_id,
 )
-from app.persistence.protocol import IngestOutcome
+from app.domain.window import ResolvedWindow
+from app.persistence.protocol import EdgeFilters, IngestOutcome
 from app.settings import settings
 
 WindowPreset = Literal["1m", "5m", "15m", "1h", "6h", "24h"]
@@ -33,7 +38,33 @@ WindowPreset = Literal["1m", "5m", "15m", "1h", "6h", "24h"]
 health_router = APIRouter(tags=["health"])
 api_router = APIRouter(prefix="/api/v1", tags=["topology"])
 
-_NOT_IMPLEMENTED = "Implemented in Phase 2 (graph/ingest) and Phase 3 (diff/history)."
+_NOT_IMPLEMENTED = "Implemented in Phase 3 (diff/history)."
+
+
+def _resolve(*, window, start, end, clock) -> ResolvedWindow:
+    """Resolve a window, mapping a bad request to 422 rather than a 500."""
+    try:
+        return win.resolve(
+            now=clock(),
+            window=window,
+            start=start,
+            end=end,
+            max_span=timedelta(hours=settings.max_query_span_hours),
+        )
+    except win.WindowError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+
+
+def _to_edge_filters(effective: EffectiveFilters) -> EdgeFilters:
+    return EdgeFilters(
+        namespaces=tuple(effective.namespaces),
+        kind=effective.kind,
+        query=effective.query,
+        include_external=effective.include_external,
+        include_unresolved=effective.include_unresolved,
+    )
 
 
 # ── Health (outside the version prefix, ADR-003 D-3.8) ──────────────────────────────────────
@@ -146,12 +177,34 @@ async def get_graph(
     ] = None,
     include_external: Annotated[bool, Query()] = True,
     include_unresolved: Annotated[bool, Query()] = False,
+    repository: RepositoryDep = None,  # noqa: RUF013
+    clock: ClockDep = None,  # noqa: RUF013
 ) -> GraphResponse:
     """Topology for one window. Nodes are derived only from edges inside that window.
 
     Supply exactly one of `window` or the `from`/`to` pair.
     """
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=_NOT_IMPLEMENTED)
+    resolved = _resolve(window=window, start=from_, end=to, clock=clock)
+    effective = EffectiveFilters(
+        namespaces=sorted(namespace or []),
+        kind=kind,
+        query=query,
+        include_external=include_external,
+        include_unresolved=include_unresolved,
+    )
+
+    edges = await repository.query_edges(resolved, _to_edge_filters(effective))
+    nodes = await repository.nodes_for({e.source_id for e in edges} | {e.target_id for e in edges})
+
+    return graph.assemble(
+        edges=edges,
+        nodes=nodes,
+        window=resolved,
+        filters=effective,
+        generated_at=clock(),
+        max_nodes=settings.graph_max_nodes,
+        max_edges=settings.graph_max_edges,
+    )
 
 
 @api_router.get(
@@ -184,9 +237,15 @@ async def list_namespaces(
     window: Annotated[WindowPreset | None, Query()] = None,
     from_: Annotated[datetime | None, Query(alias="from")] = None,
     to: Annotated[datetime | None, Query()] = None,
+    repository: RepositoryDep = None,  # noqa: RUF013
+    clock: ClockDep = None,  # noqa: RUF013
 ) -> NamespaceList:
     """Namespaces observed in the window, for populating the filter panel."""
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=_NOT_IMPLEMENTED)
+    resolved = _resolve(window=window, start=from_, end=to, clock=clock)
+    return NamespaceList(
+        window=resolved.as_model(),
+        namespaces=await repository.list_namespaces(resolved),
+    )
 
 
 @api_router.get(
@@ -199,9 +258,23 @@ async def get_node(
     window: Annotated[WindowPreset | None, Query()] = None,
     from_: Annotated[datetime | None, Query(alias="from")] = None,
     to: Annotated[datetime | None, Query()] = None,
+    repository: RepositoryDep = None,  # noqa: RUF013
+    clock: ClockDep = None,  # noqa: RUF013
 ) -> NodeDetail:
     """Node detail. `node_id` contains ':' separators and must be URL-encoded by the client."""
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=_NOT_IMPLEMENTED)
+    resolved = _resolve(window=window, start=from_, end=to, clock=clock)
+    edges = await repository.query_edges(resolved, EdgeFilters())
+    nodes = await repository.nodes_for(
+        {e.source_id for e in edges} | {e.target_id for e in edges} | {node_id}
+    )
+
+    detail = graph.node_detail(node_id=node_id, edges=edges, nodes=nodes, window=resolved)
+    if detail is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"no node {node_id!r} observed in this window",
+        )
+    return detail
 
 
 @api_router.get(
@@ -214,6 +287,34 @@ async def get_edge(
     window: Annotated[WindowPreset | None, Query()] = None,
     from_: Annotated[datetime | None, Query(alias="from")] = None,
     to: Annotated[datetime | None, Query()] = None,
+    repository: RepositoryDep = None,  # noqa: RUF013
+    clock: ClockDep = None,  # noqa: RUF013
 ) -> EdgeDetail:
     """Edge detail. `edge_id` is `source|target|protocol|port` and must be URL-encoded."""
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=_NOT_IMPLEMENTED)
+    resolved = _resolve(window=window, start=from_, end=to, clock=clock)
+    edges = await repository.query_edges(resolved, EdgeFilters())
+    nodes = await repository.nodes_for({e.source_id for e in edges} | {e.target_id for e in edges})
+
+    for aggregate in edges:
+        candidate = build_edge_id(
+            aggregate.source_id,
+            aggregate.target_id,
+            aggregate.protocol,
+            aggregate.destination_port,
+        )
+        if candidate != edge_id:
+            continue
+        source, target = nodes.get(aggregate.source_id), nodes.get(aggregate.target_id)
+        if source is None or target is None:
+            break
+        return EdgeDetail(
+            edge=graph._to_edge(aggregate),
+            window=resolved.as_model(),
+            source=graph._to_node(source),
+            target=graph._to_node(target),
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"no edge {edge_id!r} observed in this window",
+    )
