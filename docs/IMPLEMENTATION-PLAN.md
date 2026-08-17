@@ -28,9 +28,10 @@ ADR-001 §12 instruction 9.
 Status markers: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked · `[-]` dropped
 with a recorded reason.
 
-> **Current position:** Phase 1 in progress. `P1-A1`–`P1-A16` and `P1-K1` complete (commits a68d4ba, 2219371, f1d96bb).
-> **Blocked:** `P1-K2` (deploy to kind) — the kindest/node:v1.36.1 image is still downloading on a ~100 KB/s link.
-> **Needs you:** `P1-T1` — `make test-ebpf` requires an interactive sudo password.
+> **Current position:** Phase 1 **complete** — gate passed 2026-08-17, `docs/evaluation/phase-1.md`.
+> All seven acceptance criteria demonstrated on a live three-node kind cluster.
+> **Outstanding:** `P1-T1` privileged eBPF tests need an interactive sudo password (`make test-ebpf`).
+> Next: Phase 2 — `P2-B1`, FastAPI layering and app factory.
 
 ### Delegation legend
 
@@ -105,9 +106,9 @@ node.
 - [x] **P1-A15** Agent Dockerfile, two-stage — ADR-002 §4
 - [x] **P1-A16** Unit tests T-2.1 – T-2.9 — ADR-002 §6 · **→ codex** (self-contained, fixture-driven)
 - [x] **P1-K1** Agent DaemonSet, ServiceAccount, least-privilege RBAC, tolerations for control-plane — ADR-007 D-7.3, test T-7.4
-- [ ] **P1-K2** Deploy to three-node kind; verify a pod on every node — test T-7.5
-- [ ] **P1-T1** Privileged eBPF tests T-2.11, T-2.12 with documented local command — ADR-008 D-8.1
-- [ ] **P1-T2** Phase 1 gate: run and record in `docs/evaluation/phase-1.md`
+- [x] **P1-K2** Deploy to three-node kind; verify a pod on every node — test T-7.5
+- [!] **P1-T1** Privileged eBPF tests T-2.11, T-2.12 with documented local command — ADR-008 D-8.1  _(blocked: sudo needs a password; run `make test-ebpf`)_
+- [x] **P1-T2** Phase 1 gate: run and record in `docs/evaluation/phase-1.md`
 
 > **Codex delegation for this phase:** if the verifier rejects the BPF program, hand the full
 > verifier log to `/codex:rescue` before iterating blindly — ADR-002 §5. Verifier errors are the
