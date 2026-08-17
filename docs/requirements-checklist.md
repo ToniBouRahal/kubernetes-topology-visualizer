@@ -42,7 +42,7 @@ Status: ✅ verified · 🔄 in progress · ⬜ not started · 📄 documented l
 | Three-node kind cluster | ADR-001 §7 P0 | `kind/cluster.yaml` | ✅ |
 | CORS never `*` | ADR-004 D-4.6 | schema rejection + `settings.cors_allowed_origins` | ✅ |
 | Toolchain versions documented | ADR-001 §7 P0 | `docs/prerequisites.md`, `make tools` | ✅ |
-| CI jobs for all components | ADR-001 §7 P0 | `.github/workflows/ci.yml` (6 jobs) | ✅ |
+| CI jobs for all components | ADR-001 §7 P0 | `.github/workflows/ci.yml` — 6/6 green on run 32062487985 | ✅ |
 
 ## Phase 1 — eBPF capture and resolution
 
