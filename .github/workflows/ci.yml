@@ -34,7 +34,9 @@ jobs:
           cache-dependency-path: agent/go.sum
       - name: go vet
         run: cd agent && go vet ./...
-      - uses: golangci/golangci-lint-action@v6
+      # v7+ is required for golangci-lint v2. Action v6 only understands v1 version strings
+      # and fails at "invalid version string" before it ever lints.
+      - uses: golangci/golangci-lint-action@v7
         with:
           version: v2.12.2
           working-directory: agent
