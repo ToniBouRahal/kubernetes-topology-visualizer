@@ -7,10 +7,12 @@ signatures here are what generate contracts/openapi.json, so they are already no
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi.responses import PlainTextResponse
 
 from app.api.dependencies import ClockDep, RepositoryDep
 from app.domain import graph
@@ -81,10 +83,31 @@ async def health_live() -> HealthResponse:
     response_model=HealthResponse,
     responses={503: {"model": HealthResponse}},
 )
-async def health_ready(response: Response) -> HealthResponse:
-    """Readiness. From Phase 3 this fails if migrations or storage checks fail (ADR-005 D-5.6)."""
-    response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-    return HealthResponse(status="unavailable", checks={"storage": "not configured (Phase 0)"})
+async def health_ready(response: Response, repository: RepositoryDep) -> HealthResponse:
+    """Readiness, gated on storage.
+
+    Kubernetes takes this pod out of service when it fails, which is what stops the frontend
+    querying a backend that cannot answer. From Phase 3 it also covers migrations (ADR-005 D-5.6).
+    """
+    health = await repository.health()
+    if not health.available:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return HealthResponse(status="unavailable", checks={"storage": health.detail})
+    return HealthResponse(status="ok", checks={"storage": health.detail})
+
+
+@health_router.get("/metrics", response_class=PlainTextResponse, include_in_schema=False)
+async def metrics(request: Request, repository: RepositoryDep) -> PlainTextResponse:
+    """Prometheus text format.
+
+    Excluded from the OpenAPI document deliberately: it is text/plain, not JSON, and the
+    generated TypeScript client has no use for it (ADR-003 D-3.8).
+    """
+    stored = 0
+    counter = getattr(repository, "stored_bucket_count", None)
+    if counter is not None:
+        stored = await counter()
+    return PlainTextResponse(request.app.state.metrics.render(stored_buckets=stored))
 
 
 # ── Ingestion ───────────────────────────────────────────────────────────────────────────────
@@ -103,7 +126,10 @@ async def health_ready(response: Response) -> HealthResponse:
     },
 )
 async def ingest_batch(
-    batch: IngestBatch, response: Response, repository: RepositoryDep
+    batch: IngestBatch,
+    request: Request,
+    response: Response,
+    repository: RepositoryDep,
 ) -> IngestResult:
     """Idempotent ingestion. Re-posting a `batch_id` returns 200 and changes nothing.
 
@@ -136,6 +162,8 @@ async def ingest_batch(
         if outcome is IngestOutcome.ALREADY_INGESTED
         else status.HTTP_202_ACCEPTED
     )
+
+    request.app.state.metrics.record_ingest(deduplicated=outcome is IngestOutcome.ALREADY_INGESTED)
 
     logging.getLogger("api.ingest").info(
         "batch ingested",
@@ -177,6 +205,7 @@ async def get_graph(
     ] = None,
     include_external: Annotated[bool, Query()] = True,
     include_unresolved: Annotated[bool, Query()] = False,
+    request: Request = None,  # noqa: RUF013
     repository: RepositoryDep = None,  # noqa: RUF013
     clock: ClockDep = None,  # noqa: RUF013
 ) -> GraphResponse:
@@ -184,6 +213,7 @@ async def get_graph(
 
     Supply exactly one of `window` or the `from`/`to` pair.
     """
+    started = time.perf_counter()
     resolved = _resolve(window=window, start=from_, end=to, clock=clock)
     effective = EffectiveFilters(
         namespaces=sorted(namespace or []),
@@ -196,7 +226,7 @@ async def get_graph(
     edges = await repository.query_edges(resolved, _to_edge_filters(effective))
     nodes = await repository.nodes_for({e.source_id for e in edges} | {e.target_id for e in edges})
 
-    return graph.assemble(
+    assembled = graph.assemble(
         edges=edges,
         nodes=nodes,
         window=resolved,
@@ -205,6 +235,8 @@ async def get_graph(
         max_nodes=settings.graph_max_nodes,
         max_edges=settings.graph_max_edges,
     )
+    request.app.state.metrics.record_graph_query(time.perf_counter() - started)
+    return assembled
 
 
 @api_router.get(

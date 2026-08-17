@@ -9,8 +9,10 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api import errors
 from app.api.dependencies import utc_now
 from app.api.logging import RequestContextMiddleware, configure_logging
+from app.api.metrics import Metrics
 from app.api.routes import api_router, health_router
 from app.persistence.memory import InMemoryRepository
 from app.persistence.protocol import TopologyRepository
@@ -57,6 +59,10 @@ def create_app(repository: TopologyRepository | None = None) -> FastAPI:
 
     app.state.repository = repository or InMemoryRepository(cluster_id=settings.cluster_id)
     app.state.clock = utc_now
+    app.state.metrics = Metrics()
+
+    # Registered after the routers exist so handler lookup covers every route.
+    errors.register(app)
 
     app.include_router(health_router)
     app.include_router(api_router)

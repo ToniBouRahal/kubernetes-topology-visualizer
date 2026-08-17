@@ -1741,7 +1741,7 @@
     },
     "/health/ready": {
       "get": {
-        "description": "Readiness. From Phase 3 this fails if migrations or storage checks fail (ADR-005 D-5.6).",
+        "description": "Readiness, gated on storage.\n\nKubernetes takes this pod out of service when it fails, which is what stops the frontend\nquerying a backend that cannot answer. From Phase 3 it also covers migrations (ADR-005 D-5.6).",
         "operationId": "health_ready_health_ready_get",
         "responses": {
           "200": {
