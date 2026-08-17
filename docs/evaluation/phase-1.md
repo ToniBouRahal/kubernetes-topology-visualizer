@@ -113,14 +113,31 @@ SINCE=4m bash scripts/show-edges.sh
 | `internal/aggregate` | T-2.8 infrastructure ports, T-2.9 aggregation, determinism, batch validity |
 | `internal/contract` | T-3.3 cross-language round trip |
 
-## Tests deliberately not run
+## Privileged eBPF tests — RUN AND PASSED
 
-| Test | Reason |
+Executed by the project owner on 2026-08-17 (they require an interactive sudo password, so they
+cannot run unattended):
+
+```text
+$ make test-ebpf
+cd agent && sudo -E go test ./... -tags=privileged -count=1 -run 'Privileged'
+ok  github.com/fyp/kubernetes-topology-visualizer/agent/internal/collector  9.797s
+```
+
+The ~9.8 s runtime matches the suite's timed capture windows. Covers:
+
+| Test | Property |
 |---|---|
-| **T-2.11, T-2.12** (privileged eBPF) | `sudo` on this machine requires an interactive password, so they cannot run unattended. Run with `make test-ebpf`. |
+| `TestPrivilegedCapturesRealConnection` | T-2.11 — a real connection is captured from an uninstrumented process |
+| `TestPrivilegedProducesNoFalseReverseEdge` | Exactly one event per connection, zero originating from the listening port |
+| `TestPrivilegedReusedConnectionEmitsNoFurtherEvents` | Ten round trips over one connection emit one event — connections are not requests |
+| `TestPrivilegedStatsAreReadable` | T-2.12 — kernel counters advance; the transition filter is demonstrably active |
+| `TestPrivilegedEventsCarryNoPayload` | No event carries payload content, checked against a live program writing a known marker |
 
-These are additional evidence rather than gate criteria — every Phase 1 criterion above was
-demonstrated on the live cluster instead. They must still run before release (ADR-001 §8).
+**The false-reverse-edge property is now established three independent ways:** a source-level
+guard that runs in ordinary CI, a runtime assertion against a real attached program on the host
+kernel, and the absence of reverse edges in the live three-node cluster. A regression would have
+to defeat all three.
 
 ## Deviations
 

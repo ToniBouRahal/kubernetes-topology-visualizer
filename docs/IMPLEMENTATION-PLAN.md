@@ -30,7 +30,7 @@ with a recorded reason.
 
 > **Current position:** Phase 1 **complete** — gate passed 2026-08-17, `docs/evaluation/phase-1.md`.
 > All seven acceptance criteria demonstrated on a live three-node kind cluster.
-> **Outstanding:** `P1-T1` privileged eBPF tests need an interactive sudo password (`make test-ebpf`).
+> **No outstanding items.** Privileged eBPF tests run and passed 2026-08-17.
 > Next: Phase 2 — `P2-B1`, FastAPI layering and app factory.
 
 ### Delegation legend
@@ -107,7 +107,7 @@ node.
 - [x] **P1-A16** Unit tests T-2.1 – T-2.9 — ADR-002 §6 · **→ codex** (self-contained, fixture-driven)
 - [x] **P1-K1** Agent DaemonSet, ServiceAccount, least-privilege RBAC, tolerations for control-plane — ADR-007 D-7.3, test T-7.4
 - [x] **P1-K2** Deploy to three-node kind; verify a pod on every node — test T-7.5
-- [!] **P1-T1** Privileged eBPF tests T-2.11, T-2.12 with documented local command — ADR-008 D-8.1  _(blocked: sudo needs a password; run `make test-ebpf`)_
+- [x] **P1-T1** Privileged eBPF tests T-2.11, T-2.12 with documented local command — ADR-008 D-8.1
 - [x] **P1-T2** Phase 1 gate: run and record in `docs/evaluation/phase-1.md`
 
 > **Codex delegation for this phase:** if the verifier rejects the BPF program, hand the full

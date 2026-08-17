@@ -245,7 +245,7 @@ a phase is not complete until its gate row is ticked here.
 
 ### Phase 1 — feasibility
 
-- [ ] **P1-T1** Privileged eBPF tests with a documented local command — D-8.1
+- [x] **P1-T1** Privileged eBPF tests with a documented local command — D-8.1
 - [ ] **GATE 1** captured events · service-level edges · replicas collapse · external summarised · no false reverse edges · no payload bytes · agent on every node → `docs/evaluation/phase-1.md`
 
 ### Phase 2 — end-to-end

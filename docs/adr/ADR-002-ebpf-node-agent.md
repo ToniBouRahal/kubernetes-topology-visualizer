@@ -343,5 +343,5 @@ replicas collapse · external summarised · no false reverse edges (P1-A2) · no
 
 ### Privileged tests (out of ordinary CI, before release)
 
-- [ ] **T-2.11** Ring buffer receives real events from live traffic
-- [ ] **T-2.12** Lost-sample counter increments under synthetic burst
+- [x] **T-2.11** Ring buffer receives real events from live traffic
+- [x] **T-2.12** Lost-sample counter increments under synthetic burst
