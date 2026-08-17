@@ -279,7 +279,7 @@ Mirrors [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md). `[ ]` open · `[~]` in
 
 ### Phase 1 — agent on the cluster
 
-- [ ] **P1-K1** Agent DaemonSet, ServiceAccount, least-privilege RBAC, control-plane tolerations, host mounts — D-7.3 · test T-7.4
+- [x] **P1-K1** Agent DaemonSet, ServiceAccount, least-privilege RBAC, control-plane tolerations, host mounts — D-7.3 · test T-7.4
 - [ ] **P1-K2** A pod Running on every node of the three-node cluster — test T-7.5
 
 **Phase 1 gate:** the agent runs on every node, control-plane included.

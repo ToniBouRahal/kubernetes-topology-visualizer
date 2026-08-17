@@ -307,22 +307,22 @@ passes. `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked · `[-]` 
 
 ### Phase 1 — capture and resolution
 
-- [ ] **P1-A1** Generate and commit `bpf/vmlinux.h` from `/sys/kernel/btf/vmlinux` — §4
-- [ ] **P1-A2** BPF four-condition filter incl. `oldstate == TCP_SYN_SENT` — D-2.1 · test T-2.3
-- [ ] **P1-A3** Ring buffer replaces perf event array — D-2.1 (C2)
-- [ ] **P1-A4** Lost-event counter map on failed `bpf_ringbuf_reserve` — D-2.2 · test T-2.12
-- [ ] **P1-A5** `bpf2go` build in container; `/usr/include/asm` symlink preserved — §4
-- [ ] **P1-A6** Ring-buffer reader; addresses stay `[4]byte` end to end — D-2.1 (C4) · tests T-2.1, T-2.2
-- [ ] **P1-A7** Lost-counter poller exports `kernel_samples_lost` — D-2.2
-- [ ] **P1-A8** Informers for nine resource types; source node-scoped, destinations cluster-wide — D-2.3
-- [ ] **P1-A9** Source resolution: owner-reference walk, Pod→ReplicaSet→Deployment — D-2.4 · test T-2.5
-- [ ] **P1-A10** Destination resolution ladder, ambiguity preserved as metadata — D-2.4 · test T-2.6
-- [ ] **P1-A11** Canonical ID construction — ADR-003 D-3.2 · load `topology-contract`
-- [ ] **P1-A12** Infrastructure port filtering — §2 · test T-2.8
-- [ ] **P1-A13** Ten-second aggregation with `first_seen`/`last_seen` — D-2.5 · test T-2.9
-- [ ] **P1-A14** Structured batch logging; raw IPs behind `AGENT_DEBUG_RAW_EVENTS` — D-2.7 (C9)
-- [ ] **P1-A15** Two-stage Dockerfile — §4
-- [ ] **P1-A16** Unit tests T-2.1 – T-2.9 — §6 · **→ codex**
+- [x] **P1-A1** Generate and commit `bpf/vmlinux.h` from `/sys/kernel/btf/vmlinux` — §4
+- [x] **P1-A2** BPF four-condition filter incl. `oldstate == TCP_SYN_SENT` — D-2.1 · test T-2.3
+- [x] **P1-A3** Ring buffer replaces perf event array — D-2.1 (C2)
+- [x] **P1-A4** Lost-event counter map on failed `bpf_ringbuf_reserve` — D-2.2 · test T-2.12
+- [x] **P1-A5** `bpf2go` build in container; `/usr/include/asm` symlink preserved — §4
+- [x] **P1-A6** Ring-buffer reader; addresses stay `[4]byte` end to end — D-2.1 (C4) · tests T-2.1, T-2.2
+- [x] **P1-A7** Lost-counter poller exports `kernel_samples_lost` — D-2.2
+- [x] **P1-A8** Informers for nine resource types; source node-scoped, destinations cluster-wide — D-2.3
+- [x] **P1-A9** Source resolution: owner-reference walk, Pod→ReplicaSet→Deployment — D-2.4 · test T-2.5
+- [x] **P1-A10** Destination resolution ladder, ambiguity preserved as metadata — D-2.4 · test T-2.6
+- [x] **P1-A11** Canonical ID construction — ADR-003 D-3.2 · load `topology-contract`
+- [x] **P1-A12** Infrastructure port filtering — §2 · test T-2.8
+- [x] **P1-A13** Ten-second aggregation with `first_seen`/`last_seen` — D-2.5 · test T-2.9
+- [x] **P1-A14** Structured batch logging; raw IPs behind `AGENT_DEBUG_RAW_EVENTS` — D-2.7 (C9)
+- [x] **P1-A15** Two-stage Dockerfile — §4
+- [x] **P1-A16** Unit tests T-2.1 – T-2.9 — §6 · **→ codex**
 
 **Phase 1 gate** (ADR-001 §7): captured events from unmodified workloads · service-level edges ·
 replicas collapse · external summarised · no false reverse edges (P1-A2) · no payload bytes

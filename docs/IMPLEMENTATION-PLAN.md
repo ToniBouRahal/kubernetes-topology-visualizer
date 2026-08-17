@@ -28,8 +28,9 @@ ADR-001 §12 instruction 9.
 Status markers: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked · `[-]` dropped
 with a recorded reason.
 
-> **Current position:** Phase 0 **complete** (gate passed 2026-08-12, `docs/evaluation/phase-0.md`).
-> Next: Phase 1 — `P1-A1`, generate `bpf/vmlinux.h` from BTF.
+> **Current position:** Phase 1 in progress. `P1-A1`–`P1-A16` and `P1-K1` complete (commits a68d4ba, 2219371, f1d96bb).
+> **Blocked:** `P1-K2` (deploy to kind) — the kindest/node:v1.36.1 image is still downloading on a ~100 KB/s link.
+> **Needs you:** `P1-T1` — `make test-ebpf` requires an interactive sudo password.
 
 ### Delegation legend
 
@@ -87,23 +88,23 @@ derivation. `→ chrome` marks work that needs live browser debugging (user runs
 replicas collapse · external summarised · no false reverse edges · no payload bytes · agent on every
 node.
 
-- [ ] **P1-A1** Generate and commit `bpf/vmlinux.h` from BTF — ADR-002 §4
-- [ ] **P1-A2** BPF program: four-condition filter incl. `oldstate == TCP_SYN_SENT` — ADR-002 D-2.1, test T-2.3
-- [ ] **P1-A3** Switch to `BPF_MAP_TYPE_RINGBUF` — ADR-002 D-2.1 (C2)
-- [ ] **P1-A4** Lost-event counter map incremented on failed `bpf_ringbuf_reserve` — ADR-002 D-2.2, test T-2.12
-- [ ] **P1-A5** `bpf2go` build in the pinned container, `/usr/include/asm` symlink preserved — ADR-002 §4
-- [ ] **P1-A6** Go ring-buffer reader; addresses stay `[4]byte` end to end — ADR-002 D-2.1 (C4), tests T-2.1, T-2.2
-- [ ] **P1-A7** Lost-counter poller exports `kernel_samples_lost` — ADR-002 D-2.2
-- [ ] **P1-A8** Informers for all nine resource types; source Pod informer node-scoped, destinations cluster-wide — ADR-002 D-2.3
-- [ ] **P1-A9** Source resolution: owner-reference walk, Pod→ReplicaSet→Deployment collapse — ADR-002 D-2.4, test T-2.5
-- [ ] **P1-A10** Destination resolution: ClusterIP → EndpointSlice+port → ambiguous → workload → host → EXTERNAL → unresolved — ADR-002 D-2.4, test T-2.6
-- [ ] **P1-A11** Canonical ID construction — ADR-003 D-3.2 · **must load `topology-contract`**
-- [ ] **P1-A12** Infrastructure port filtering from `INFRASTRUCTURE_PORTS` — ADR-002 §2, test T-2.8
-- [ ] **P1-A13** Ten-second aggregation with `first_seen`/`last_seen` — ADR-002 D-2.5, test T-2.9
-- [ ] **P1-A14** Structured batch logging; raw IPs gated behind `AGENT_DEBUG_RAW_EVENTS` — ADR-002 D-2.7 (C9)
-- [ ] **P1-A15** Agent Dockerfile, two-stage — ADR-002 §4
-- [ ] **P1-A16** Unit tests T-2.1 – T-2.9 — ADR-002 §6 · **→ codex** (self-contained, fixture-driven)
-- [ ] **P1-K1** Agent DaemonSet, ServiceAccount, least-privilege RBAC, tolerations for control-plane — ADR-007 D-7.3, test T-7.4
+- [x] **P1-A1** Generate and commit `bpf/vmlinux.h` from BTF — ADR-002 §4
+- [x] **P1-A2** BPF program: four-condition filter incl. `oldstate == TCP_SYN_SENT` — ADR-002 D-2.1, test T-2.3
+- [x] **P1-A3** Switch to `BPF_MAP_TYPE_RINGBUF` — ADR-002 D-2.1 (C2)
+- [x] **P1-A4** Lost-event counter map incremented on failed `bpf_ringbuf_reserve` — ADR-002 D-2.2, test T-2.12
+- [x] **P1-A5** `bpf2go` build in the pinned container, `/usr/include/asm` symlink preserved — ADR-002 §4
+- [x] **P1-A6** Go ring-buffer reader; addresses stay `[4]byte` end to end — ADR-002 D-2.1 (C4), tests T-2.1, T-2.2
+- [x] **P1-A7** Lost-counter poller exports `kernel_samples_lost` — ADR-002 D-2.2
+- [x] **P1-A8** Informers for all nine resource types; source Pod informer node-scoped, destinations cluster-wide — ADR-002 D-2.3
+- [x] **P1-A9** Source resolution: owner-reference walk, Pod→ReplicaSet→Deployment collapse — ADR-002 D-2.4, test T-2.5
+- [x] **P1-A10** Destination resolution: ClusterIP → EndpointSlice+port → ambiguous → workload → host → EXTERNAL → unresolved — ADR-002 D-2.4, test T-2.6
+- [x] **P1-A11** Canonical ID construction — ADR-003 D-3.2 · **must load `topology-contract`**
+- [x] **P1-A12** Infrastructure port filtering from `INFRASTRUCTURE_PORTS` — ADR-002 §2, test T-2.8
+- [x] **P1-A13** Ten-second aggregation with `first_seen`/`last_seen` — ADR-002 D-2.5, test T-2.9
+- [x] **P1-A14** Structured batch logging; raw IPs gated behind `AGENT_DEBUG_RAW_EVENTS` — ADR-002 D-2.7 (C9)
+- [x] **P1-A15** Agent Dockerfile, two-stage — ADR-002 §4
+- [x] **P1-A16** Unit tests T-2.1 – T-2.9 — ADR-002 §6 · **→ codex** (self-contained, fixture-driven)
+- [x] **P1-K1** Agent DaemonSet, ServiceAccount, least-privilege RBAC, tolerations for control-plane — ADR-007 D-7.3, test T-7.4
 - [ ] **P1-K2** Deploy to three-node kind; verify a pod on every node — test T-7.5
 - [ ] **P1-T1** Privileged eBPF tests T-2.11, T-2.12 with documented local command — ADR-008 D-8.1
 - [ ] **P1-T2** Phase 1 gate: run and record in `docs/evaluation/phase-1.md`
