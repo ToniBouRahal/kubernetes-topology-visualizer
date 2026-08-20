@@ -5,7 +5,10 @@ Variable names are fixed by ADR-001 §5.7 and templated by the Helm chart (ADR-0
 
 from __future__ import annotations
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Annotated
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -32,7 +35,25 @@ class Settings(BaseSettings):
     # Diff (ADR-003 D-3.7).
     topology_diff_change_threshold_percent: float = 20.0
 
-    cors_allowed_origins: list[str] = ["http://localhost:5173"]
+    # NoDecode is required, not decorative: without it EnvSettingsSource runs json.loads on the
+    # raw env var before any validator sees it, so a comma-separated value raises during
+    # settings construction and the process never starts.
+    cors_allowed_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
+
+    @field_validator("cors_allowed_origins", mode="before")
+    @classmethod
+    def _split_origins(cls, value: object) -> object:
+        """Accept a comma-separated list, which is what the ConfigMap emits.
+
+        pydantic-settings parses a complex-typed field from the environment as JSON, so
+        CORS_ALLOWED_ORIGINS="http://a,http://b" raises rather than splitting. Requiring
+        operators to write a JSON array in a ConfigMap would be a poor trade — and this failed
+        only in the container, because local runs used the default and never exercised the
+        env-var path.
+        """
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
     # The only schema version this release accepts. Anything else is 400, not 422.
     supported_schema_version: int = 1
