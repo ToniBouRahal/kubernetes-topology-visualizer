@@ -1,0 +1,302 @@
+/* Layout and components. Tokens live in tokens.css. */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────────────────────── */
+
+.header {
+  height: var(--header-h);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 0 var(--s-4);
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.header__brand { display: flex; align-items: baseline; gap: var(--s-2); }
+
+/* A small aperture mark: a ring with a gap, suggesting something watched rather than drawn. */
+.header__mark {
+  width: 11px; height: 11px;
+  border: 2px solid var(--ns-1);
+  border-radius: 50%;
+  border-right-color: transparent;
+  align-self: center;
+}
+
+.header__title {
+  margin: 0;
+  font-size: var(--step-2);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.header__sub {
+  font-size: var(--step--1);
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+}
+
+.header__spacer { flex: 1; }
+.header__group { display: flex; }
+
+.seg {
+  border-radius: 0;
+  background: var(--ink);
+  color: var(--text-dim);
+}
+.seg:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.seg:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; border-left: none; }
+.seg--on { background: var(--panel-high); color: var(--text); border-color: var(--line-strong); }
+
+.header__window select { width: auto; }
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--step--1);
+  color: var(--text-dim);
+}
+.status__dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.status--ok { color: var(--ok); }
+.status--down { color: var(--warn); }
+
+/* ── Observation strip: the signature element ────────────────────────────────────────────── */
+
+.strip {
+  height: var(--strip-h);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 0 var(--s-4);
+  background: var(--ink);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--step--1);
+  color: var(--text-dim);
+}
+
+.strip__bounds { color: var(--text); }
+
+/* The measured span, drawn as a rule with end ticks — an instrument's scale, not a progress bar. */
+.strip__rule {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 140px;
+}
+.strip__rule::before,
+.strip__rule::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line-strong);
+}
+.strip__tick { width: 1px; height: 8px; background: var(--line-strong); }
+.strip__span {
+  font-size: var(--step--1);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.strip__divider { width: 1px; height: 14px; background: var(--line); }
+.strip__stat b { color: var(--text); font-weight: 600; }
+.strip__spacer { flex: 1; }
+.strip__updated { color: var(--text-faint); }
+
+/* ── Body ────────────────────────────────────────────────────────────────────────────────── */
+
+.app__body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: var(--panel-left) 1fr var(--panel-right);
+  min-height: 0;
+}
+
+.panel {
+  background: var(--panel);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.panel--left { border-right: 1px solid var(--line); }
+.panel--right { border-left: 1px solid var(--line); }
+.panel--empty { align-items: center; justify-content: center; padding: var(--s-5); text-align: center; }
+
+.panel__section {
+  padding: var(--s-4);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.panel__section--legend { border-bottom: none; }
+
+.panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  border-bottom: 1px solid var(--line);
+}
+.panel__title { font-size: var(--step-1); font-weight: 600; }
+.panel__subtitle { font-size: var(--step--1); color: var(--text-dim); }
+.panel__value { color: var(--text); margin-bottom: var(--s-2); }
+.panel__hint { margin: 0; font-size: var(--step--1); color: var(--text-faint); line-height: 1.5; }
+.panel__hint--note {
+  margin: 0 var(--s-4) var(--s-4);
+  padding: var(--s-2) var(--s-3);
+  border-left: 2px solid var(--line-strong);
+  background: var(--ink);
+}
+.panel__clear { margin: var(--s-4); }
+
+.check { display: flex; align-items: center; gap: var(--s-2); cursor: pointer; }
+.check input { width: auto; }
+
+.ns-list, .legend, .dep-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+
+.ns {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  background: transparent;
+  border-color: transparent;
+  text-align: left;
+  padding: var(--s-1) var(--s-2);
+}
+.ns:hover { background: var(--panel-high); }
+.ns--on { background: var(--panel-high); border-color: var(--line-strong); }
+.ns__chip { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+.ns__name { font-size: var(--step--1); }
+/* A checkmark, so selection does not rest on background colour alone. */
+.ns--on .ns__name::after { content: " ✓"; color: var(--ok); }
+
+.legend__row { display: flex; align-items: center; gap: var(--s-2); font-size: var(--step--1); color: var(--text-dim); }
+.swatch { flex-shrink: 0; }
+
+.dep {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s-2);
+  padding: var(--s-1) 0;
+  border-bottom: 1px solid var(--line);
+}
+.dep:last-child { border-bottom: none; }
+.dep__name { font-size: var(--step-0); }
+.dep__meta { font-size: var(--step--1); color: var(--text-faint); white-space: nowrap; }
+
+/* ── Canvas ──────────────────────────────────────────────────────────────────────────────── */
+
+.canvas { position: relative; min-width: 0; background: var(--ink); }
+
+.topology-node { position: relative; }
+.topology-node__shape { position: absolute; inset: 0; }
+.topology-node__content {
+  position: relative;
+  height: 100%;
+  padding: 0 var(--s-4);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  pointer-events: none;
+}
+.topology-node__name {
+  font-size: var(--step-0);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topology-node__meta { display: flex; gap: var(--s-2); font-size: 10px; align-items: baseline; }
+.topology-node__kind { font-weight: 600; letter-spacing: 0.03em; }
+.topology-node__ns { color: var(--text-faint); }
+.topology-handle { opacity: 0; }
+
+/* ── States and banners ──────────────────────────────────────────────────────────────────── */
+
+.state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-3);
+  padding: var(--s-6);
+  text-align: center;
+}
+.state__title { margin: 0; font-size: var(--step-1); color: var(--text); }
+.state__body { margin: 0; max-width: 46ch; color: var(--text-dim); line-height: 1.6; }
+.state__steps {
+  margin: 0; padding: 0; list-style: none;
+  display: flex; flex-direction: column; gap: var(--s-1);
+  font-size: var(--step--1); color: var(--text-faint);
+}
+.state__steps li::before { content: "→ "; color: var(--line-strong); }
+
+.state__skeleton { display: flex; gap: var(--s-3); }
+.state__skeleton span {
+  width: 64px; height: 26px;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.state__skeleton span:nth-child(2) { animation-delay: 0.15s; }
+.state__skeleton span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.75; } }
+
+.banner {
+  position: absolute;
+  top: var(--s-3);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  max-width: min(680px, calc(100% - var(--s-6)));
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  font-size: var(--step--1);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.35);
+}
+.banner__text { flex: 1; }
+.banner--error { border-left: 3px solid var(--danger); }
+.banner--warn { border-left: 3px solid var(--warn); }
+
+/* React Flow surfaces, matched to the panel palette. */
+.react-flow__controls-button {
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  fill: var(--text-dim);
+}
+.react-flow__controls-button:hover { background: var(--panel-high); }
+.react-flow__attribution { background: transparent; color: var(--text-faint); }
+
+/* Below the 1280px demo width the right panel becomes an overlay rather than squeezing the canvas. */
+@media (max-width: 1100px) {
+  .app__body { grid-template-columns: var(--panel-left) 1fr; }
+  .panel--right {
+    position: absolute;
+    right: 0;
+    top: calc(var(--header-h) + var(--strip-h));
+    bottom: 0;
+    width: var(--panel-right);
+    z-index: 10;
+    box-shadow: -8px 0 24px rgb(0 0 0 / 0.4);
+  }
+}

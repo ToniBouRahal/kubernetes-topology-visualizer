@@ -1,0 +1,147 @@
+/*
+ * Design tokens.
+ *
+ * Direction: a measurement instrument, not a business dashboard. This tool reports what the
+ * kernel actually observed, so the interface is built to read like an instrument panel —
+ * measured values in monospace, labels in sans, and a cool blue-slate ground rather than the
+ * pure black of a terminal or the white of a document.
+ *
+ * NO WEB FONTS. The kind demo may run without internet, and a font that fails to load would
+ * change every measurement's width mid-demonstration. System stacks only; the typographic
+ * identity comes from the sans/mono split and the scale, not from a downloaded face.
+ */
+
+:root {
+  /* ── Ground ──────────────────────────────────────────────────────────────────────────── */
+  --ink: #0f1620;          /* canvas: deep blue-black, deliberately not #000 */
+  --panel: #16202c;        /* raised surfaces */
+  --panel-high: #1d2937;   /* controls, hover */
+  --line: #2a3646;         /* structure */
+  --line-strong: #3a4a5e;
+
+  /* ── Text ────────────────────────────────────────────────────────────────────────────── */
+  --text: #e8eef6;
+  --text-dim: #9db0c6;
+  --text-faint: #6b7f96;
+
+  /* ── Namespace identity ──────────────────────────────────────────────────────────────── *
+   * Colour encodes NAMESPACE, never kind — kind is carried by shape, so colour is free to do
+   * work that shape cannot. Assigned deterministically by name so a namespace keeps its hue
+   * across reloads. All tested to hold contrast against --ink.                              */
+  --ns-1: #4fb8ac;
+  --ns-2: #d9a441;
+  --ns-3: #9b8ae6;
+  --ns-4: #e0748a;
+  --ns-5: #6ea8dc;
+  --ns-6: #7fc96b;
+
+  /* ── Semantic ────────────────────────────────────────────────────────────────────────── */
+  --external: #b3a08a;     /* outside the cluster: warm, desaturated, deliberately not alarming */
+  --edge: #55697f;
+  --edge-strong: #7f97b0;
+  --ok: #4fb8ac;
+  --warn: #d9a441;
+  --danger: #e0748a;
+
+  /* ── Type ────────────────────────────────────────────────────────────────────────────── */
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  /* Every MEASURED value uses this. The split is the point: monospace means "this is a reading". */
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", "IBM Plex Mono", Menlo, monospace;
+
+  --step--1: 0.75rem;
+  --step-0: 0.8125rem;
+  --step-1: 0.9375rem;
+  --step-2: 1.125rem;
+  --step-3: 1.375rem;
+
+  /* ── Space ───────────────────────────────────────────────────────────────────────────── */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+
+  --radius: 6px;
+  --radius-sm: 4px;
+
+  /* Sized for the 1280x720 demo resolution (ADR-001 §5.6): both panels plus a usable canvas. */
+  --panel-left: 232px;
+  --panel-right: 320px;
+  --header-h: 48px;
+  --strip-h: 34px;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--step-0);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible keyboard focus everywhere. Required, not optional (ADR-006 D-6.7). */
+:focus-visible {
+  outline: 2px solid var(--ns-5);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: var(--panel-high);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--s-1) var(--s-3);
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--line-strong); background: #24313f; }
+button:disabled { opacity: 0.5; cursor: default; }
+
+input, select {
+  font: inherit;
+  color: var(--text);
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--s-1) var(--s-2);
+  width: 100%;
+}
+
+/* Measured values. Tabular figures so counts do not jitter as they tick up. */
+.mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.label {
+  font-size: var(--step--1);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  font-weight: 600;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0);
+  white-space: nowrap; border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
