@@ -286,9 +286,9 @@ Mirrors [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md). `[ ]` open · `[~]` in
 
 ### Phase 2 — full stack in kind
 
-- [ ] **P2-K3** Backend + frontend Deployments, Services, ConfigMaps — §4
-- [ ] **P2-K4** `NOTES.txt` with port-forward instructions — D-7.1
-- [ ] **P2-K5** `CLUSTER_ID` templated from one value into both agent and backend — D-7.5
+- [x] **P2-K3** Backend + frontend Deployments, Services, ConfigMaps — §4
+- [x] **P2-K4** `NOTES.txt` with port-forward instructions — D-7.1
+- [x] **P2-K5** `CLUSTER_ID` templated from one value into both agent and backend — D-7.5
 
 ### Phase 3 — database
 

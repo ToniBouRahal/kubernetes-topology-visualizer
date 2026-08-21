@@ -220,7 +220,7 @@ Mirrors [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md). `[ ]` open · `[~]` in
 - [x] **P2-B5** `GET /api/v1/graph`: presets, filters, deterministic order, truncation — D-4.4 (fixes B7, B9, B11) · tests T-4.4, T-4.7 – T-4.10
 - [x] **P2-B6** `/namespaces`, `/nodes/{id}`, `/edges/{id}` with URL-encoded IDs — D-4.7 (fixes B8) · test T-4.13
 - [x] **P2-B7** `/health/live`, `/health/ready`, `/metrics`, CORS from settings, error handlers, graceful shutdown — D-4.6 (fixes B2) · tests T-4.11, T-4.12
-- [ ] **P2-T3** Backend API test suite against the in-memory repository — §6 · **→ codex**
+- [x] **P2-T3** Backend API test suite against the in-memory repository — §6 · **→ codex**
 
 **Phase 2 gate** (ADR-001 §7): traffic visible in the browser within 20 s · duplicate `batch_id`
 counted once · graph shows direction, port, count, first/last seen · deterministic filters and
