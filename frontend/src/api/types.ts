@@ -19,6 +19,10 @@ export type NodeDetail = Schemas["NodeDetail"];
 export type EdgeDetail = Schemas["EdgeDetail"];
 export type NodeDependency = Schemas["NodeDependency"];
 export type NamespaceList = Schemas["NamespaceList"];
+export type DiffResponse = Schemas["DiffResponse"];
+export type DiffEdge = Schemas["DiffEdge"];
+export type DiffSummary = Schemas["DiffSummary"];
+export type DiffClassification = DiffEdge["classification"];
 export type ErrorResponse = Schemas["ErrorResponse"];
 
 /** The six workload kinds plus the external node's presentation kind. */
@@ -29,6 +33,18 @@ export const EXTERNAL_NODE_ID = "external:EXTERNAL";
 /** Window presets, fixed by ADR-001 §5.3. */
 export const WINDOW_PRESETS = ["1m", "5m", "15m", "1h", "6h", "24h"] as const;
 export type WindowPreset = (typeof WINDOW_PRESETS)[number];
+
+export interface DiffQuery {
+  baselineFrom: string;
+  baselineTo: string;
+  currentFrom: string;
+  currentTo: string;
+  namespace?: string[];
+  kind?: string;
+  query?: string;
+  includeExternal?: boolean;
+  includeUnchanged?: boolean;
+}
 
 export interface GraphQuery {
   window?: WindowPreset;

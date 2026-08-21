@@ -1,0 +1,69 @@
+# A controlled topology change (ADR-007 D-7.7).
+#
+# Introduces exactly ONE new dependency: a payment service that backend-like traffic reaches.
+# One change, so the diff has an unambiguous expected answer — "backend -> payment appeared" —
+# rather than a cloud of differences that could hide a misclassification.
+#
+#   make demo-change   applies this
+#   compare mode       must then show demo/Deployment:reporter -> data/Service:payment as NEW
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment
+  namespace: data
+spec:
+  selector: {app: payment}
+  ports:
+    - {name: http, port: 6380, targetPort: 6379}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment
+  namespace: data
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: payment}
+  template:
+    metadata:
+      labels: {app: payment}
+    spec:
+      containers:
+        - name: payment
+          image: redis:7-alpine
+          args: ["--save", "", "--appendonly", "no"]
+          ports:
+            - {name: redis, containerPort: 6379}
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {memory: 128Mi}
+---
+# The new caller. A distinct workload so the NEW edge has a distinct source.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reporter
+  namespace: demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: reporter}
+  template:
+    metadata:
+      labels: {app: reporter}
+    spec:
+      containers:
+        - name: reporter
+          image: redis:7-alpine
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              while true; do
+                redis-cli -h payment.data.svc.cluster.local -p 6380 PING >/dev/null 2>&1 || true
+                sleep 2
+              done
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {memory: 128Mi}

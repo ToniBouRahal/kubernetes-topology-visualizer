@@ -266,9 +266,9 @@ prose **and** in tests.
 
 ### Phase 3 — diff contract
 
-- [ ] **P3-C10** Diff response shape: baseline, current, delta, percentage, reason — D-3.7
-- [ ] **P3-C11** Zero-baseline percentage undefined and reported as a reason, never `Infinity`
-- [ ] **P3-C12** Missing period treated as zero, not null — D-3.7
+- [x] **P3-C10** Diff response shape: baseline, current, delta, percentage, reason — D-3.7
+- [x] **P3-C11** Zero-baseline percentage undefined and reported as a reason, never `Infinity`
+- [x] **P3-C12** Missing period treated as zero, not null — D-3.7
 
 **Phase 3 gate:** diff classification deterministic at exact bucket boundaries, calculation visible.
 

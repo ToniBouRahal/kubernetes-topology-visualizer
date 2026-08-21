@@ -1,4 +1,4 @@
-export type Mode = "live" | "history";
+export type Mode = "live" | "history" | "compare";
 
 /**
  * Header: what you are looking at, and whether it is still moving.
@@ -38,7 +38,7 @@ export function Header({
       </div>
 
       <div className="header__group" role="group" aria-label="View mode">
-        {(["live", "history"] as const).map((value) => (
+        {(["live", "history", "compare"] as const).map((value) => (
           <button
             key={value}
             type="button"
@@ -46,11 +46,12 @@ export function Header({
             aria-pressed={mode === value}
             onClick={() => onModeChange(value)}
           >
-            {value === "live" ? "Live" : "History"}
+            {value === "live" ? "Live" : value === "history" ? "History" : "Compare"}
           </button>
         ))}
       </div>
 
+      {mode !== "compare" && (
       <label className="header__window">
         <span className="visually-hidden">Window length</span>
         <select value={windowPreset} onChange={(e) => onWindowChange(e.target.value)}>
@@ -61,6 +62,7 @@ export function Header({
           ))}
         </select>
       </label>
+      )}
 
       <div className="header__spacer" />
 

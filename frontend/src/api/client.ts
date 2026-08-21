@@ -4,7 +4,7 @@
  * Thin by design: query construction, cancellation, and error normalisation. Everything else is
  * the generated schema's job.
  */
-import type { GraphQuery, GraphResponse, NamespaceList, NodeDetail } from "./types";
+import type { DiffQuery, DiffResponse, GraphQuery, GraphResponse, NamespaceList, NodeDetail } from "./types";
 
 /** Same-origin in production; Vite proxies to the port-forwarded backend in development. */
 const BASE = import.meta.env.VITE_API_BASE ?? "";
@@ -93,6 +93,27 @@ export function fetchNodeDetail(
     `/api/v1/nodes/${encodeURIComponent(nodeId)}${buildQuery(scoped)}`,
     signal,
   );
+}
+
+export function fetchDiff(query: DiffQuery, signal?: AbortSignal): Promise<DiffResponse> {
+  const params = new URLSearchParams({
+    baseline_from: query.baselineFrom,
+    baseline_to: query.baselineTo,
+    current_from: query.currentFrom,
+    current_to: query.currentTo,
+  });
+
+  for (const ns of query.namespace ?? []) params.append("namespace", ns);
+  if (query.kind) params.set("kind", query.kind);
+  if (query.query) params.set("query", query.query);
+  if (query.includeExternal !== undefined) {
+    params.set("include_external", String(query.includeExternal));
+  }
+  if (query.includeUnchanged !== undefined) {
+    params.set("include_unchanged", String(query.includeUnchanged));
+  }
+
+  return request<DiffResponse>(`/api/v1/diff?${params.toString()}`, signal);
 }
 
 export function checkReady(signal?: AbortSignal): Promise<{ status: string }> {

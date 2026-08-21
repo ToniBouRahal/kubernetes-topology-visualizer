@@ -1,3 +1,5 @@
+import type React from "react";
+
 import { KIND_ENCODING, encodingFor, namespaceHue, shapePath } from "../graph/encoding";
 
 const LEGEND_KINDS = ["Service", "Deployment", "StatefulSet", "DaemonSet", "Job", "Pod", "External"];
@@ -29,6 +31,7 @@ export function FilterPanel({
   includeExternal,
   onToggleExternal,
   onClear,
+  extra,
 }: {
   namespaces: string[];
   selectedNamespaces: string[];
@@ -38,11 +41,14 @@ export function FilterPanel({
   includeExternal: boolean;
   onToggleExternal: () => void;
   onClear: () => void;
+  /** Mode-specific controls rendered above the filters (compare periods, for example). */
+  extra?: React.ReactNode;
 }) {
   const filtering = selectedNamespaces.length > 0 || search !== "" || !includeExternal;
 
   return (
     <aside className="panel panel--left" aria-label="Filters">
+      {extra}
       <section className="panel__section">
         <label className="label" htmlFor="search">
           Search

@@ -247,9 +247,9 @@ test passes.
 
 ### Phase 3 — history and comparison
 
-- [ ] **P3-F9** History picker: presets + custom range; polling stops in history mode — D-6.5 · test T-6.4
-- [ ] **P3-F10** Compare mode: baseline/current pickers, `include_unchanged` toggle — D-6.5
-- [ ] **P3-F11** Diff styling: stroke pattern + text badge per class, readable without colour — D-6.3 · test T-6.5
+- [x] **P3-F9** History picker: presets + custom range; polling stops in history mode — D-6.5 · test T-6.4
+- [x] **P3-F10** Compare mode: baseline/current pickers, `include_unchanged` toggle — D-6.5
+- [x] **P3-F11** Diff styling: stroke pattern + text badge per class, readable without colour — D-6.3 · test T-6.5
 
 ### Phase 4 — completeness and accessibility
 

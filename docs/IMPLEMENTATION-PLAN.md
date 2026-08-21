@@ -179,8 +179,8 @@ boundaries.
 - [ ] **P3-K5** Verify the database image pulls on a clean machine — ADR-007 D-7.2
 - [x] **P3-B8** Custom `from`/`to` with span and inversion validation — ADR-004 D-4.4, test T-4.5
 - [x] **P3-B9** `GET /api/v1/diff` with NEW/REMOVED/CHANGED and visible calculation — ADR-004 D-4.5, test T-4.6 · **→ codex** (pure function, boundary-heavy, ideal for independent implementation against the same tests)
-- [ ] **P3-F8** History picker: presets + custom range — ADR-006 D-6.5, test T-6.4
-- [ ] **P3-F9** Compare mode with non-colour diff cues — ADR-006 D-6.3, test T-6.5
+- [x] **P3-F8** History picker: presets + custom range — ADR-006 D-6.5, test T-6.4
+- [x] **P3-F9** Compare mode with non-colour diff cues — ADR-006 D-6.3, test T-6.5
 - [x] **P3-T7** Persistence, restart, boundary, retention, diff tests — tests T-5.9, T-5.10, T-8.4, T-8.5
 - [ ] **P3-T8** Phase 3 gate: run and record in `docs/evaluation/phase-3.md`
 
