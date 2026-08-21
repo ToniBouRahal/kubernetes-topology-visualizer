@@ -5,7 +5,7 @@
 **Date:** 2026-08-21
 **Kernel:** 6.8.0-136-generic, x86_64, BTF present
 **Code:** `agent/bpf/tcp_bytes_spike.bpf.c`, `agent/internal/spike/`
-**Reproduce:** `make spike-bytes`
+**Reproduce:** `make spike-bytes-docker` (or `make spike-bytes` where sudo is non-interactive). The results below came from the container target.
 
 ## Decision
 
@@ -74,6 +74,11 @@ outbound connection, 16,384 entries in the spike.
 |---|---:|---:|---:|---:|
 | demo cluster (short HTTP) | 515 active opens | — | 907,617 | **99.4%** close-to-open |
 | 8 persistent connections, 20 s | 8 | **32,342,016** | 636,842 *(unrelated host traffic)* | **~0%** |
+
+The coverage figures move a little between runs — 98.1%, 98.5% and 99.4% across three
+measurements — because they count real cluster traffic rather than a fixed workload. The exact
+deltas in the accuracy table do not move at all, and neither does the persistent-connection
+result: 32,342,016 bytes, invisible every time.
 
 The second row is the whole argument. Those connections were transferring continuously for the
 entire window. Every byte was invisible, because the counter is only readable at close. A separate

@@ -91,7 +91,7 @@ decision rests on.
 
 ```
 # byte-accounting experiments (privileged, against the live cluster)
-make spike-bytes
+make spike-bytes-docker
   PASS TestPrivilegedByteAccountingAccuracy            (0 delta on 65536 / 4096 bytes)
   PASS TestPrivilegedCountersAreCumulativePerConnection (10240 = 10240)
   PASS TestPrivilegedOpenConnectionReportsNothing       (open connection reports nothing)

@@ -99,10 +99,27 @@ test-ebpf: ## Privileged eBPF tests — needs root and a 6.8+ kernel with BTF (A
 	cd $(AGENT) && sudo -E $$(command -v go) test ./... -tags=privileged -count=1 -run 'Privileged'
 
 .PHONY: spike-bytes
-spike-bytes: ## Byte-accounting feasibility experiment (P4-A22) — needs root; result goes to docs/evaluation/
+spike-bytes: ## Byte-accounting experiment (P4-A22) via sudo — see spike-bytes-docker if sudo is interactive
 	@echo "Byte-accounting spike (ADR-002 D-2.8). This answers a question; it may conclude 'infeasible'."
 	@test -r /sys/kernel/btf/vmlinux || { echo "FAIL: /sys/kernel/btf/vmlinux not readable"; exit 1; }
 	cd $(AGENT) && sudo -E $$(command -v go) test ./internal/spike/... -tags=privileged -count=1 -v -run 'Privileged'
+
+.PHONY: spike-bytes-docker
+spike-bytes-docker: bpf-builder ## Same experiment in a privileged container — no interactive sudo needed
+	@# The recorded results in docs/evaluation/byte-accounting.md came from THIS target. tracefs
+	@# must be bind-mounted or the tracepoint cannot be attached from inside the container
+	@# ("neither debugfs nor tracefs are mounted"), which looks like a kernel-support failure and
+	@# is not one.
+	@test -r /sys/kernel/btf/vmlinux || { echo "FAIL: /sys/kernel/btf/vmlinux not readable"; exit 1; }
+	docker run --rm --privileged --network=host \
+	  -v /sys/kernel/btf:/sys/kernel/btf:ro \
+	  -v /sys/fs/bpf:/sys/fs/bpf \
+	  -v /sys/kernel/debug:/sys/kernel/debug \
+	  -v /sys/kernel/tracing:/sys/kernel/tracing \
+	  -v "$(PWD)/agent":/build -w /build \
+	  -e HOME=/tmp -e GOCACHE=/tmp/gocache -e GOPATH=/tmp/gopath \
+	  $(BPF_BUILDER) \
+	  go test ./internal/spike/... -tags=privileged -count=1 -v -timeout 10m -run 'Privileged'
 
 # ── Python backend ──────────────────────────────────────────────────────────────────────────
 
