@@ -330,11 +330,11 @@ replicas collapse · external summarised · no false reverse edges (P1-A2) · no
 
 ### Phase 2 — delivery
 
-- [ ] **P2-A17** ULID `batch_id` + immutable batch handoff, fixing C7 — D-2.6
-- [ ] **P2-A18** Bounded queue, drop-oldest, `batches_dropped` — D-2.6 · test T-2.10
-- [ ] **P2-A19** Retry with exponential backoff + jitter; `200` treated as success — D-2.6
-- [ ] **P2-A20** Graceful shutdown: final flush, bounded drain — D-2.6
-- [ ] **P2-A21** `/healthz`, `/readyz`, `/metrics` — D-2.7
+- [x] **P2-A17** ULID `batch_id` + immutable batch handoff, fixing C7 — D-2.6
+- [x] **P2-A18** Bounded queue, drop-oldest, `batches_dropped` — D-2.6 · test T-2.10
+- [x] **P2-A19** Retry with exponential backoff + jitter; `200` treated as success — D-2.6
+- [x] **P2-A20** Graceful shutdown: final flush, bounded drain — D-2.6
+- [x] **P2-A21** `/healthz`, `/readyz`, `/metrics` — D-2.7
 
 ### Phase 4 — byte-accounting spike
 

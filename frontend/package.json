@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -b",
     "lint": "eslint src",
     "test": "vitest run",
     "generate:api": "openapi-typescript ../contracts/openapi.json -o src/api/generated/schema.ts"

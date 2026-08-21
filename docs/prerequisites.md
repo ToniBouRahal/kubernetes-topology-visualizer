@@ -24,6 +24,30 @@ Run `make tools` to compare your machine against these pins.
 | golangci-lint | 2.12.2 | `make lint-go` |
 | uv | 0.12.3 | Python environment management |
 
+## Host limits — a real, silent failure
+
+**This machine did not meet kind's inotify requirements, and the symptom did not point at the
+cause.** `kube-proxy` on one node died with `too many open files`. That node still reported
+`Ready`, so what was actually visible was a frontend that could not resolve DNS and an agent that
+could not reach the API server — neither of which suggests a sysctl.
+
+| Setting | Required | Why |
+|---|---|---|
+| `fs.inotify.max_user_watches` | ≥ 524288 | kind runs many containers, each watching files |
+| `fs.inotify.max_user_instances` | ≥ 512 | exhausted instances break kubelet and kube-proxy *after* the cluster looks healthy |
+
+```bash
+sudo sysctl -w fs.inotify.max_user_watches=524288
+sudo sysctl -w fs.inotify.max_user_instances=512
+
+# Persist across reboots
+printf 'fs.inotify.max_user_watches=524288\nfs.inotify.max_user_instances=512\n' \
+  | sudo tee /etc/sysctl.d/99-kind.conf
+```
+
+`make preflight` checks this (and kernel, BTF, tooling, disk) and runs automatically before
+`make kind-up`, so the failure cannot be hit unknowingly again.
+
 ## Kernel requirements
 
 The agent needs a Linux kernel with BTF and eBPF ring-buffer support.

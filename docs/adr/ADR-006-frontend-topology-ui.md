@@ -229,16 +229,16 @@ Mirrors [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md). `[ ]` open · `[~]` in
 
 ### Phase 2 — live graph
 
-- [ ] **P2-F1** Vite + TypeScript scaffold; generated client from `openapi.json` — D-6.1 (fixes F1)
-- [ ] **P2-F0** Confirm the React Flow package and major version before writing components — §5 (`reactflow` v11 vs `@xyflow/react` v12)
-- [ ] **P2-F2** React Flow canvas + Dagre layout, centring correction preserved — D-6.2
-- [ ] **P2-F3** Polling with `AbortController`; retain last good graph on error — D-6.6 (fixes F7, F8) · tests T-6.6, T-6.10
-- [ ] **P2-F4** Time presets, namespace filter, search — D-6.5 (fixes F11) · test T-6.3
-- [ ] **P2-F5** EXTERNAL node with shape + label, not colour alone — D-6.3 (fixes F3)
-- [ ] **P2-F6** Node and edge detail panel — D-6.6 · test T-6.8
-- [ ] **P2-F7** Loading, empty, error states with actionable content — D-6.6 · test T-6.7
-- [ ] **P2-F8** Remove per-edge continuous animation — D-6.7 (fixes F9)
-- [ ] **P2-T4** Frontend unit/component tests — §6
+- [x] **P2-F1** Vite + TypeScript scaffold; generated client from `openapi.json` — D-6.1 (fixes F1)
+- [x] **P2-F0** Confirm the React Flow package and major version before writing components — §5 (`reactflow` v11 vs `@xyflow/react` v12)
+- [x] **P2-F2** React Flow canvas + Dagre layout, centring correction preserved — D-6.2
+- [x] **P2-F3** Polling with `AbortController`; retain last good graph on error — D-6.6 (fixes F7, F8) · tests T-6.6, T-6.10
+- [x] **P2-F4** Time presets, namespace filter, search — D-6.5 (fixes F11) · test T-6.3
+- [x] **P2-F5** EXTERNAL node with shape + label, not colour alone — D-6.3 (fixes F3)
+- [x] **P2-F6** Node and edge detail panel — D-6.6 · test T-6.8
+- [x] **P2-F7** Loading, empty, error states with actionable content — D-6.6 · test T-6.7
+- [x] **P2-F8** Remove per-edge continuous animation — D-6.7 (fixes F9)
+- [x] **P2-T4** Frontend unit/component tests — §6
 - [ ] **P2-T5** Playwright E2E: expected demo edges within 20 s — tests T-6.11, T-8.2 · **→ chrome** for first bring-up
 
 **Phase 2 gate** (ADR-001 §7): traffic visible within 20 s · direction, port, count, first/last seen

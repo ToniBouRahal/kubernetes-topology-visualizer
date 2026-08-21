@@ -165,7 +165,7 @@ describe("useGraph", () => {
   });
 
   it("sends filters as query parameters, repeating namespace", async () => {
-    const fetchMock = vi.fn(() => ok(response(0)));
+    const fetchMock = vi.fn((_url: string | URL) => ok(response(0)));
     vi.stubGlobal("fetch", fetchMock);
 
     renderHook(() =>
@@ -173,7 +173,9 @@ describe("useGraph", () => {
     );
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const url = String(fetchMock.mock.calls[0]?.[0]);
+    const [firstCall] = fetchMock.mock.calls;
+    expect(firstCall).toBeDefined();
+    const url = String(firstCall![0]);
     expect(url).toContain("window=15m");
     // Repeated key, not comma-joined: a namespace containing a comma must not split.
     expect(url).toContain("namespace=demo");

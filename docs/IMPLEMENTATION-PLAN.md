@@ -130,31 +130,31 @@ deterministic filters · transient failure retains last graph · smoke test pass
 - [x] **P2-B4** `POST /api/v1/ingest/batches` with 202/200/400/422/413 — ADR-004 D-4.3, tests T-4.1, T-4.2
 - [x] **P2-B5** `GET /api/v1/graph`: presets, filters, deterministic order, truncation — ADR-004 D-4.4, tests T-4.7 – T-4.10
 - [x] **P2-B6** `/api/v1/namespaces`, `/nodes/{id}`, `/edges/{id}` — ADR-004 D-4.7, test T-4.13
-- [ ] **P2-B7** `/health/live`, `/health/ready`, `/metrics`, CORS from settings, error handlers, graceful shutdown — ADR-004 D-4.6, tests T-4.11, T-4.12
+- [x] **P2-B7** `/health/live`, `/health/ready`, `/metrics`, CORS from settings, error handlers, graceful shutdown — ADR-004 D-4.6, tests T-4.11, T-4.12
 
 ### Agent delivery
 
-- [ ] **P2-A17** ULID `batch_id` + immutable batch handoff (fixes prototype C7) — ADR-002 D-2.6
-- [ ] **P2-A18** Bounded queue, drop-oldest, `batches_dropped` metric — ADR-002 D-2.6, test T-2.10
-- [ ] **P2-A19** Retry with exponential backoff and jitter; treat 200 as success — ADR-002 D-2.6
-- [ ] **P2-A20** Graceful shutdown with final flush and bounded drain — ADR-002 D-2.6
-- [ ] **P2-A21** `/healthz`, `/readyz`, `/metrics` on the agent — ADR-002 D-2.7
+- [x] **P2-A17** ULID `batch_id` + immutable batch handoff (fixes prototype C7) — ADR-002 D-2.6
+- [x] **P2-A18** Bounded queue, drop-oldest, `batches_dropped` metric — ADR-002 D-2.6, test T-2.10
+- [x] **P2-A19** Retry with exponential backoff and jitter; treat 200 as success — ADR-002 D-2.6
+- [x] **P2-A20** Graceful shutdown with final flush and bounded drain — ADR-002 D-2.6
+- [x] **P2-A21** `/healthz`, `/readyz`, `/metrics` on the agent — ADR-002 D-2.7
 
 ### Frontend
 
-- [ ] **P2-F1** Vite + TypeScript scaffold; generated client from `openapi.json` — ADR-006 D-6.1
-- [ ] **P2-F2** React Flow canvas + Dagre layout (verify `@xyflow/react` vs `reactflow` first) — ADR-006 §5
-- [ ] **P2-F3** Polling with `AbortController`; retain last good graph on error — ADR-006 D-6.6 (F7, F8), tests T-6.6, T-6.10
-- [ ] **P2-F4** Time presets, namespace filter, search — ADR-006 D-6.5, test T-6.3
-- [ ] **P2-F5** EXTERNAL node with non-colour cues — ADR-006 D-6.3
-- [ ] **P2-F6** Node and edge detail panel — ADR-006 D-6.6, test T-6.8
-- [ ] **P2-F7** Loading, empty, error states — ADR-006 D-6.6, test T-6.7
+- [x] **P2-F1** Vite + TypeScript scaffold; generated client from `openapi.json` — ADR-006 D-6.1
+- [x] **P2-F2** React Flow canvas + Dagre layout (verify `@xyflow/react` vs `reactflow` first) — ADR-006 §5
+- [x] **P2-F3** Polling with `AbortController`; retain last good graph on error — ADR-006 D-6.6 (F7, F8), tests T-6.6, T-6.10
+- [x] **P2-F4** Time presets, namespace filter, search — ADR-006 D-6.5, test T-6.3
+- [x] **P2-F5** EXTERNAL node with non-colour cues — ADR-006 D-6.3
+- [x] **P2-F6** Node and edge detail panel — ADR-006 D-6.6, test T-6.8
+- [x] **P2-F7** Loading, empty, error states — ADR-006 D-6.6, test T-6.7
 
 ### Deployment and tests
 
 - [ ] **P2-K3** Backend + frontend Deployments, Services, ConfigMaps, `NOTES.txt` — ADR-007 §4
 - [ ] **P2-T3** Backend API tests T-4.1 – T-4.13 against the in-memory repo — **→ codex** (crisp fixtures, high volume)
-- [ ] **P2-T4** Frontend unit/component tests T-6.1, T-6.3, T-6.6 – T-6.8
+- [x] **P2-T4** Frontend unit/component tests T-6.1, T-6.3, T-6.6 – T-6.8
 - [ ] **P2-T5** Playwright E2E: expected demo edges visible within 20 s — tests T-8.1, T-8.2 · **→ chrome** for first bring-up debugging
 - [ ] **P2-T6** Phase 2 gate: run and record in `docs/evaluation/phase-2.md`
 

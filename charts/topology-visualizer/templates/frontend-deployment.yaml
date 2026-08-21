@@ -26,6 +26,14 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.frontend.service.port }}
+          # Templated from the same helper that names the Service. The image carries a default,
+          # but relying on it couples the frontend to one release name — and a stale default
+          # fails at nginx start-up with "host not found in upstream", not at request time.
+          env:
+            - name: BACKEND_HOST
+              value: {{ include "topology.backendService" . | quote }}
+            - name: BACKEND_PORT
+              value: {{ .Values.backend.service.port | quote }}
           readinessProbe:
             httpGet:
               path: /
@@ -34,4 +42,21 @@ spec:
             periodSeconds: 10
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
+          # readOnlyRootFilesystem stays on (ADR-001 §6). nginx renders its config template at
+          # start-up and needs scratch space, so the few paths it writes are emptyDir rather than
+          # the whole filesystem being made writable.
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: nginx-conf
+          emptyDir: {}
+        - name: nginx-cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
 {{- end }}

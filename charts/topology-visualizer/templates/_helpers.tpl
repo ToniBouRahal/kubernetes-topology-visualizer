@@ -6,7 +6,17 @@
 {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
-{{- printf "%s-%s" .Release.Name (include "topology.name" .) | trunc 63 | trimSuffix "-" -}}
+{{- $name := include "topology.name" . -}}
+{{- if contains $name .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else if hasPrefix .Release.Name $name -}}
+{{- /* Release "topology" + chart "topology-visualizer" would otherwise render
+       "topology-topology-visualizer-agent", which is what every workload is NAMED and therefore
+       what the graph displays. The doubled prefix is pure noise in the UI. */ -}}
+{{- $name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 

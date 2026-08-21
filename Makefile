@@ -151,8 +151,12 @@ lint-helm: ## helm lint + render + RBAC/schema assertions (T-7.1 – T-7.4)
 chart-template: ## Render the chart with kind values
 	helm template $(RELEASE) $(CHART) -f $(KIND_VALUES)
 
+.PHONY: preflight
+preflight: ## Check host prerequisites before creating a cluster
+	@bash scripts/preflight.sh
+
 .PHONY: kind-up
-kind-up: ## Create the three-node kind cluster
+kind-up: preflight ## Create the three-node kind cluster
 	kind create cluster --name $(KIND_CLUSTER) --config kind/cluster.yaml
 	$(KUBECTL) get nodes
 
@@ -171,7 +175,7 @@ agent-image: ## Build the agent image and side-load it into kind
 	docker build -t topology-agent:dev $(AGENT)
 	kind load docker-image topology-agent:dev --name $(KIND_CLUSTER)
 	# An unchanged tag does not restart running pods; force a rollout so the new image is used.
-	-$(KUBECTL) -n $(NAMESPACE) rollout restart ds/$(RELEASE)-topology-visualizer-agent 2>/dev/null
+	-$(KUBECTL) -n $(NAMESPACE) rollout restart ds/topology-visualizer-agent 2>/dev/null
 
 .PHONY: agent-deploy
 agent-deploy: ## Install/upgrade the agent-only release into kind (Phase 1)
@@ -179,7 +183,7 @@ agent-deploy: ## Install/upgrade the agent-only release into kind (Phase 1)
 	  --namespace $(NAMESPACE) --create-namespace \
 	  -f $(KIND_VALUES) \
 	  --set backend.enabled=false --set frontend.enabled=false
-	$(KUBECTL) -n $(NAMESPACE) rollout status ds/$(RELEASE)-topology-visualizer-agent --timeout=180s
+	$(KUBECTL) -n $(NAMESPACE) rollout status ds/topology-visualizer-agent --timeout=180s
 
 .PHONY: agent-verify
 agent-verify: ## Assert an agent pod is Running on EVERY node (T-7.5)

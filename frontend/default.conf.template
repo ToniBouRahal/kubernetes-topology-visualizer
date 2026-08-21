@@ -1,0 +1,66 @@
+# Server block only. The nginx-unprivileged image renders templates from
+# /etc/nginx/templates/*.template into /etc/nginx/conf.d/, which is already inside http{} —
+# a full nginx.conf here would be nested inside http{} and fail to parse.
+#
+# NGINX_ENVSUBST_FILTER restricts substitution to BACKEND_* so nginx's own runtime variables
+# ($host, $request_id, $uri) survive. Without that filter envsubst blanks them, and the proxy
+# silently sends an empty Host header.
+
+# Resolve the backend lazily, at request time.
+#
+# nginx resolves a literal hostname in proxy_pass ONCE, at start-up, and exits if it fails. In
+# Kubernetes that turns any transient DNS problem into a CrashLoopBackOff — which is exactly what
+# happened here when one node's kube-proxy died and CoreDNS became unreachable. Using a resolver
+# plus a variable makes a DNS failure a 502 on affected requests instead of a dead pod, and the
+# frontend keeps serving the app shell so the UI can show its own error state.
+resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Hashed assets are immutable. index.html must never be cached, or a deploy serves a stale
+    # shell pointing at assets that no longer exist.
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-store";
+    }
+
+    # Same-origin API: the browser talks only to this pod, so CORS_ALLOWED_ORIGINS stays a real
+    # restriction rather than being widened to make the browser work.
+    location /api/ {
+        # A variable in proxy_pass forces runtime resolution. No URI part, so the original
+        # request path is passed through unchanged.
+        set $backend "http://${BACKEND_HOST}:${BACKEND_PORT}";
+        proxy_pass $backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 30s;
+    }
+
+    location /health/ {
+        set $backend_health "http://${BACKEND_HOST}:${BACKEND_PORT}";
+        proxy_pass $backend_health;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+    }
+
+    # This pod's own liveness, answered without depending on the backend.
+    location = /healthz {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 "ok\n";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

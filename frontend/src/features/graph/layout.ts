@@ -2,7 +2,7 @@ import dagre from "@dagrejs/dagre";
 
 import type { GraphEdge, GraphNode } from "../../api/types";
 
-export const NODE_WIDTH = 210;
+export const NODE_WIDTH = 224;
 export const NODE_HEIGHT = 56;
 
 export interface Position {
@@ -55,7 +55,9 @@ export function layoutGraph(
 
   const graph = new dagre.graphlib.Graph();
   graph.setDefaultEdgeLabel(() => ({}));
-  graph.setGraph({ rankdir: "LR", ranksep: 130, nodesep: 70, marginx: 24, marginy: 24 });
+  // ranksep leaves room for the port/count label to sit on the edge without colliding
+  // with either endpoint; nodesep is tight because the graph is wide, not tall.
+  graph.setGraph({ rankdir: "LR", ranksep: 150, nodesep: 52, marginx: 24, marginy: 24 });
 
   // Deterministic insertion order: Dagre's output depends on it.
   for (const node of [...nodes].sort((a, b) => a.id.localeCompare(b.id))) {

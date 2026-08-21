@@ -60,8 +60,8 @@ export function TopologyCanvas({ graph, selectedId, onSelect }: Props) {
         markerEnd: {
           type: MarkerType.ArrowClosed,
           color: touchesSelection ? "var(--edge-strong)" : "var(--edge)",
-          width: 16,
-          height: 16,
+          width: 11,
+          height: 11,
         },
         label: `${edge.protocol}:${edge.destination_port} · ${edge.connection_count}`,
         labelStyle: {

@@ -251,7 +251,7 @@ a phase is not complete until its gate row is ticked here.
 ### Phase 2 — end-to-end
 
 - [ ] **P2-T3** Backend API suite — ADR-004 §6 · **→ codex**
-- [ ] **P2-T4** Frontend unit/component suite — ADR-006 §6
+- [x] **P2-T4** Frontend unit/component suite — ADR-006 §6
 - [ ] **P2-T5** Playwright E2E: T-8.1, T-8.2 · **→ chrome** for first bring-up
 - [ ] **GATE 2** browser within 20 s · duplicate `batch_id` counted once · outage causes retries not termination · deterministic filters · last graph retained on failure · smoke test passes → `docs/evaluation/phase-2.md`
 
