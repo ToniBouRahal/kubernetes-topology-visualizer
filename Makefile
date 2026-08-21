@@ -110,8 +110,22 @@ lint-python: ## ruff check + format check
 	cd $(BACKEND) && $(VENV_PY) -m ruff format --check .
 
 .PHONY: test-python
-test-python: ## Backend unit + contract tests
+test-python: ## Backend unit + contract tests (PostgreSQL half skips without a database)
 	cd $(BACKEND) && $(VENV_PY) -m pytest -q
+
+TEST_PG_DSN ?= postgresql://postgres:test@localhost:5433/topology
+
+.PHONY: test-db
+test-db: ## Run the contract suite against a real PostgreSQL (T-5.12)
+	@docker inspect topology-test-pg >/dev/null 2>&1 || \
+	  docker run --rm -d --name topology-test-pg \
+	    -e POSTGRES_PASSWORD=test -e POSTGRES_DB=topology -p 5433:5432 postgres:17-alpine >/dev/null
+	@until docker exec topology-test-pg pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
+	cd $(BACKEND) && TEST_DATABASE_URL=$(TEST_PG_DSN) $(VENV_PY) -m pytest tests/contract -q
+
+.PHONY: test-db-down
+test-db-down: ## Stop the test database
+	-docker rm -f topology-test-pg
 
 # ── Contracts (ADR-003) ─────────────────────────────────────────────────────────────────────
 

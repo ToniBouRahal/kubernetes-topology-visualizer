@@ -8,6 +8,10 @@ dependencies = [
     "pydantic>=2.11",
     "pydantic-settings>=2.7",
     "uvicorn[standard]>=0.34",
+    # Raw asyncpg, not an ORM. The schema is three tables and the ingest upsert is hand-written
+    # either way (ADR-005 D-5.3); explicit SQL keeps the transaction that carries the
+    # idempotency guarantee readable rather than hidden behind a query builder.
+    "asyncpg>=0.30",
 ]
 
 [project.optional-dependencies]
