@@ -32,7 +32,7 @@ with a recorded reason.
 > All seven acceptance criteria demonstrated on a live three-node kind cluster.
 > **Current position:** Phase 3 **complete** — gate passed 2026-08-21, `docs/evaluation/phase-3.md`.
 > PostgreSQL persistence, historical windows, and compare mode all demonstrated on the cluster.
-> Next: Phase 4 — `P4-F12` detail panels, then the byte-accounting spike.
+> Next: Phase 5 — Helm packaging, `make demo-up`, multi-node validation, and FYP handoff.
 > Next: Phase 3 — `P3-D1` migrations, then `P3-D2` the ingest transaction.
 
 ### Delegation legend
@@ -193,15 +193,15 @@ boundaries.
 colour · thickness uses a named metric · byte decision backed by a reproducible experiment · detail
 views complete · frontend tests in CI.
 
-- [ ] **P4-F10** Detail panels: incoming/outgoing dependencies, ports, counts, timestamps — ADR-006 D-6.6, test T-6.8
-- [ ] **P4-F11** Layout position cache; stable across polls — ADR-006 D-6.2, test T-6.2
-- [ ] **P4-F12** Accessibility pass: keyboard, focus rings, WCAG AA contrast — ADR-006 D-6.7, test T-6.9 · **→ chrome** (live contrast and focus-order inspection)
-- [ ] **P4-F13** Legend, truncation banner, capped-log intensity with the metric named — ADR-006 D-6.4
-- [ ] **P4-A22** Bounded byte-accounting spike on a separate branch — ADR-002 D-2.8 · **→ codex** (bounded, well-specified investigation)
-- [ ] **P4-X1** **Decision gate** — if reliable: propagate nullable bytes through collection, ingest, PostgreSQL, graph/diff, UI, tests. If not: keep connection count and document the failure mode.
-- [ ] **P4-T9** `docs/evaluation/byte-accounting.md` — method, results, decision, either outcome — ADR-008 D-8.6
-- [ ] **P4-T10** Frontend component tests running in CI — ADR-008 D-8.3
-- [ ] **P4-T11** Phase 4 gate: run and record in `docs/evaluation/phase-4.md`
+- [x] **P4-F10** Detail panels: incoming/outgoing dependencies, ports, counts, timestamps — ADR-006 D-6.6, test T-6.8 · `features/details/DetailsPanel.tsx`
+- [x] **P4-F11** Layout position cache; stable across polls — ADR-006 D-6.2, test T-6.2 · topology-signature cache in `features/graph/layout.ts`, 13 tests
+- [x] **P4-F12** Accessibility pass — ADR-006 D-6.7, test T-6.9 · measured live in the browser at 1280×720. **Found and fixed 23 real AA failures**, all from `--text-faint` (#6b7f96 → #8092a5). 43 interactive elements all reachable, no positive tabindex, no unnamed or duplicate accessible names, focus rings 6.5–7.18:1. `NodeList.tsx` gives the canvas a keyboard equivalent. Locked in by `tests/contrast.test.ts` (12 tests, verified to fail on the old value).
+- [x] **P4-F13** Legend, truncation banner, capped-log intensity with the metric named — ADR-006 D-6.4 · legend states "Edge thickness shows **connection count** — TCP establishments, not requests"
+- [x] **P4-A22** Bounded byte-accounting spike — ADR-002 D-2.8 · `agent/bpf/tcp_bytes_spike.bpf.c`, `agent/internal/spike/`, `make spike-bytes`. Found a cheaper source than the predicted per-packet kprobes: `tcp_sock.bytes_sent`/`bytes_received` read once at close on the existing tracepoint. Shipped collector untouched.
+- [x] **P4-X1** **Decision gate → DECLINED.** Measurement is exact (0 delta), but only readable at close: 8 persistent connections carried 32.3 MB and reported nothing, while short-lived HTTP measured 99.4% coverage. Byte-weighted edges would draw the busiest edges as the faintest. `connection_count` stays the edge weight; no contract or schema change.
+- [x] **P4-T9** `docs/evaluation/byte-accounting.md` — method, five experiments, measured tables, decision, and the `bpf_iter/tcp` design that would fix it — ADR-008 D-8.6
+- [x] **P4-T10** Frontend component tests running in CI — ADR-008 D-8.3 · removed the `--if-present` / "not scaffolded yet" guards that would have passed the job with zero tests, and added a step asserting the executed test count (41 today, floor of 20)
+- [x] **P4-T11** Phase 4 gate: **PASS** — recorded in `docs/evaluation/phase-4.md`. All 7 criteria met; 4 defects found and fixed (23 contrast failures, CI that could pass with zero frontend tests, two failure-masking Make targets, favicon 404).
 
 ---
 
@@ -242,9 +242,9 @@ Tick only when the corresponding ADR-001 §9 item is demonstrable, not merely im
 - [ ] Service destinations resolved via EndpointSlices and ports — P1-A10 / test T-2.6
 - [ ] PostgreSQL persists history across backend and database restarts — P3-T7 / tests T-5.9, T-5.10
 - [ ] Agent retries do not double-count — P3-D2 / tests T-5.2, T-5.3
-- [ ] UI supports presets, custom history, comparison, filters, details — P3-F8, P3-F9, P4-F10
+- [x] UI supports presets, custom history, comparison, filters, details — P3-F8, P3-F9, P4-F10
 - [ ] Controlled changes classified deterministically — P3-B9 / test T-4.6
-- [ ] Byte volume delivered end to end **or** documented with evidence — P4-X1, P4-T9
+- [x] Byte volume **documented with evidence** (declined, not delivered) — P4-X1, P4-T9
 - [ ] Automated tests validate the expected demo topology — P2-T5 / tests T-8.1, T-8.3
 - [ ] Metrics and logs expose collection or delivery failure — P1-A7, P2-A21, P2-B7
 - [ ] Security and privacy constraints documented and enforced — P5-T18, P5-T19

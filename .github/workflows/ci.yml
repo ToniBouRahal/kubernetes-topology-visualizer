@@ -81,16 +81,30 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Typecheck, lint, test, build
+        # No `--if-present` and no "not scaffolded yet" fallback. Both were Phase 2 scaffolding,
+        # and both silently pass: renaming the `test` script would leave this job green while
+        # running no tests at all (P4-T10 asks for tests RUNNING in CI, not merely invoked).
         run: |
-          if [ -f frontend/package.json ]; then
-            cd frontend
-            npm ci
-            npm run typecheck --if-present
-            npm run lint --if-present
-            npm test --if-present
-            npm run build --if-present
-          else
-            echo "frontend not scaffolded yet — Phase 2 (P2-F1)"
+          set -euo pipefail
+          cd frontend
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm test
+          npm run build
+
+      - name: Assert component tests actually ran
+        # A test runner that matches zero files exits 0. This job's whole purpose is the tests,
+        # so an empty run is a failure, not a pass.
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm test -- --reporter=json --outputFile=/tmp/vitest.json >/dev/null 2>&1 || true
+          count=$(python3 -c "import json;print(json.load(open('/tmp/vitest.json'))['numTotalTests'])")
+          echo "frontend component tests executed: $count"
+          if [ "$count" -lt 20 ]; then
+            echo "FAIL: expected at least 20 component tests, ran $count"
+            exit 1
           fi
 
   helm:

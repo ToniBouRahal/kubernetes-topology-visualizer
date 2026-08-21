@@ -9,6 +9,7 @@ import { WindowStrip } from "./components/WindowStrip";
 import { DetailsPanel } from "./features/details/DetailsPanel";
 import { FilterPanel } from "./features/filters/FilterPanel";
 import { CompareCanvas } from "./features/graph/CompareCanvas";
+import { NodeList } from "./features/graph/NodeList";
 import { TopologyCanvas } from "./features/graph/TopologyCanvas";
 import { useDiff } from "./features/graph/useDiff";
 import { CompareControls } from "./features/timerange/CompareControls";
@@ -154,6 +155,15 @@ export default function App() {
           includeExternal={includeExternal}
           onToggleExternal={() => setIncludeExternal((v) => !v)}
           onClear={clearFilters}
+          nodeList={
+            mode !== "compare" && graph ? (
+              <NodeList
+                nodes={graph.nodes}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+              />
+            ) : null
+          }
           extra={
             mode === "compare" ? (
               <CompareControls

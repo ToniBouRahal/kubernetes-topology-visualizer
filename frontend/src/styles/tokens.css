@@ -19,10 +19,25 @@
   --line: #2a3646;         /* structure */
   --line-strong: #3a4a5e;
 
-  /* ── Text ────────────────────────────────────────────────────────────────────────────── */
+  /* ── Text ────────────────────────────────────────────────────────────────────────────── *
+   * Every value here clears WCAG AA (4.5:1 for normal text) against ALL THREE surfaces it can
+   * land on — --ink, --panel, and --panel-high. The lightest surface, --panel-high, is the
+   * binding constraint, so that is what these were solved against.
+   *
+   * --text-faint was #6b7f96, which measured 4.41 / 3.99 / 3.58 across those surfaces and so
+   * failed AA everywhere it was used: labels, panel hints, the window strip, and the namespace
+   * line on every node. Raising lightness while holding hue and saturation fixes all of them at
+   * once and keeps --text-faint clearly dimmer than --text-dim, so the visual hierarchy is
+   * unchanged. Measured in docs/evaluation/phase-4.md.
+   *
+   *                  --ink   --panel   --panel-high
+   *   --text          15.56    14.09       12.63
+   *   --text-dim       8.18     7.41        6.64
+   *   --text-faint     5.69     5.15        4.61   <- was 4.41 / 3.99 / 3.58
+   */
   --text: #e8eef6;
   --text-dim: #9db0c6;
-  --text-faint: #6b7f96;
+  --text-faint: #8092a5;
 
   /* ── Namespace identity ──────────────────────────────────────────────────────────────── *
    * Colour encodes NAMESPACE, never kind — kind is carried by shape, so colour is free to do

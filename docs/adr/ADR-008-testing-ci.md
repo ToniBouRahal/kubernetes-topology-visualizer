@@ -262,8 +262,8 @@ a phase is not complete until its gate row is ticked here.
 
 ### Phase 4 — completeness and feasibility
 
-- [ ] **P4-T9** `docs/evaluation/byte-accounting.md` — method, results, decision, either outcome — D-8.6
-- [ ] **P4-T10** Frontend component tests running in CI — D-8.3
+- [x] **P4-T9** `docs/evaluation/byte-accounting.md` — five experiments, measured tables, decision, and the design that would fix it — D-8.6
+- [x] **P4-T10** Frontend component tests running in CI — D-8.3 · removed `--if-present` and the "not scaffolded yet" fallback, which together would have kept the job green while running no tests; added a step asserting the executed count (41 today, floor of 20)
 - [ ] **GATE 4** 1280×720 usable · keyboard reachable · comparison readable without colour · named intensity metric · byte decision backed by a reproducible experiment · details complete → `docs/evaluation/phase-4.md`
 
 ### Phase 5 — handoff

@@ -32,6 +32,7 @@ export function FilterPanel({
   onToggleExternal,
   onClear,
   extra,
+  nodeList,
 }: {
   namespaces: string[];
   selectedNamespaces: string[];
@@ -43,6 +44,8 @@ export function FilterPanel({
   onClear: () => void;
   /** Mode-specific controls rendered above the filters (compare periods, for example). */
   extra?: React.ReactNode;
+  /** Keyboard-navigable node list — the accessible equivalent of clicking the canvas. */
+  nodeList?: React.ReactNode;
 }) {
   const filtering = selectedNamespaces.length > 0 || search !== "" || !includeExternal;
 
@@ -97,6 +100,8 @@ export function FilterPanel({
           <span>Show external</span>
         </label>
       </section>
+
+      {nodeList}
 
       <section className="panel__section panel__section--legend">
         <span className="label">Node kinds</span>

@@ -98,6 +98,12 @@ test-ebpf: ## Privileged eBPF tests — needs root and a 6.8+ kernel with BTF (A
 	@test -r /sys/kernel/btf/vmlinux || { echo "FAIL: /sys/kernel/btf/vmlinux not readable"; exit 1; }
 	cd $(AGENT) && sudo -E $$(command -v go) test ./... -tags=privileged -count=1 -run 'Privileged'
 
+.PHONY: spike-bytes
+spike-bytes: ## Byte-accounting feasibility experiment (P4-A22) — needs root; result goes to docs/evaluation/
+	@echo "Byte-accounting spike (ADR-002 D-2.8). This answers a question; it may conclude 'infeasible'."
+	@test -r /sys/kernel/btf/vmlinux || { echo "FAIL: /sys/kernel/btf/vmlinux not readable"; exit 1; }
+	cd $(AGENT) && sudo -E $$(command -v go) test ./internal/spike/... -tags=privileged -count=1 -v -run 'Privileged'
+
 # ── Python backend ──────────────────────────────────────────────────────────────────────────
 
 .PHONY: venv
@@ -139,17 +145,30 @@ contracts-check: ## Fail if the committed contract drifts from the app (T-3.6)
 
 # ── Frontend ────────────────────────────────────────────────────────────────────────────────
 
+# `cmd || echo "not scaffolded"` was the shape here, and it swallowed failures: a real lint or
+# test error took the `||` branch, printed a reassuring message, and exited 0. The frontend has
+# existed since Phase 2, so the guard now asserts rather than excuses — and `--if-present` is gone
+# too, since a renamed script should fail loudly, not skip silently.
+
 .PHONY: lint-frontend
-lint-frontend: ## Typecheck + lint (no-op until Phase 2)
-	@test -f $(FRONTEND)/package.json \
-	  && (cd $(FRONTEND) && npm run lint --if-present && npm run typecheck --if-present) \
-	  || echo "  frontend not scaffolded yet — Phase 2 (P2-F1)"
+lint-frontend: ## Typecheck + lint
+	@test -f $(FRONTEND)/package.json || { echo "FAIL: $(FRONTEND)/package.json missing"; exit 1; }
+	cd $(FRONTEND) && npm run lint && npm run typecheck
 
 .PHONY: test-frontend
-test-frontend: ## Frontend unit/component tests (no-op until Phase 2)
-	@test -f $(FRONTEND)/package.json \
-	  && (cd $(FRONTEND) && npm test --if-present) \
-	  || echo "  frontend not scaffolded yet — Phase 2 (P2-F1)"
+test-frontend: ## Frontend unit/component tests
+	@test -f $(FRONTEND)/package.json || { echo "FAIL: $(FRONTEND)/package.json missing"; exit 1; }
+	cd $(FRONTEND) && npm test
+
+.PHONY: image-frontend
+image-frontend: ## Build the frontend image and side-load it into kind
+	docker build -t topology-frontend:dev $(FRONTEND)
+	kind load docker-image topology-frontend:dev --name $(KIND_CLUSTER)
+
+.PHONY: image-backend
+image-backend: ## Build the backend image and side-load it into kind
+	docker build -t topology-backend:dev backend
+	kind load docker-image topology-backend:dev --name $(KIND_CLUSTER)
 
 # ── Helm / Kubernetes (ADR-007) ─────────────────────────────────────────────────────────────
 

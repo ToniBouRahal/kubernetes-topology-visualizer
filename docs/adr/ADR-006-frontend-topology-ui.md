@@ -253,13 +253,13 @@ test passes.
 
 ### Phase 4 — completeness and accessibility
 
-- [ ] **P4-F12** Detail panels: incoming/outgoing dependencies, ports, counts, timestamps — D-6.6 · test T-6.8
-- [ ] **P4-F13** Layout position cache; unchanged nodes keep positions across polls — D-6.2 · test T-6.2
-- [ ] **P4-F14** Keyboard reachability, visible focus, WCAG AA contrast — D-6.7 · test T-6.9 · **→ chrome**
-- [ ] **P4-F15** Legend + truncation banner + capped-log intensity with the metric named — D-6.4
-- [ ] **P4-F16** Verify usability at 1280×720 — D-6.7 · **→ chrome**
-- [ ] **P4-F17** Byte-based intensity **only if** P4-X1 passes; otherwise connection count, named explicitly
-- [ ] **P4-T10** Component tests running in CI — ADR-008 D-8.3
+- [x] **P4-F12** Detail panels: incoming/outgoing dependencies, ports, counts, timestamps — D-6.6 · test T-6.8 · `features/details/DetailsPanel.tsx`
+- [x] **P4-F13** Layout position cache; unchanged nodes keep positions across polls — D-6.2 · test T-6.2 · topology-signature cache in `features/graph/layout.ts`, 13 tests
+- [x] **P4-F14** Keyboard reachability, visible focus, WCAG AA contrast — D-6.7 · test T-6.9 · measured live. **23 real AA failures found and fixed**, all from `--text-faint` (#6b7f96 → #8092a5). 43 controls reachable, all named, no positive tabindex, focus ring 6.5–7.18:1. `NodeList.tsx` is the canvas's keyboard equivalent. Guarded by `tests/contrast.test.ts` + `e2e/accessibility.spec.ts`, both verified to fail on a reintroduced violation.
+- [x] **P4-F15** Legend + truncation banner + capped-log intensity with the metric named — D-6.4 · "Edge thickness shows **connection count** — TCP establishments, not requests"
+- [x] **P4-F16** Verified at 1280×720 — D-6.7 · no scrollbars, no element overflowing the viewport, all 11 nodes fully visible; asserted in `e2e/topology.spec.ts`
+- [x] **P4-F17** **Closed as declined** — P4-X1 did not pass. Intensity stays connection count, named explicitly in the legend. Not deferred-and-forgotten: the evidence is in `docs/evaluation/byte-accounting.md`.
+- [x] **P4-T10** Component tests running in CI — ADR-008 D-8.3 · 41 tests; CI asserts the executed count after the `--if-present` guards were found to pass a job running zero tests
 
 **Phase 4 gate** (ADR-001 §7): usable at 1280×720 · all controls keyboard reachable · comparison
 understandable without colour · thickness uses a named metric · details complete · tests in CI.

@@ -223,7 +223,7 @@ external are different states and must stay different.
 | `batch_id` | ULID. Unique per agent batch. **This is the idempotency key.** |
 | `observed_at`, `first_seen`, `last_seen` | RFC 3339, UTC, timezone-aware. A naive datetime is rejected. |
 | `connection_count` | Integer ≥ 1. Zero is meaningless — an edge with no connections is not an edge. |
-| `bytes_sent`, `bytes_received` | Optional, integer ≥ 0. **Absent until the Phase 4 gate passes.** Absent ≠ zero. |
+| `bytes_sent`, `bytes_received` | Optional, integer ≥ 0. **Always absent.** The Phase 4 spike measured the agent's only available source as exact but unreadable until a connection closes, which makes persistent — usually the busiest — edges report nothing; shipping it would have drawn the heaviest edges as the faintest. Declined, with evidence, in `docs/evaluation/byte-accounting.md`. The fields stay in the schema so a future `bpf_iter/tcp` implementation needs no contract change. Absent ≠ zero. |
 | `protocol` | `TCP` only in this release. |
 | `destination_port` | 1–65535. |
 | edge count | Bounded per batch. |

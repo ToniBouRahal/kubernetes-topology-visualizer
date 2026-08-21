@@ -338,8 +338,8 @@ replicas collapse · external summarised · no false reverse edges (P1-A2) · no
 
 ### Phase 4 — byte-accounting spike
 
-- [ ] **P4-A22** Bounded spike on a separate branch — D-2.8 · **→ codex**
-- [ ] **P4-X1** Decision gate: propagate nullable bytes, or document the failure mode
+- [x] **P4-A22** Bounded spike — D-2.8 · `bpf/tcp_bytes_spike.bpf.c`, `internal/spike/`, `make spike-bytes`. Found a cheaper source than the per-packet kprobes this ADR predicted: `tcp_sock.bytes_sent`/`bytes_received` read once at close on the tracepoint already attached. Shipped collector untouched.
+- [x] **P4-X1** Decision gate → **DECLINED**, failure mode documented in `docs/evaluation/byte-accounting.md`. Exact when readable (0 delta), but readable only at close: 8 persistent connections carried 32.3 MB and reported nothing, against 99.4% coverage on short-lived HTTP. Busiest edges would render faintest. `connection_count` stays. A correct future design (`bpf_iter/tcp` periodic sampling) is specified in that record.
 
 ### Privileged tests (out of ordinary CI, before release)
 

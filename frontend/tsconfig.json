@@ -5,7 +5,8 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "types": ["vitest/globals", "@testing-library/jest-dom"],
+    // "node" is required by vite.config.ts and by tests that read source files from disk.
+    "types": ["node", "vitest/globals", "@testing-library/jest-dom"],
 
     "strict": true,
     "noUncheckedIndexedAccess": true,
