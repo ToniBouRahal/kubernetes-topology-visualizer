@@ -80,6 +80,19 @@ class PostgresRepository:
         Readiness depends on this having succeeded: starting an API against a half-built schema
         produces errors that look like data problems (ADR-005 D-5.6).
         """
+        # An absent directory previously made glob() return nothing, so migrate() logged
+        # "applied: []" and the backend started against an EMPTY database — reporting success
+        # for the exact failure this method exists to prevent.
+        if not MIGRATIONS_DIR.is_dir():
+            raise RuntimeError(
+                f"migrations directory not found at {MIGRATIONS_DIR}; "
+                "the image is missing its schema"
+            )
+
+        available = sorted(MIGRATIONS_DIR.glob("*.sql"))
+        if not available:
+            raise RuntimeError(f"no .sql migrations found in {MIGRATIONS_DIR}")
+
         applied: list[str] = []
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -92,7 +105,7 @@ class PostgresRepository:
             )
             done = {r["version"] for r in await conn.fetch("SELECT version FROM schema_migrations")}
 
-            for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+            for path in available:
                 if path.name in done:
                     continue
                 async with conn.transaction():

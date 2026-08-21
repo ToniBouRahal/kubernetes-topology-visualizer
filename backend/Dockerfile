@@ -12,12 +12,16 @@ COPY --from=ghcr.io/astral-sh/uv:0.12.3 /uv /usr/local/bin/uv
 WORKDIR /build
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 
-# Dependencies first: application edits then rebuild only the last layer.
+# Install from pyproject.toml — never a hardcoded list.
+#
+# This previously duplicated the dependency names here, and adding asyncpg to pyproject.toml
+# silently did not reach the image: the backend started, failed to import it inside the lifespan,
+# and crash-looped. One source of truth is worth the slightly worse layer caching.
 COPY pyproject.toml ./
-RUN uv venv /opt/venv && VIRTUAL_ENV=/opt/venv uv pip install --no-cache \
-      "fastapi>=0.118" "pydantic>=2.11" "pydantic-settings>=2.7" "uvicorn[standard]>=0.34"
-
 COPY app ./app
+# The schema ships with the image; without it migrate() has nothing to apply.
+COPY migrations ./migrations
+RUN uv venv /opt/venv && VIRTUAL_ENV=/opt/venv uv pip install --no-cache .
 
 # ── Runtime ─────────────────────────────────────────────────────────────────────────────────
 FROM python:3.13-slim-bookworm
@@ -28,6 +32,7 @@ RUN groupadd --gid 10001 topology \
 
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /build/app /srv/app
+COPY --from=builder /build/migrations /srv/migrations
 
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

@@ -35,7 +35,7 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.externalDatabaseUrlSecret | default (printf "%s-db" (include "topology.fullname" .)) }}
+                  name: {{ include "topology.databaseSecret" . }}
                   key: database-url
           {{- end }}
           livenessProbe:

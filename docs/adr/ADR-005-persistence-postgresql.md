@@ -291,7 +291,7 @@ PostgreSQL must then match, rather than the reverse.
 - [x] **P3-D5** Retention with batched `LIMIT` deletes + `retention_deletions_total` — D-5.5 · test T-5.8
 - [x] **P3-D6** Readiness gated on migrations and storage; DSN sanitised at the handler boundary — D-5.7 · test T-5.11
 - [x] **P3-D7** Contract suite passes identically against **both** repositories — D-5.1 · test T-5.12
-- [ ] **P3-D8** Restart tests: backend pod, then database pod with PVC — tests T-5.9, T-5.10
+- [x] **P3-D8** Restart tests: backend pod, then database pod with PVC — tests T-5.9, T-5.10
 - [x] **P3-D9** Byte columns remain `NULL` while the agent sends no byte fields — test T-5.6
 
 **Phase 3 gate** (ADR-001 §7): restarts preserve committed topology without inflating counts ·

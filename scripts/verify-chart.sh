@@ -92,6 +92,36 @@ else
   bad "$CID_OUT"
 fi
 
+echo "== T-7.7 / T-7.8: database posture =="
+DB_RENDERED="$(render --set postgresql.enabled=true --set postgresql.auth.password=s3cret)"
+
+# A PVC, not an emptyDir: this is what makes history survive pod deletion.
+if printf '%s' "$DB_RENDERED" | grep -q "volumeClaimTemplates"; then
+  ok "database uses volumeClaimTemplates (durable across pod recreation)"
+else
+  bad "database has no volumeClaimTemplates — history would not survive a restart"
+fi
+
+# The password must reach the container by reference, never inline in a pod spec.
+if printf '%s' "$DB_RENDERED" | awk '/^kind: StatefulSet$/,/^---$/' | grep -q "secretKeyRef"; then
+  ok "database password comes from a Secret reference"
+else
+  bad "database password is not referenced from a Secret"
+fi
+
+if printf '%s' "$DB_RENDERED" | awk '/^kind: StatefulSet$/,/^---$/' | grep -qE 'value:.*s3cret'; then
+  bad "the password appears inline in the StatefulSet"
+else
+  ok "no inline password in the StatefulSet"
+fi
+
+# The backend must read its DSN from a Secret too.
+if printf '%s' "$DB_RENDERED" | grep -q "database-url"; then
+  ok "backend reads DATABASE_URL from a Secret"
+else
+  bad "backend does not read DATABASE_URL from a Secret"
+fi
+
 echo "== T-7.3: values.schema.json rejects malformed values =="
 reject "empty clusterId"                     --set clusterId=""
 reject "clusterId containing ':'"            --set clusterId="bad:id"

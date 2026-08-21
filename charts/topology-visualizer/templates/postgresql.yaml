@@ -1,0 +1,107 @@
+{{- if and .Values.postgresql.enabled (eq .Values.postgresql.mode "internal") }}
+{{- $fullname := include "topology.fullname" . -}}
+{{- $secret := .Values.postgresql.auth.existingSecret | default (printf "%s-db" $fullname) -}}
+# In-chart StatefulSet against the pinned upstream postgres image, rather than a third-party
+# subchart (ADR-007 D-7.2). The schema is three tables and the adapter is hand-written, so a
+# subchart would add a dependency and a distribution-policy risk without adding anything the
+# demo needs. An external database is still supported via postgresql.mode=external.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-postgresql
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  # Headless: a StatefulSet of one, addressed by its stable name. Nothing outside the cluster
+  # ever reaches this, and the backend is the only client.
+  clusterIP: None
+  ports:
+    - name: postgresql
+      port: {{ .Values.postgresql.service.port }}
+      targetPort: postgresql
+  selector:
+    {{- include "topology.postgresql.selectorLabels" . | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fullname }}-postgresql
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  serviceName: {{ $fullname }}-postgresql
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "topology.postgresql.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "topology.postgresql.selectorLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        # The postgres image needs to own its data directory; fsGroup makes the mounted volume
+        # writable by the postgres user without running the container as root.
+        fsGroup: 999
+        runAsUser: 999
+        runAsGroup: 999
+      containers:
+        - name: postgresql
+          image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          ports:
+            - name: postgresql
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.auth.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgresql.auth.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: password
+            # The image initialises into a subdirectory so the volume's lost+found does not make
+            # the data directory look non-empty.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgresql.auth.username | quote }}, "-d", {{ .Values.postgresql.auth.database | quote }}]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgresql.auth.username | quote }}]
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.postgresql.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+{{- if .Values.postgresql.persistence.enabled }}
+  # volumeClaimTemplates, NOT an emptyDir. This is what makes history survive pod deletion,
+  # which Phase 3 and Phase 5 both gate on (T-5.10, T-7.8).
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.postgresql.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgresql.persistence.size | quote }}
+{{- else }}
+      volumes:
+        - name: data
+          # Explicitly non-durable. Only for a throwaway run; the chart's default is a PVC.
+          emptyDir: {}
+{{- end }}
+{{- end }}

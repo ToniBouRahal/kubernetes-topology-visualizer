@@ -65,3 +65,21 @@ The ingest URL the agent posts to. Derived from one place so agent and backend c
 {{- printf "http://%s.%s.svc.cluster.local:%d/api/v1/ingest/batches" (include "topology.backendService" .) .Release.Namespace (int .Values.backend.service.port) -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "topology.postgresql.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "topology.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: database
+{{- end -}}
+
+{{/*
+The DSN the backend connects with. Derived in ONE place: an internal database points at the
+StatefulSet's headless Service, an external one comes from a Secret the operator provides.
+*/}}
+{{- define "topology.databaseSecret" -}}
+{{- if eq .Values.postgresql.mode "external" -}}
+{{- required "externalDatabaseUrlSecret is required when postgresql.mode=external" .Values.externalDatabaseUrlSecret -}}
+{{- else -}}
+{{- .Values.postgresql.auth.existingSecret | default (printf "%s-db" (include "topology.fullname" .)) -}}
+{{- end -}}
+{{- end -}}

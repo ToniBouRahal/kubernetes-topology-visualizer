@@ -292,9 +292,9 @@ Mirrors [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md). `[ ]` open · `[~]` in
 
 ### Phase 3 — database
 
-- [ ] **P3-K6** PostgreSQL: StatefulSet or subchart, PVC, Secret-based credentials — D-7.2 · tests T-7.7, T-7.8
-- [ ] **P3-K7** Verify the database image pulls on a clean machine before depending on it — D-7.2
-- [ ] **P3-K8** External `DATABASE_URL` path validated — D-7.2
+- [x] **P3-K6** PostgreSQL: StatefulSet or subchart, PVC, Secret-based credentials — D-7.2 · tests T-7.7, T-7.8
+- [x] **P3-K7** Verify the database image pulls on a clean machine before depending on it — D-7.2
+- [x] **P3-K8** External `DATABASE_URL` path validated — D-7.2
 
 ### Phase 5 — completion and validation
 
