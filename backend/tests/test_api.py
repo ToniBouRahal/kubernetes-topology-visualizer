@@ -413,21 +413,22 @@ def test_expected_error_responses_are_safe_and_carry_the_request_id(client):
         client.get(
             "/api/v1/diff",
             params={
-                "baseline_from": "2026-08-10T10:00:00Z",
-                "baseline_to": "2026-08-10T11:00:00Z",
+                # Inverted range: reaches the diff route's own validation.
+                "baseline_from": "2026-08-10T11:00:00Z",
+                "baseline_to": "2026-08-10T10:00:00Z",
                 "current_from": "2026-08-10T11:00:00Z",
                 "current_to": "2026-08-10T12:00:00Z",
             },
-            headers={"x-request-id": "not-implemented-case"},
+            headers={"x-request-id": "diff-validation-case"},
         ),
     ]
 
-    assert [response.status_code for response in cases] == [422, 404, 501], (
-        "the error-safety test did not reach validation, not-found, and not-implemented paths"
+    assert [response.status_code for response in cases] == [422, 404, 422], (
+        "the error-safety test did not reach the validation, not-found, and diff-validation paths"
     )
     for response, request_id in zip(
         cases,
-        ("validation-case", "not-found-case", "not-implemented-case"),
+        ("validation-case", "not-found-case", "diff-validation-case"),
         strict=True,
     ):
         assert_safe_error(response, request_id)
@@ -494,7 +495,9 @@ def test_metrics_are_plain_text_and_ingest_and_graph_counters_move(client):
     )
 
 
-def test_diff_endpoint_remains_explicitly_not_implemented(client):
+def test_diff_endpoint_compares_two_periods(client):
+    """Implemented in Phase 3. This test previously asserted 501 and was updated deliberately —
+    the endpoint's contract did not change, only its availability."""
     response = client.get(
         "/api/v1/diff",
         params={
@@ -504,6 +507,25 @@ def test_diff_endpoint_remains_explicitly_not_implemented(client):
             "current_to": "2026-08-10T12:00:00Z",
         },
     )
-    assert response.status_code == 501, (
-        "diff must stay explicitly unavailable until its contract is implemented"
+    assert response.status_code == 200, response.text
+
+    body = response.json()
+    assert body["threshold_percent"] > 0, "the applied threshold must be reported"
+    assert "edges" in body and "summary" in body
+    assert body["baseline"]["start"] < body["current"]["start"]
+
+
+def test_diff_rejects_overlapping_periods(client):
+    """Overlapping periods would count the shared interval on BOTH sides, making a CHANGED
+    classification meaningless."""
+    response = client.get(
+        "/api/v1/diff",
+        params={
+            "baseline_from": "2026-08-10T10:00:00Z",
+            "baseline_to": "2026-08-10T12:00:00Z",
+            "current_from": "2026-08-10T11:00:00Z",
+            "current_to": "2026-08-10T13:00:00Z",
+        },
     )
+    assert response.status_code == 422
+    assert "overlap" in response.json()["detail"].lower()

@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from fastapi.responses import PlainTextResponse
 
 from app.api.dependencies import ClockDep, RepositoryDep
-from app.domain import graph
+from app.domain import diff, graph
 from app.domain import window as win
 from app.domain.models import (
     DiffResponse,
@@ -39,8 +39,6 @@ WindowPreset = Literal["1m", "5m", "15m", "1h", "6h", "24h"]
 
 health_router = APIRouter(tags=["health"])
 api_router = APIRouter(prefix="/api/v1", tags=["topology"])
-
-_NOT_IMPLEMENTED = "Implemented in Phase 3 (diff/history)."
 
 
 def _resolve(*, window, start, end, clock) -> ResolvedWindow:
@@ -255,13 +253,47 @@ async def get_diff(
     include_external: Annotated[bool, Query()] = True,
     include_unresolved: Annotated[bool, Query()] = False,
     include_unchanged: Annotated[bool, Query()] = False,
+    request: Request = None,  # noqa: RUF013
+    repository: RepositoryDep = None,  # noqa: RUF013
+    clock: ClockDep = None,  # noqa: RUF013
 ) -> DiffResponse:
     """Deterministic comparison of two periods.
 
     A period with no observation contributes zero, not null. Percentage delta is undefined when
     the baseline is zero, and the reason field says so.
     """
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=_NOT_IMPLEMENTED)
+    baseline_window = _resolve(window=None, start=baseline_from, end=baseline_to, clock=clock)
+    current_window = _resolve(window=None, start=current_from, end=current_to, clock=clock)
+
+    try:
+        win.validate_diff_periods(baseline_window, current_window)
+    except win.WindowError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+
+    effective = EffectiveFilters(
+        namespaces=sorted(namespace or []),
+        kind=kind,
+        query=query,
+        include_external=include_external,
+        include_unresolved=include_unresolved,
+    )
+    edge_filters = _to_edge_filters(effective)
+
+    result = diff.compare(
+        baseline_edges=await repository.query_edges(baseline_window, edge_filters),
+        current_edges=await repository.query_edges(current_window, edge_filters),
+        baseline_window=baseline_window,
+        current_window=current_window,
+        threshold_percent=settings.topology_diff_change_threshold_percent,
+        filters=effective,
+        generated_at=clock(),
+        include_unchanged=include_unchanged,
+        max_edges=settings.graph_max_edges,
+    )
+    request.app.state.metrics.record_diff_query()
+    return result
 
 
 @api_router.get("/namespaces", response_model=NamespaceList)

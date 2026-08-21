@@ -6,6 +6,12 @@ into api or persistence.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import logging
+from contextlib import asynccontextmanager
+from datetime import timedelta
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -29,6 +35,74 @@ Identity, edge keys, status codes, and determinism rules are specified in `contr
 """.strip()
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Select storage, migrate, and run retention for the life of the process.
+
+    Migrations run BEFORE the app serves traffic, and readiness stays false until they succeed:
+    an API answering against a half-built schema produces errors that look like data problems
+    (ADR-005 D-5.6).
+    """
+    log = logging.getLogger("app.lifespan")
+    owned: object | None = None
+
+    # An explicitly injected repository is never replaced — that is a test's choice.
+    if not getattr(app.state, "injected_repository", False):
+        if settings.database_url:
+            from app.persistence.postgres import PostgresRepository, sanitise_dsn
+
+            log.info("connecting to storage", extra={"dsn": sanitise_dsn(settings.database_url)})
+            postgres = await PostgresRepository.connect(
+                settings.database_url, cluster_id=settings.cluster_id
+            )
+            applied = await postgres.migrate()
+            log.info("migrations complete", extra={"applied": applied})
+            app.state.repository = postgres
+            owned = postgres
+        else:
+            # Phase 2 behaviour, retained for tests and local runs. Not durable, and
+            # /health/ready says so rather than implying otherwise.
+            log.warning("DATABASE_URL is unset; using the in-memory adapter (not durable)")
+            app.state.repository = InMemoryRepository(cluster_id=settings.cluster_id)
+
+    retention = asyncio.create_task(_retention_loop(app))
+    try:
+        yield
+    finally:
+        retention.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await retention
+        if owned is not None:
+            await owned.close()
+
+
+async def _retention_loop(app: FastAPI) -> None:
+    """Delete expired buckets periodically (ADR-005 D-5.5)."""
+    log = logging.getLogger("app.retention")
+    interval = max(60, settings.retention_hours * 3600 // 24)
+
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            cutoff = app.state.clock() - timedelta(hours=settings.retention_hours)
+            stats = await app.state.repository.purge_expired(cutoff)
+            if stats.edge_buckets_deleted or stats.nodes_deleted:
+                app.state.metrics.record_retention(stats.edge_buckets_deleted)
+                log.info(
+                    "retention pass complete",
+                    extra={
+                        "buckets_deleted": stats.edge_buckets_deleted,
+                        "nodes_deleted": stats.nodes_deleted,
+                        "cutoff": cutoff.isoformat(),
+                    },
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # Retention failing must never take the API down; the next pass retries.
+            log.exception("retention pass failed")
+
+
 def create_app(repository: TopologyRepository | None = None) -> FastAPI:
     """Build the application.
 
@@ -43,6 +117,7 @@ def create_app(repository: TopologyRepository | None = None) -> FastAPI:
         description=DESCRIPTION,
         version="0.1.0",
         openapi_url="/api/v1/openapi.json",
+        lifespan=lifespan,
     )
 
     # Restricted to configured origins — never "*" (ADR-004 D-4.6, fixing prototype defect B2).
@@ -57,7 +132,11 @@ def create_app(repository: TopologyRepository | None = None) -> FastAPI:
     # Outermost so every request gets an id before anything else can log.
     app.add_middleware(RequestContextMiddleware)
 
+    # A usable adapter from the moment the app object exists, so a TestClient constructed
+    # without entering the lifespan still works. When DATABASE_URL is set, lifespan REPLACES
+    # this with PostgreSQL before any traffic is served.
     app.state.repository = repository or InMemoryRepository(cluster_id=settings.cluster_id)
+    app.state.injected_repository = repository is not None
     app.state.clock = utc_now
     app.state.metrics = Metrics()
 

@@ -284,15 +284,15 @@ PostgreSQL must then match, rather than the reverse.
 
 ### Phase 3 — PostgreSQL
 
-- [ ] **P3-D1** Migrations: three tables, `CHECK` on `kind`, foreign keys, four indexes — D-5.2, D-5.6 · test T-5.1
-- [ ] **P3-D2** `ingest_batch` single transaction: batch-id gate → nodes → edge buckets — D-5.3 · tests T-5.2 – T-5.5 · **→ codex** (independent derivation of the upsert, then compare)
-- [ ] **P3-D3** Bucketing in the domain layer; half-open `[from, to)` everywhere — D-5.4 · test T-5.7
-- [ ] **P3-D4** Query methods: graph, node/edge detail, namespaces — D-5.1 · test T-5.13
-- [ ] **P3-D5** Retention with batched `LIMIT` deletes + `retention_deletions_total` — D-5.5 · test T-5.8
-- [ ] **P3-D6** Readiness gated on migrations and storage; DSN sanitised at the handler boundary — D-5.7 · test T-5.11
-- [ ] **P3-D7** Contract suite passes identically against **both** repositories — D-5.1 · test T-5.12
+- [x] **P3-D1** Migrations: three tables, `CHECK` on `kind`, foreign keys, four indexes — D-5.2, D-5.6 · test T-5.1
+- [x] **P3-D2** `ingest_batch` single transaction: batch-id gate → nodes → edge buckets — D-5.3 · tests T-5.2 – T-5.5 · **→ codex** (independent derivation of the upsert, then compare)
+- [x] **P3-D3** Bucketing in the domain layer; half-open `[from, to)` everywhere — D-5.4 · test T-5.7
+- [x] **P3-D4** Query methods: graph, node/edge detail, namespaces — D-5.1 · test T-5.13
+- [x] **P3-D5** Retention with batched `LIMIT` deletes + `retention_deletions_total` — D-5.5 · test T-5.8
+- [x] **P3-D6** Readiness gated on migrations and storage; DSN sanitised at the handler boundary — D-5.7 · test T-5.11
+- [x] **P3-D7** Contract suite passes identically against **both** repositories — D-5.1 · test T-5.12
 - [ ] **P3-D8** Restart tests: backend pod, then database pod with PVC — tests T-5.9, T-5.10
-- [ ] **P3-D9** Byte columns remain `NULL` while the agent sends no byte fields — test T-5.6
+- [x] **P3-D9** Byte columns remain `NULL` while the agent sends no byte fields — test T-5.6
 
 **Phase 3 gate** (ADR-001 §7): restarts preserve committed topology without inflating counts ·
 5 m / 15 m / 1 h / custom ranges · database failure fails readiness with an actionable,

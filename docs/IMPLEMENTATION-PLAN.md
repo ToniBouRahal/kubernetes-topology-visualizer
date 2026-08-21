@@ -168,17 +168,17 @@ ranges · controlled change appears as NEW/REMOVED · threshold change appears a
 calculation · database failure fails readiness without leaking credentials · deterministic at bucket
 boundaries.
 
-- [ ] **P3-D1** Migrations: three tables, CHECK on `kind`, foreign keys, four indexes — ADR-005 D-5.2, D-5.6, test T-5.1
-- [ ] **P3-D2** `PostgresRepository.ingest_batch` — the single transaction — ADR-005 D-5.3, tests T-5.2 – T-5.5 · **→ codex** (independent derivation of the upsert, then diff against mine)
-- [ ] **P3-D3** Bucketing in the domain layer; half-open `[from, to)` everywhere — ADR-005 D-5.4, test T-5.7
-- [ ] **P3-D4** Query methods: graph, details, namespaces — ADR-005 D-5.1, test T-5.13
-- [ ] **P3-D5** Retention task with batched deletes — ADR-005 D-5.5, test T-5.8
-- [ ] **P3-D6** Readiness on migrations + storage; DSN sanitisation everywhere — ADR-005 D-5.7, test T-5.11
-- [ ] **P3-D7** Contract suite passing against **both** repositories — ADR-005 D-5.1, test T-5.12
+- [x] **P3-D1** Migrations: three tables, CHECK on `kind`, foreign keys, four indexes — ADR-005 D-5.2, D-5.6, test T-5.1
+- [x] **P3-D2** `PostgresRepository.ingest_batch` — the single transaction — ADR-005 D-5.3, tests T-5.2 – T-5.5 · **→ codex** (independent derivation of the upsert, then diff against mine)
+- [x] **P3-D3** Bucketing in the domain layer; half-open `[from, to)` everywhere — ADR-005 D-5.4, test T-5.7
+- [x] **P3-D4** Query methods: graph, details, namespaces — ADR-005 D-5.1, test T-5.13
+- [x] **P3-D5** Retention task with batched deletes — ADR-005 D-5.5, test T-5.8
+- [x] **P3-D6** Readiness on migrations + storage; DSN sanitisation everywhere — ADR-005 D-5.7, test T-5.11
+- [x] **P3-D7** Contract suite passing against **both** repositories — ADR-005 D-5.1, test T-5.12
 - [ ] **P3-K4** PostgreSQL in the chart: StatefulSet/subchart, PVC, Secret — ADR-007 D-7.2, tests T-7.7, T-7.8
 - [ ] **P3-K5** Verify the database image pulls on a clean machine — ADR-007 D-7.2
-- [ ] **P3-B8** Custom `from`/`to` with span and inversion validation — ADR-004 D-4.4, test T-4.5
-- [ ] **P3-B9** `GET /api/v1/diff` with NEW/REMOVED/CHANGED and visible calculation — ADR-004 D-4.5, test T-4.6 · **→ codex** (pure function, boundary-heavy, ideal for independent implementation against the same tests)
+- [x] **P3-B8** Custom `from`/`to` with span and inversion validation — ADR-004 D-4.4, test T-4.5
+- [x] **P3-B9** `GET /api/v1/diff` with NEW/REMOVED/CHANGED and visible calculation — ADR-004 D-4.5, test T-4.6 · **→ codex** (pure function, boundary-heavy, ideal for independent implementation against the same tests)
 - [ ] **P3-F8** History picker: presets + custom range — ADR-006 D-6.5, test T-6.4
 - [ ] **P3-F9** Compare mode with non-colour diff cues — ADR-006 D-6.3, test T-6.5
 - [ ] **P3-T7** Persistence, restart, boundary, retention, diff tests — tests T-5.9, T-5.10, T-8.4, T-8.5

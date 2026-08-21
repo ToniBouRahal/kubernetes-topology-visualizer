@@ -228,10 +228,10 @@ search.
 
 ### Phase 3 — history and diff
 
-- [ ] **P3-B8** Custom `from`/`to`; reject inverted, overlapping, and over-max-span ranges — D-4.4 · test T-4.5
-- [ ] **P3-B9** `GET /api/v1/diff` with NEW/REMOVED/CHANGED and visible calculation — D-4.5 · test T-4.6 · **→ codex** (pure function, boundary-heavy)
-- [ ] **P3-B10** Swap the deployed repository to PostgreSQL; keep in-memory for unit tests — ADR-005 D-5.1
-- [ ] **P3-B11** Retention task wired into the app lifespan — ADR-005 D-5.5
+- [x] **P3-B8** Custom `from`/`to`; reject inverted, overlapping, and over-max-span ranges — D-4.4 · test T-4.5
+- [x] **P3-B9** `GET /api/v1/diff` with NEW/REMOVED/CHANGED and visible calculation — D-4.5 · test T-4.6 · **→ codex** (pure function, boundary-heavy)
+- [x] **P3-B10** Swap the deployed repository to PostgreSQL; keep in-memory for unit tests — ADR-005 D-5.1
+- [x] **P3-B11** Retention task wired into the app lifespan — ADR-005 D-5.5
 
 **Phase 3 gate:** preset and custom ranges work · controlled change classifies correctly with the
 calculation visible · database failure fails readiness with a credential-free error · deterministic
