@@ -62,12 +62,22 @@ export default function App() {
     [mode, periods, selectedNamespaces, search, includeExternal, includeUnchanged],
   );
 
-  const { diff, loading: diffLoading, error: diffError, refresh: refreshDiff } = useDiff(diffQuery);
+  const {
+    diff,
+    nodes: comparedNodes,
+    loading: diffLoading,
+    error: diffError,
+    refresh: refreshDiff,
+  } = useDiff(diffQuery);
 
-  const knownNodes = useMemo(
-    () => new Map((graph?.nodes ?? []).map((n) => [n.id, n])),
-    [graph],
-  );
+  // Both periods' nodes, with the live graph's underneath as a fallback while the comparison is
+  // still loading. useDiff fetches the real records rather than deriving them from ids, which
+  // `contracts/ids.md` §2 forbids.
+  const knownNodes = useMemo(() => {
+    const merged = new Map((graph?.nodes ?? []).map((n) => [n.id, n]));
+    for (const [id, node] of comparedNodes) merged.set(id, node);
+    return merged;
+  }, [graph, comparedNodes]);
 
   const changeCompareSpan = useCallback((id: CompareSpanId) => {
     setCompareSpan(id);

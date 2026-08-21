@@ -239,12 +239,12 @@ at exact bucket boundaries.
 
 ### Phase 4 — detail completeness
 
-- [ ] **P4-B12** Detail responses carry incoming/outgoing dependencies, ports, counts, optional bytes, first/last seen — D-4.7
-- [ ] **P4-B13** Byte fields surfaced through graph and diff **only if** P4-X1 passes
+- [x] **P4-B12** Detail responses carry incoming/outgoing dependencies, ports, counts, optional bytes, first/last seen — verified against the live API: each dependency returns `node_id`, `label`, `protocol`, `destination_port`, `connection_count`, `bytes_total`, `first_seen`, `last_seen`
+- [x] **P4-B13** **Closed as declined** — P4-X1 did not pass. Byte fields stay absent (not zero) in graph and diff. Evidence in `docs/evaluation/byte-accounting.md`.
 
 ### Standing invariants — re-verify at every phase gate
 
-- [ ] No handler reads the wall clock directly (B12)
-- [ ] No response contains a stack trace, DSN, or credential — test T-4.11
-- [ ] Nodes derived only from in-window edges — test T-4.9
-- [ ] Every list response has an explicit sort key — test T-4.10
+- [x] No handler reads the wall clock directly · the clock is injected via `api/dependencies.py`; no `datetime.now()` in any route module
+- [x] No response contains a stack trace, DSN, or credential — test T-4.11 · `test_expected_error_responses_are_safe_and_carry_the_request_id` and `test_unhandled_error_hides_traceback_dsn_and_password_but_keeps_request_id`
+- [x] Nodes derived only from in-window edges — test T-4.9 · `test_graph_nodes_are_derived_only_from_edges_inside_the_requested_window`
+- [x] Every list response has an explicit sort key — test T-4.10 · `test_repeated_graph_queries_have_identical_explicit_edge_order`, plus `test_output_is_ordered_by_the_edge_key` for diff

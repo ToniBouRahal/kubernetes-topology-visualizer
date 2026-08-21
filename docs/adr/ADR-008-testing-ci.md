@@ -246,7 +246,7 @@ a phase is not complete until its gate row is ticked here.
 ### Phase 1 — feasibility
 
 - [x] **P1-T1** Privileged eBPF tests with a documented local command — D-8.1
-- [ ] **GATE 1** captured events · service-level edges · replicas collapse · external summarised · no false reverse edges · no payload bytes · agent on every node → `docs/evaluation/phase-1.md`
+- [x] **GATE 1** captured events · service-level edges · replicas collapse · external summarised · no false reverse edges · no payload bytes · agent on every node → `docs/evaluation/phase-1.md` (PASSED; all seven criteria on a live three-node cluster)
 
 ### Phase 2 — end-to-end
 
@@ -264,7 +264,7 @@ a phase is not complete until its gate row is ticked here.
 
 - [x] **P4-T9** `docs/evaluation/byte-accounting.md` — five experiments, measured tables, decision, and the design that would fix it — D-8.6
 - [x] **P4-T10** Frontend component tests running in CI — D-8.3 · removed `--if-present` and the "not scaffolded yet" fallback, which together would have kept the job green while running no tests; added a step asserting the executed count (41 today, floor of 20)
-- [ ] **GATE 4** 1280×720 usable · keyboard reachable · comparison readable without colour · named intensity metric · byte decision backed by a reproducible experiment · details complete → `docs/evaluation/phase-4.md`
+- [x] **GATE 4** 1280×720 usable · keyboard reachable · comparison readable without colour · named intensity metric · byte decision backed by a reproducible experiment · details complete → `docs/evaluation/phase-4.md` (PASSED; 23 contrast defects found and fixed, byte accounting declined on evidence)
 
 ### Phase 5 — handoff
 

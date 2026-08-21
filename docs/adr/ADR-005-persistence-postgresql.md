@@ -300,7 +300,7 @@ credential-free error · deterministic at exact bucket boundaries.
 
 ### Phase 4 — byte columns
 
-- [ ] **P4-D10** Populate `bytes_sent` / `bytes_received` through the transaction — **only if** P4-X1 passes
+- [x] **P4-D10** **Closed as declined** — P4-X1 did not pass, so the columns stay NULL rather than being populated with numbers that would be wrong for long-lived connections. The columns remain in the schema; no migration is needed if a future `bpf_iter/tcp` implementation revisits this. Evidence in `docs/evaluation/byte-accounting.md`.
 
 ### Phase 5 — evidence
 

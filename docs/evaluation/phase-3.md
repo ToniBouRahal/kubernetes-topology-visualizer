@@ -110,3 +110,55 @@ None contradicts an ADR decision.
 
 Phase 4 — product completeness and the byte-accounting feasibility spike. First task `P4-F12`:
 detail panels with incoming/outgoing dependencies, then `P4-F13` the layout position cache.
+
+---
+
+## Addendum, 2026-08-21: two items were still open when this gate was recorded
+
+This record was written as PASS while `P3-K4` and `P3-K5` were still unticked in
+`docs/IMPLEMENTATION-PLAN.md`, and it did not mention them. ADR-007 meanwhile had its equivalent
+`P3-K7` ticked. The two documents disagreed, and the plan was the one telling the truth.
+
+Both are now closed, and one of them was closed by finding a real gap.
+
+**P3-K4 — PostgreSQL in the chart.** Was in fact complete: `templates/postgresql.yaml` ships a
+StatefulSet with `volumeClaimTemplates`, credentials by `secretKeyRef`, no inline password, and a
+Secret-supplied `DATABASE_URL` for the backend. All four assertions in `verify-chart.sh` (T-7.7,
+T-7.8) pass. Only the tick was missing.
+
+**P3-K5 — the database image pulls on a clean machine.** Was *not* verified, and the cluster could
+not have verified it. `kind load` side-loads images, so the running database reported
+
+```
+image:   postgres:17-alpine
+imageID: docker.io/library/import-2026-08-21@sha256:a77bb1a3…
+```
+
+`import-<date>` is the signature of a side-loaded image, and the pod had no Pull event at all. It
+would have started happily on a machine that could never fetch the image — exactly the failure this
+task exists to catch.
+
+Now verified properly with `make verify-db-image`, which reads the image from the rendered chart
+(so it cannot drift from what is deployed) and forces the registry path with
+`imagePullPolicy: Always`:
+
+```
+database image from the chart: postgres:17-alpine
+  reported version: postgres (PostgreSQL) 17.11
+  most recent pull: Successfully pulled image "postgres:17-alpine" in 1.974s. Image size: 300014700 bytes.
+  PASS: the database image pulls from the registry
+```
+
+The check was confirmed to fail as intended: the same pod spec with a nonexistent tag stops at
+`ImagePullBackOff` and the target exits non-zero.
+
+![Compare mode resolving baseline-only nodes to real records](./phase-3-compare-nodes.png)
+
+*Compare mode after the fix: `kube-proxy` and `kindnet` exist only in the baseline period, and now
+carry real kinds and namespaces fetched from that period's graph rather than fragments of their ids.*
+
+**Gate status unchanged: PASS.** No criterion in the Phase 3 gate depended on K5, and the chart work
+under K4 was already done and already tested. What was wrong was the bookkeeping, and the lesson is
+narrower than it looks: a workload running in kind is not evidence that its image can be obtained,
+because the two most common ways to get an image there — `kind load` and a registry pull — are
+indistinguishable from the pod's `image:` field alone.

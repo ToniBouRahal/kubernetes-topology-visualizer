@@ -293,7 +293,7 @@ Mirrors [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md). `[ ]` open · `[~]` in
 ### Phase 3 — database
 
 - [x] **P3-K6** PostgreSQL: StatefulSet or subchart, PVC, Secret-based credentials — D-7.2 · tests T-7.7, T-7.8
-- [x] **P3-K7** Verify the database image pulls on a clean machine before depending on it — D-7.2
+- [x] **P3-K7** Verify the database image pulls on a clean machine before depending on it — D-7.2 · **this was ticked prematurely.** The in-cluster database proves nothing about pulling: `kind load` side-loads images, and the running pod reported `imageID: import-2026-08-21@sha256:…` with no Pull event — it would have started happily on a machine that could never fetch it. Now genuinely verified by `make verify-db-image`, which forces the registry path with `imagePullPolicy: Always`.
 - [x] **P3-K8** External `DATABASE_URL` path validated — D-7.2
 
 ### Phase 5 — completion and validation

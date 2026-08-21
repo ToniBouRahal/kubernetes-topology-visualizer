@@ -266,7 +266,7 @@ understandable without colour · thickness uses a named metric · details comple
 
 ### Standing invariants — re-verify at every phase gate
 
-- [ ] No component parses a node ID to derive namespace or label (F2)
-- [ ] Nothing in `src/api/generated/` is hand-edited
-- [ ] Every state distinguishable with colour removed — test T-6.5
-- [ ] No polling update freezes the UI beyond 100 ms at 500 nodes / 2,000 edges
+- [x] No component parses a node ID to derive namespace or label (F2) · **was violated.** `CompareCanvas` split ids on ":" to describe baseline-only nodes. Fixed by having `useDiff` fetch both periods' graphs for the real records; enforced by `tests/id-opacity.test.ts`, which scans source and was verified to catch the exact line.
+- [x] Nothing in `src/api/generated/` is hand-edited · asserted by `tests/id-opacity.test.ts` via the generated-file banner
+- [x] Every state distinguishable with colour removed — test T-6.5 · `tests/diff.test.ts` "remains distinguishable with colour removed"; classifications are spelled out in the edge badge
+- [ ] **KNOWN LIMITATION (measured, tracked as P5-F18).** Polling at 500 nodes / 2,000 edges — **true only for the common case.** A poll that changes nothing structural costs **0.3 ms**, because the topology signature skips layout entirely. A poll in which a workload appears or disappears invalidates that cache and re-runs dagre at **~208 ms**, over the 100 ms budget; a first render costs **~245 ms**. Measured in `tests/layout.test.ts` ("scale ceiling") rather than asserted. Not fixed here: it needs layout moved off the main thread or an incremental algorithm, which is a design change, not a tweak.

@@ -176,8 +176,8 @@ boundaries.
 - [x] **P3-D5** Retention task with batched deletes — ADR-005 D-5.5, test T-5.8
 - [x] **P3-D6** Readiness on migrations + storage; DSN sanitisation everywhere — ADR-005 D-5.7, test T-5.11
 - [x] **P3-D7** Contract suite passing against **both** repositories — ADR-005 D-5.1, test T-5.12
-- [ ] **P3-K4** PostgreSQL in the chart: StatefulSet/subchart, PVC, Secret — ADR-007 D-7.2, tests T-7.7, T-7.8
-- [ ] **P3-K5** Verify the database image pulls on a clean machine — ADR-007 D-7.2
+- [x] **P3-K4** PostgreSQL in the chart: StatefulSet, PVC, Secret — ADR-007 D-7.2, tests T-7.7, T-7.8 · `templates/postgresql.yaml`; four assertions in `verify-chart.sh` cover volumeClaimTemplates, secretKeyRef, no inline password, and the backend's DSN Secret
+- [x] **P3-K5** Database image pulls on a clean machine — ADR-007 D-7.2 · `make verify-db-image`. The running database was **side-loaded** (`imageID: import-2026-08-21@sha256:…`, no Pull event), so it was never evidence for this. A forced `imagePullPolicy: Always` pull of `postgres:17-alpine` succeeds in ~2–4s and reports PostgreSQL 17.11; verified to fail with ImagePullBackOff on a bad tag.
 - [x] **P3-B8** Custom `from`/`to` with span and inversion validation — ADR-004 D-4.4, test T-4.5
 - [x] **P3-B9** `GET /api/v1/diff` with NEW/REMOVED/CHANGED and visible calculation — ADR-004 D-4.5, test T-4.6 · **→ codex** (pure function, boundary-heavy, ideal for independent implementation against the same tests)
 - [x] **P3-F8** History picker: presets + custom range — ADR-006 D-6.5, test T-6.4
@@ -216,6 +216,7 @@ secrets or external IPs in media.
 - [ ] **P5-K6** Complete chart: probes, resource limits, security contexts, NetworkPolicies, non-root + read-only rootfs — ADR-007 D-7.4, test T-7.6
 - [ ] **P5-K7** Make targets: `demo-up`, `demo-traffic`, `demo-change`, `demo-verify`, `demo-down` — ADR-007 D-7.6, tests T-7.10, T-7.11
 - [ ] **P5-K8** Demo workloads across ≥2 namespaces + the controlled change scenario — ADR-007 D-7.7
+- [ ] **P5-F18** Layout cost at the stated ceiling — ADR-006 invariant. Measured: an unchanged poll is **0.3 ms** (signature cache), but a poll whose topology changed re-runs dagre at **~208 ms** and a first render costs **~245 ms**, against a 100 ms budget. Needs layout off the main thread or an incremental algorithm. Measured by `frontend/tests/layout.test.ts` ("scale ceiling").
 - [ ] **P5-K9** Multi-node kubeadm validation with the same chart — ADR-007 D-7.8, test T-7.12
 - [ ] **P5-K10** Pin all images by version or digest; scan and triage — ADR-007 D-7.4, ADR-008 D-8.7
 - [ ] **P5-T12** Experiments: correctness, load, resource, restart, retry, pod churn, history, comparison — ADR-008 D-8.6, test T-8.6

@@ -274,7 +274,7 @@ prose **and** in tests.
 
 ### Standing invariants — re-verify at every phase gate
 
-- [ ] IDs are never parsed by any consumer (no `split(':')` / `split('/')` anywhere)
-- [ ] No hand-written payload type duplicates a generated one
-- [ ] `openapi.json` in the tree matches what FastAPI generates
-- [ ] `bytes_*` absent — not zero — until P4-X1 passes
+- [x] IDs are never parsed by any consumer · **found one violation** in `CompareCanvas` (removed) — see ADR-006. Guarded by `frontend/tests/id-opacity.test.ts`, which scans every source file and was verified to catch the offending line.
+- [x] No hand-written payload type duplicates a generated one · every response type in `api/types.ts` aliases `Schemas[...]`; the only hand-written interfaces are `GraphQuery`/`DiffQuery`, which are query-parameter shapes with no generated counterpart
+- [x] `openapi.json` in the tree matches what FastAPI generates · `make contracts-check` (T-3.6), run in CI
+- [x] `bytes_*` absent — not zero. P4-X1 **declined**, so they are now permanently absent rather than pending; the fields stay in the schema for a future `bpf_iter/tcp` implementation. Evidence in `docs/evaluation/byte-accounting.md`.

@@ -20,36 +20,38 @@ const NODE_TYPES = { topology: TopologyNode };
  * The comparison view.
  *
  * A diff response carries edges but no nodes — nodes are implied by the edges, and a REMOVED edge
- * still needs its endpoints drawn even though they may have no current traffic. They are
- * synthesised here from the ids, using the label the graph endpoint would return.
+ * still needs its endpoints drawn even though it has no current traffic.
+ *
+ * The node records come from `useDiff`, which fetches the graph for BOTH periods. An earlier
+ * version derived them by splitting the id on ":" when the live graph had not seen the node, which
+ * is exactly what `contracts/ids.md` §2 forbids: ids are opaque, and parsing one produces
+ * confidently wrong labels the moment the format changes. Nothing here parses an id.
  */
-function synthesiseNodes(diff: DiffResponse, known: Map<string, GraphNode>): GraphNode[] {
+function collectNodes(
+  diff: DiffResponse,
+  known: Map<string, GraphNode>,
+): { nodes: GraphNode[]; unresolved: string[] } {
   const ids = new Set<string>();
   for (const edge of diff.edges) {
     ids.add(edge.source_id);
     ids.add(edge.target_id);
   }
 
-  return [...ids].map((id) => {
-    const existing = known.get(id);
-    if (existing) return existing;
+  const nodes: GraphNode[] = [];
+  const unresolved: string[] = [];
+  for (const id of ids) {
+    const node = known.get(id);
+    if (node) nodes.push(node);
+    else unresolved.push(id);
+  }
 
-    // Fallback for a node that exists only in the baseline period, so the live graph has never
-    // seen it. The id is the ONLY source available here; splitting it is confined to this one
-    // display-time fallback and never used for identity (contracts/ids.md §2).
-    const parts = id.split(":");
-    const external = id === "external:EXTERNAL";
-    return {
-      id,
-      kind: (external ? "External" : (parts[3] ?? "Pod")) as GraphNode["kind"],
-      namespace: external ? null : (parts[2] ?? null),
-      name: external ? "EXTERNAL" : (parts[4] ?? id),
-      label: external ? "EXTERNAL" : (parts[4] ?? id),
-      first_seen: diff.baseline.start,
-      last_seen: diff.current.end,
-      attributes: {},
-    } satisfies GraphNode;
-  });
+  // An unresolved id should be impossible: the diff and both period graphs are computed from the
+  // same two windows with the same filters. There is deliberately no fabricated node for this
+  // case — `kind` is a closed set of seven values and inventing an eighth would mean lying to the
+  // contract, while reusing a real one would draw something that is simply not true. The edge is
+  // dropped and the count surfaced instead, so the gap is visible rather than silently rendered
+  // as a plausible wrong node.
+  return { nodes, unresolved };
 }
 
 interface Props {
@@ -62,12 +64,18 @@ interface Props {
 export function CompareCanvas({ diff, knownNodes, selectedId, onSelect }: Props) {
   const cache = useRef<{ positions: PositionCache; signature: string } | undefined>(undefined);
 
-  const { nodes, edges } = useMemo(() => {
-    const graphNodes = synthesiseNodes(diff, knownNodes);
+  const { nodes, edges, unresolved } = useMemo(() => {
+    const { nodes: graphNodes, unresolved } = collectNodes(diff, knownNodes);
+    const drawable = new Set(graphNodes.map((n) => n.id));
+    // React Flow drops an edge whose endpoints are missing anyway; filtering explicitly keeps the
+    // layout input and the rendered edges consistent.
+    const diffEdges = diff.edges.filter(
+      (e) => drawable.has(e.source_id) && drawable.has(e.target_id),
+    );
 
     // Reuse the same layout engine as the live view, so switching modes does not rearrange
     // anything that appears in both.
-    const asGraphEdges = diff.edges.map((e) => ({
+    const asGraphEdges = diffEdges.map((e) => ({
       id: e.id,
       source_id: e.source_id,
       target_id: e.target_id,
@@ -91,7 +99,7 @@ export function CompareCanvas({ diff, knownNodes, selectedId, onSelect }: Props)
       draggable: true,
     }));
 
-    const flowEdges: Edge[] = diff.edges.map((edge) => {
+    const flowEdges: Edge[] = diffEdges.map((edge) => {
       const style = diffStyle(edge);
       return {
         id: edge.id,
@@ -114,23 +122,34 @@ export function CompareCanvas({ diff, knownNodes, selectedId, onSelect }: Props)
       };
     });
 
-    return { nodes: flowNodes, edges: flowEdges };
+    return { nodes: flowNodes, edges: flowEdges, unresolved };
   }, [diff, knownNodes, selectedId]);
 
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={NODE_TYPES}
-      onNodeClick={(_, node) => onSelect(node.id)}
-      onPaneClick={() => onSelect(null)}
-      fitView
-      fitViewOptions={{ padding: 0.18, maxZoom: 1.2 }}
-      minZoom={0.2}
-      maxZoom={2}
-    >
-      <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#22303f" />
-      <Controls showInteractive={false} />
-    </ReactFlow>
+    <>
+      {unresolved.length > 0 && (
+        // Never expected to appear. If it does, something is wrong with the comparison rather
+        // than with the cluster, and saying so beats quietly drawing a smaller graph.
+        <p className="banner banner--warn" role="status">
+          {unresolved.length} edge endpoint{unresolved.length === 1 ? "" : "s"} could not be
+          resolved to a node and {unresolved.length === 1 ? "its edge was" : "their edges were"}{" "}
+          omitted.
+        </p>
+      )}
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={NODE_TYPES}
+        onNodeClick={(_, node) => onSelect(node.id)}
+        onPaneClick={() => onSelect(null)}
+        fitView
+        fitViewOptions={{ padding: 0.18, maxZoom: 1.2 }}
+        minZoom={0.2}
+        maxZoom={2}
+      >
+        <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#22303f" />
+        <Controls showInteractive={false} />
+      </ReactFlow>
+    </>
   );
 }

@@ -189,6 +189,37 @@ image-backend: ## Build the backend image and side-load it into kind
 
 # ── Helm / Kubernetes (ADR-007) ─────────────────────────────────────────────────────────────
 
+.PHONY: verify-db-image
+verify-db-image: ## Prove the database image PULLS rather than relying on a side-loaded copy (P3-K5, ADR-007 D-7.2)
+	@# The cluster's own database pod is not evidence: `kind load` side-loads images, and a
+	@# side-loaded image reports an imageID of `import-<date>@sha256:...` with no Pull event, so it
+	@# would start happily on a machine that could never fetch it. imagePullPolicy: Always forces
+	@# the registry path that a clean machine would take.
+	@#
+	@# The proof is the pod REACHING Succeeded under Always: that policy makes the kubelet contact
+	@# the registry, so an unreachable or renamed image fails with ErrImagePull instead. The event
+	@# below is printed for the timing, not relied on — events from an earlier run of this target
+	@# linger under the same pod name and would happily match a stale grep.
+	@set -e; \
+	image=$$(helm template $(RELEASE) $(CHART) -f $(KIND_VALUES) \
+	    --set postgresql.enabled=true --set postgresql.auth.password=throwaway 2>/dev/null \
+	  | awk '/^kind: StatefulSet$$/,/^---$$/' | awk '/image:/{gsub(/"/,"",$$2); print $$2; exit}'); \
+	test -n "$$image" || { echo "FAIL: could not determine the database image from the chart"; exit 1; }; \
+	echo "database image from the chart: $$image"; \
+	$(KUBECTL) delete pod db-image-pull-check -n $(NAMESPACE) --ignore-not-found --now >/dev/null 2>&1 || true; \
+	$(KUBECTL) run db-image-pull-check -n $(NAMESPACE) \
+	  --image="$$image" --image-pull-policy=Always --restart=Never \
+	  --command -- postgres --version >/dev/null; \
+	$(KUBECTL) wait --for=jsonpath='{.status.phase}'=Succeeded \
+	  pod/db-image-pull-check -n $(NAMESPACE) --timeout=180s >/dev/null; \
+	echo -n "  reported version: "; $(KUBECTL) logs db-image-pull-check -n $(NAMESPACE); \
+	echo -n "  most recent pull: "; \
+	$(KUBECTL) get events -n $(NAMESPACE) \
+	  --field-selector involvedObject.name=db-image-pull-check \
+	  -o custom-columns=MSG:.message --no-headers | grep -E "^Successfully pulled" | tail -1; \
+	$(KUBECTL) delete pod db-image-pull-check -n $(NAMESPACE) --now >/dev/null 2>&1; \
+	echo "  PASS: the database image pulls from the registry"
+
 .PHONY: lint-helm
 lint-helm: ## helm lint + render + RBAC/schema assertions (T-7.1 – T-7.4)
 	@if [ -f $(CHART)/Chart.yaml ]; then \

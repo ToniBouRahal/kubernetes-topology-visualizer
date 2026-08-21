@@ -134,3 +134,96 @@ describe("visual encoding (D-6.3)", () => {
     expect(encodingFor("External").shape).toBe("dashed-pill");
   });
 });
+
+/**
+ * The scale ceiling ADR-006 commits to: 500 nodes and 2,000 edges without a poll freezing the UI
+ * beyond 100 ms.
+ *
+ * That claim sat in the invariant checklist with nothing measuring it. Layout is the expensive
+ * part of a poll — dagre is O(V+E) with a real constant — and it runs synchronously on the main
+ * thread, so if anything blocks a frame it is this.
+ *
+ * The budget is deliberately generous relative to the target: CI machines are slower and more
+ * variable than a developer laptop, and a test that fails on a noisy neighbour teaches people to
+ * ignore it. It still catches the regression that matters — an accidental O(n²) in the layout or
+ * signature path, which overshoots by orders of magnitude rather than a few milliseconds.
+ */
+describe("scale ceiling (ADR-006 invariant)", () => {
+  const NODES = 500;
+  const EDGES = 2000;
+
+  function largeGraph() {
+    const nodes = Array.from({ length: NODES }, (_, i) =>
+      node(`k8s:c:ns${i % 12}:Deployment:w${i}`, `w${i}`, "Deployment", `ns${i % 12}`),
+    );
+    // Deterministic pseudo-random wiring: a fixed shape, but not a regular one that dagre could
+    // lay out unrealistically fast.
+    const edges = Array.from({ length: EDGES }, (_, i) => {
+      const a = (i * 7919) % NODES;
+      const b = (i * 104729 + 13) % NODES;
+      return edge(`e${i}`, nodes[a]!.id, nodes[b === a ? (b + 1) % NODES : b]!.id, (i % 50) + 1);
+    });
+    return { nodes, edges };
+  }
+
+  it(`lays out ${NODES} nodes and ${EDGES} edges within the frame budget`, () => {
+    const { nodes, edges } = largeGraph();
+
+    const started = performance.now();
+    const result = layoutGraph(nodes, edges);
+    const elapsed = performance.now() - started;
+
+    expect(result.positions.size).toBe(NODES);
+    // eslint-disable-next-line no-console
+    console.log(`  layout of ${NODES} nodes / ${EDGES} edges: ${elapsed.toFixed(1)} ms`);
+    expect(elapsed, `layout took ${elapsed.toFixed(1)} ms`).toBeLessThan(2000);
+  });
+
+  it("a poll whose topology CHANGED pays full layout cost", () => {
+    // The honest caveat. The invariant holds for ordinary polls because the signature cache skips
+    // layout entirely, but a poll in which a workload appears or disappears invalidates that cache
+    // and re-runs dagre. At this ceiling that is a real main-thread stall, and it is recorded here
+    // rather than hidden behind the cached-path number.
+    const { nodes, edges } = largeGraph();
+    const first = layoutGraph(nodes, edges);
+
+    const withNewNode = [
+      ...nodes,
+      node("k8s:c:ns0:Deployment:appeared", "appeared", "Deployment", "ns0"),
+    ];
+
+    const started = performance.now();
+    const second = layoutGraph(withNewNode, edges, {
+      positions: first.positions,
+      signature: first.signature,
+    });
+    const elapsed = performance.now() - started;
+
+    expect(second.recomputed).toBe(true);
+    // eslint-disable-next-line no-console
+    console.log(`  poll WITH a topology change at ${NODES}/${EDGES}: ${elapsed.toFixed(1)} ms`);
+    // Not asserted against 100 ms: it demonstrably exceeds that, which is the point of measuring.
+    expect(elapsed).toBeLessThan(2000);
+  });
+
+  it("a poll that changes nothing structural costs almost nothing", () => {
+    // The claim that actually protects the UI: polling every few seconds must not re-run layout.
+    // Only the counts change between polls, and the signature must absorb that.
+    const { nodes, edges } = largeGraph();
+    const first = layoutGraph(nodes, edges);
+
+    const busier = edges.map((e) => ({ ...e, connection_count: e.connection_count + 1 }));
+
+    const started = performance.now();
+    const second = layoutGraph(nodes, busier, {
+      positions: first.positions,
+      signature: first.signature,
+    });
+    const elapsed = performance.now() - started;
+
+    expect(second.recomputed).toBe(false);
+    // eslint-disable-next-line no-console
+    console.log(`  cached re-poll at ${NODES}/${EDGES}: ${elapsed.toFixed(1)} ms`);
+    expect(elapsed, `a cached re-poll took ${elapsed.toFixed(1)} ms`).toBeLessThan(100);
+  });
+});
