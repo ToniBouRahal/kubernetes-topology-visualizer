@@ -257,8 +257,8 @@ a phase is not complete until its gate row is ticked here.
 
 ### Phase 3 — data model and history
 
-- [ ] **P3-T7** Persistence, restart, boundary, retention, diff tests — T-5.9, T-5.10, T-8.4, T-8.5
-- [ ] **GATE 3** restarts preserve history without inflation · presets + custom ranges · NEW/REMOVED/CHANGED with visible calculation · database failure fails readiness cleanly · deterministic at bucket boundaries → `docs/evaluation/phase-3.md`
+- [x] **P3-T7** Persistence, restart, boundary, retention, diff tests — T-5.9, T-5.10, T-8.4, T-8.5
+- [x] **GATE 3** restarts preserve history without inflation · presets + custom ranges · NEW/REMOVED/CHANGED with visible calculation · database failure fails readiness cleanly · deterministic at bucket boundaries → `docs/evaluation/phase-3.md`
 
 ### Phase 4 — completeness and feasibility
 

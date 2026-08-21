@@ -30,8 +30,9 @@ with a recorded reason.
 
 > **Current position:** Phase 1 **complete** — gate passed 2026-08-17, `docs/evaluation/phase-1.md`.
 > All seven acceptance criteria demonstrated on a live three-node kind cluster.
-> **Current position:** Phase 2 **complete** — gate passed 2026-08-21, `docs/evaluation/phase-2.md`.
-> All seven acceptance criteria demonstrated against a deployed stack; 8 Playwright E2E tests green.
+> **Current position:** Phase 3 **complete** — gate passed 2026-08-21, `docs/evaluation/phase-3.md`.
+> PostgreSQL persistence, historical windows, and compare mode all demonstrated on the cluster.
+> Next: Phase 4 — `P4-F12` detail panels, then the byte-accounting spike.
 > Next: Phase 3 — `P3-D1` migrations, then `P3-D2` the ingest transaction.
 
 ### Delegation legend
@@ -182,7 +183,7 @@ boundaries.
 - [x] **P3-F8** History picker: presets + custom range — ADR-006 D-6.5, test T-6.4
 - [x] **P3-F9** Compare mode with non-colour diff cues — ADR-006 D-6.3, test T-6.5
 - [x] **P3-T7** Persistence, restart, boundary, retention, diff tests — tests T-5.9, T-5.10, T-8.4, T-8.5
-- [ ] **P3-T8** Phase 3 gate: run and record in `docs/evaluation/phase-3.md`
+- [x] **P3-T8** Phase 3 gate: run and record in `docs/evaluation/phase-3.md`
 
 ---
 
