@@ -30,8 +30,11 @@ spec:
           # but relying on it couples the frontend to one release name — and a stale default
           # fails at nginx start-up with "host not found in upstream", not at request time.
           env:
+            # FULLY QUALIFIED, deliberately. nginx's `resolver` does not apply the search
+            # domains from /etc/resolv.conf, so a bare Service name resolves for every other
+            # client in the cluster but not for nginx — a 502 with "Host not found".
             - name: BACKEND_HOST
-              value: {{ include "topology.backendService" . | quote }}
+              value: {{ printf "%s.%s.svc.cluster.local" (include "topology.backendService" .) .Release.Namespace | quote }}
             - name: BACKEND_PORT
               value: {{ .Values.backend.service.port | quote }}
           readinessProbe:

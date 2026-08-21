@@ -258,9 +258,9 @@ prose **and** in tests.
 
 ### Phase 2 — ingest and graph in use
 
-- [ ] **P2-C7** Edge-key identity verified across agent, storage, and graph grouping — test T-3.4
+- [x] **P2-C7** Edge-key identity verified across agent, storage, and graph grouping — test T-3.4
 - [x] **P2-C8** Generated TS types compile against the response fixtures — test T-3.5
-- [ ] **P2-C9** Ordering stable across repeated identical queries — test T-3.8
+- [x] **P2-C9** Ordering stable across repeated identical queries — test T-3.8
 
 **Phase 2 gate:** posting the same `batch_id` twice changes counts only once.
 

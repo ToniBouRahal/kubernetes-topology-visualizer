@@ -30,9 +30,9 @@ with a recorded reason.
 
 > **Current position:** Phase 1 **complete** — gate passed 2026-08-17, `docs/evaluation/phase-1.md`.
 > All seven acceptance criteria demonstrated on a live three-node kind cluster.
-> **Phase 2 nearly complete.** Full stack deployed in kind — eBPF → agent → backend → browser.
-> Remaining: `P2-T5` Playwright E2E and `P2-T6` gate. BLOCKED on host inotify limits (see docs/prerequisites.md).
-> Next: `P2-B7` (health/metrics/error handlers), then `P2-A17` agent delivery, then the React frontend.
+> **Current position:** Phase 2 **complete** — gate passed 2026-08-21, `docs/evaluation/phase-2.md`.
+> All seven acceptance criteria demonstrated against a deployed stack; 8 Playwright E2E tests green.
+> Next: Phase 3 — `P3-D1` migrations, then `P3-D2` the ingest transaction.
 
 ### Delegation legend
 
@@ -156,8 +156,8 @@ deterministic filters · transient failure retains last graph · smoke test pass
 - [x] **P2-K3** Backend + frontend Deployments, Services, ConfigMaps, `NOTES.txt` — ADR-007 §4
 - [x] **P2-T3** Backend API tests T-4.1 – T-4.13 against the in-memory repo — **→ codex** (crisp fixtures, high volume)
 - [x] **P2-T4** Frontend unit/component tests T-6.1, T-6.3, T-6.6 – T-6.8
-- [ ] **P2-T5** Playwright E2E: expected demo edges visible within 20 s — tests T-8.1, T-8.2 · **→ chrome** for first bring-up debugging
-- [ ] **P2-T6** Phase 2 gate: run and record in `docs/evaluation/phase-2.md`
+- [x] **P2-T5** Playwright E2E: expected demo edges visible within 20 s — tests T-8.1, T-8.2 · **→ chrome** for first bring-up debugging
+- [x] **P2-T6** Phase 2 gate: run and record in `docs/evaluation/phase-2.md`
 
 ---
 

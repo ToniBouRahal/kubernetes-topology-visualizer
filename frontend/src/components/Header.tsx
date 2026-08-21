@@ -52,7 +52,7 @@ export function Header({
       </div>
 
       <label className="header__window">
-        <span className="visually-hidden">Observation window</span>
+        <span className="visually-hidden">Window length</span>
         <select value={windowPreset} onChange={(e) => onWindowChange(e.target.value)}>
           {presets.map((p) => (
             <option key={p} value={p}>

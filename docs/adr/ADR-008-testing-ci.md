@@ -252,8 +252,8 @@ a phase is not complete until its gate row is ticked here.
 
 - [x] **P2-T3** Backend API suite — ADR-004 §6 · **→ codex**
 - [x] **P2-T4** Frontend unit/component suite — ADR-006 §6
-- [ ] **P2-T5** Playwright E2E: T-8.1, T-8.2 · **→ chrome** for first bring-up
-- [ ] **GATE 2** browser within 20 s · duplicate `batch_id` counted once · outage causes retries not termination · deterministic filters · last graph retained on failure · smoke test passes → `docs/evaluation/phase-2.md`
+- [x] **P2-T5** Playwright E2E: T-8.1, T-8.2 · **→ chrome** for first bring-up
+- [x] **GATE 2** browser within 20 s · duplicate `batch_id` counted once · outage causes retries not termination · deterministic filters · last graph retained on failure · smoke test passes → `docs/evaluation/phase-2.md`
 
 ### Phase 3 — data model and history
 
@@ -280,8 +280,8 @@ a phase is not complete until its gate row is ticked here.
 
 ### End-to-end tests owned here
 
-- [ ] **T-8.1** Known traffic produces exactly the expected service-level directed edges
-- [ ] **T-8.2** The same edges visible in the browser within 20 s
+- [x] **T-8.1** Known traffic produces exactly the expected service-level directed edges
+- [x] **T-8.2** The same edges visible in the browser within 20 s
 - [ ] **T-8.3** `demo-change` produces the expected `NEW` edge in compare, API and UI
 - [ ] **T-8.4** Backend outage during traffic loses no committed edges and inflates no counts
 - [ ] **T-8.5** Backend and database pod restarts preserve history

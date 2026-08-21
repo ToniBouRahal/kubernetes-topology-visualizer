@@ -13,7 +13,7 @@
 # happened here when one node's kube-proxy died and CoreDNS became unreachable. Using a resolver
 # plus a variable makes a DNS failure a 502 on affected requests instead of a dead pod, and the
 # frontend keeps serving the app shell so the UI can show its own error state.
-resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+resolver __RESOLVERS__ valid=10s ipv6=off;
 
 server {
     listen 8080;

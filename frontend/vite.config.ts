@@ -14,6 +14,9 @@ export default defineConfig({
     },
   },
   test: {
+    // e2e/ belongs to Playwright, not vitest: it needs a running cluster and a browser, so it
+    // is part of the phase gate rather than the per-commit suite (ADR-008 D-8.1).
+    exclude: ["node_modules/**", "dist/**", "e2e/**"],
     environment: "jsdom",
     setupFiles: ["./tests/setup.ts"],
     globals: true,

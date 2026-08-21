@@ -239,7 +239,7 @@ Mirrors [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md). `[ ]` open · `[~]` in
 - [x] **P2-F7** Loading, empty, error states with actionable content — D-6.6 · test T-6.7
 - [x] **P2-F8** Remove per-edge continuous animation — D-6.7 (fixes F9)
 - [x] **P2-T4** Frontend unit/component tests — §6
-- [ ] **P2-T5** Playwright E2E: expected demo edges within 20 s — tests T-6.11, T-8.2 · **→ chrome** for first bring-up
+- [x] **P2-T5** Playwright E2E: expected demo edges within 20 s — tests T-6.11, T-8.2 · **→ chrome** for first bring-up
 
 **Phase 2 gate** (ADR-001 §7): traffic visible within 20 s · direction, port, count, first/last seen
 shown · deterministic filters and search · transient failure leaves the last graph visible · smoke

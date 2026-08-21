@@ -25,5 +25,7 @@ ENV BACKEND_HOST=topology-topology-visualizer-backend \
 
 COPY --from=builder /build/dist /usr/share/nginx/html
 COPY default.conf.template /etc/nginx/templates/default.conf.template
+# Runs after the image's own envsubst step; see the script for why.
+COPY 25-resolver.sh /docker-entrypoint.d/25-resolver.sh
 
 EXPOSE 8080

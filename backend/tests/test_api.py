@@ -60,8 +60,7 @@ def graph(client: TestClient, **extra_params: object) -> dict:
     params: dict[str, object] = {**QUERY_WINDOW, **extra_params}
     response = client.get("/api/v1/graph", params=params)
     assert response.status_code == 200, (
-        "graph setup query failed, so its topology invariants cannot be evaluated: "
-        f"{response.text}"
+        f"graph setup query failed, so its topology invariants cannot be evaluated: {response.text}"
     )
     return response.json()
 
@@ -107,9 +106,7 @@ def test_replaying_a_batch_is_a_noop_but_a_new_batch_id_increases_counts(client)
     ("preset", "expected_seconds"),
     [("1m", 60), ("5m", 300), ("15m", 900), ("1h", 3600), ("6h", 21600), ("24h", 86400)],
 )
-def test_every_window_preset_returns_its_exact_frozen_clock_span(
-    client, preset, expected_seconds
-):
+def test_every_window_preset_returns_its_exact_frozen_clock_span(client, preset, expected_seconds):
     response = client.get("/api/v1/graph", params={"window": preset})
 
     assert response.status_code == 200, f"the documented {preset} preset must remain queryable"
@@ -234,8 +231,7 @@ def test_include_external_false_removes_external_node_and_its_edge(client):
         "include_external=false leaked the synthetic external node into the graph"
     )
     assert all(
-        "external:EXTERNAL" not in (edge["source_id"], edge["target_id"])
-        for edge in body["edges"]
+        "external:EXTERNAL" not in (edge["source_id"], edge["target_id"]) for edge in body["edges"]
     ), "removing the external node must also remove edges that reference it"
 
 
