@@ -176,3 +176,93 @@ wildcard: the release is removed by name in this project's namespace, demo names
 by the `topology-demo=true` label this project sets rather than by bare name — so a pre-existing
 `demo` namespace belonging to someone else is untouched — and the kind cluster is deleted by name,
 only if it exists.
+
+---
+
+## P5-K9 — validation under a CNI that enforces
+
+**Status: PARTIAL — NetworkPolicy enforcement validated; separate-kernel validation not possible
+on this host.** See "What is still unvalidated" below.
+
+A full kubeadm cluster needs VMs the host cannot spare (9 GiB free). But the half of P5-K9 that was
+genuinely unknown — do the shipped NetworkPolicies work? — does not need separate machines, only a
+CNI that enforces. kind's default CNI ignores NetworkPolicy entirely, so the main demo cluster
+could never answer it.
+
+`kind/networkpolicy-cluster.yaml` creates a throwaway two-node cluster with `disableDefaultCNI` and
+Calico v3.28.2.
+
+### Result: the policies work, and they actually block
+
+| check | result |
+|---|---|
+| every pod reaches Ready with policies enforced | **PASS** — kubelet probes are not dropped |
+| agent → ingest | **PASS** — 9 connections observed through the policy |
+| backend → database | **PASS** — `/health/ready` 200 |
+| frontend → API | **PASS** |
+| unlabelled pod → database (5432) | **BLOCKED** |
+| unlabelled pod → ingest (8000) | **BLOCKED** |
+
+The last two are the important ones: without them, everything above would pass equally well on a
+CNI that was silently permitting everything.
+
+The kubelet-probe risk that kept the default off did not materialise — probes originate from the
+node address, but Calico does not drop them. `networkPolicy.enabled` now defaults to **true**. The
+kind demo values keep it off, because objects that do nothing there would imply a protection that
+cluster does not provide.
+
+### The run also exposed a false-edge defect
+
+Under Calico, with real control-plane components visible, the graph showed edges that are simply
+not true:
+
+```
+Pod/etcd-...              -> Deployment/coredns:8080
+Pod/kube-apiserver-...    -> DaemonSet/topology-visualizer-agent:8081
+Pod/kube-scheduler-...    -> Deployment/coredns:8181
+```
+
+etcd does not call CoreDNS's health port. The kubelet does — and a kubelet probe originates from
+the **node** address. Every hostNetwork pod carries that same address as its PodIP, so on a
+control-plane node etcd, kube-apiserver, kube-scheduler, kube-controller-manager, kube-proxy and
+the CNI agent are all indexed under one IP. `ResolveSource` consulted the pod cache *before*
+checking whether the address was a node, so it returned an arbitrary one of them and named it as
+the source.
+
+`contracts/ids.md` documented rule 5 ("Node/host IP → host, excluded") for destinations but never
+ordered the node case for sources. Both are fixed: the node check now comes first, and the source
+ladder is written down.
+
+Before and after, same cluster:
+
+| | edges | false control-plane edges |
+|---|---:|---:|
+| before | 25 | ~12 |
+| after, with real workloads | 4 | **0** |
+
+```
+Deployment/frontend                  -> Service/backend:8080                  (57)
+Deployment/backend                   -> External/EXTERNAL:80                  (34)
+Deployment/backend                   -> Service/redis:6379                    (33)
+DaemonSet/topology-visualizer-agent  -> Service/topology-visualizer-backend    (9)
+```
+
+A digression worth recording: immediately after the fix the graph went completely empty, which
+looked like a regression. It was not. With no application workloads on that cluster, the only
+remaining traffic was control-plane chatter — now correctly classified as `host` and excluded — and
+the agent opens a connection to the backend *only when it has a batch to send*. No edges meant no
+ingest traffic, which meant no edges: a stable and entirely correct empty state. Deploying the demo
+workloads produced the table above.
+
+### What is still unvalidated
+
+**Separate kernels.** kind's nodes share one host kernel, so no kind-based cluster can demonstrate
+that `OriginatesElsewhere` is a no-op where each node has its own. The argument that it is safe
+holds by construction — the filter drops only pods *provably* on another node, and on a real
+cluster no such events are ever observed, so nothing is dropped — and the unit tests cover the
+decision table. But it is an argument, not a measurement, and `docs/limitations.md` says so.
+
+Reproducing it needs two machines or two VMs with ~2.5 GiB each: `kubeadm init` on one, `join` on
+the other, any CNI, then `helm install` with the chart unchanged. The check is that
+`topology_agent_events_filtered_foreign_node_total` reads **zero** on every agent, where on kind it
+reads in the hundreds.

@@ -165,17 +165,20 @@ externalDatabaseUrlSecret: ""
 # Shipped for correctness on real clusters. kind's default CNI does NOT enforce these —
 # stated plainly in docs/limitations.md rather than implying protection that is not there.
 networkPolicy:
-  # Off by default, deliberately, and this is a considered choice rather than an oversight.
+  # ON by default, having been verified under a CNI that actually enforces (P5-K9).
   #
   # Two policies ship (D-7.4): ingest reachable only from agent and frontend pods, and PostgreSQL
-  # reachable only from the backend. Both are correct as written. What is NOT yet verified is how
-  # they behave under an enforcing CNI, because kind's default CNI ignores NetworkPolicy entirely —
-  # so enabling them here would prove nothing and would be untested everywhere it matters.
+  # reachable only from the backend. kind's default CNI ignores NetworkPolicy entirely, so the
+  # main demo cluster could never have told us whether they work — they were validated on a
+  # separate kind cluster running Calico (`kind/networkpolicy-cluster.yaml`).
   #
-  # The specific risk is kubelet health probes: they originate from the NODE address, not from a
-  # pod, so an ingress policy expressed purely as podSelectors can drop them and leave every pod
-  # permanently un-ready. Whether that happens depends on the CNI. P5-K9 (kubeadm multi-node) is
-  # where this gets tested, and this default flips to true once it passes.
+  # What that run established, in both directions:
+  #   - every pod reached Ready with the policies enforced, so kubelet health probes are NOT
+  #     dropped despite originating from the node address rather than a pod. This was the
+  #     specific risk that kept the default off.
+  #   - the legitimate paths still work: agent -> ingest, backend -> database, frontend -> API.
+  #   - an unlabelled pod in the same namespace is BLOCKED from both 5432 and the ingest port,
+  #     which is what proves enforcement is real rather than permissive.
   #
-  # Shipping them enabled-but-unverified would be claiming a protection nobody has observed.
-  enabled: false
+  # On a cluster whose CNI ignores NetworkPolicy these are inert, not harmful.
+  enabled: true

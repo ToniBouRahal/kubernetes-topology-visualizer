@@ -1,0 +1,19 @@
+# A second, throwaway cluster whose ONLY purpose is to answer one question the main demo cluster
+# cannot: do the shipped NetworkPolicies actually work under a CNI that enforces them?
+#
+# kind's default CNI (kindnet) ignores NetworkPolicy entirely, so the policies could be wrong in
+# any way at all and the demo would look identical. `disableDefaultCNI` swaps in Calico, which
+# enforces.
+#
+# Two nodes, not three: this tests policy enforcement, not agent-per-node coverage (T-7.5 already
+# covers that on the main cluster), and the host has limited memory.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: topology-np
+networking:
+  disableDefaultCNI: true
+  # Calico's default IPv4 pool; setting it here avoids having to patch the installation.
+  podSubnet: "192.168.0.0/16"
+nodes:
+  - role: control-plane
+  - role: worker

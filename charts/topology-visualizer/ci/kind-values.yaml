@@ -47,4 +47,9 @@ postgresql:
     size: 2Gi
 
 networkPolicy:
-  enabled: false           # kind's default CNI does not enforce these
+  # Left OFF for the kind demo specifically, while the chart default is now ON.
+  #
+  # kind's default CNI ignores NetworkPolicy, so enabling it here would create objects that do
+  # nothing and quietly suggest a protection this cluster does not provide. The policies were
+  # verified for real on a Calico cluster (kind/networkpolicy-cluster.yaml) — see P5-K9.
+  enabled: false

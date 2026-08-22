@@ -554,3 +554,46 @@ func TestOriginatesElsewhereNeverDropsUnidentifiedTraffic(t *testing.T) {
 		}
 	}
 }
+
+// A node IP as SOURCE must resolve to host, not to a hostNetwork pod that happens to share it.
+//
+// Found on a Calico cluster, where the graph showed "etcd -> coredns:8080" and
+// "kube-apiserver -> agent:8081". Neither is real: those are kubelet health probes, which
+// originate from the node address. Every hostNetwork pod carries that same address as its PodIP,
+// so the pod lookup returned an arbitrary one of them and named it as the source.
+func TestSourceNodeIPResolvesToHostNotAHostNetworkPod(t *testing.T) {
+	nodeIP := "10.0.0.10"
+
+	// The situation on a real control-plane node: several hostNetwork pods indexed under the
+	// node's own address, exactly as the informer would hold them.
+	caches := newFake().
+		withNodeIP(nodeIP).
+		withPod(nodeIP, "kube-system", "etcd-node-a", OwnerRef{})
+
+	r := New("c1", caches)
+	got := r.ResolveSource(netip.MustParseAddr(nodeIP))
+
+	if got.Class != ClassHost {
+		t.Errorf("ResolveSource(node IP) = %v/%q, want ClassHost — a node address identifies the "+
+			"node, not whichever hostNetwork pod the indexer listed first", got.Class, got.Name)
+	}
+	if got.IsGraphable() {
+		t.Error("host traffic must be excluded from the default graph (contracts/ids.md rule 5)")
+	}
+}
+
+// The ordering must not break the ordinary case it sits in front of.
+func TestSourceOrdinaryPodStillResolvesToItsWorkload(t *testing.T) {
+	caches := newFake().
+		withNodeIP("10.0.0.10").
+		withPod("10.1.2.3", "demo", "backend-abc", OwnerRef{Kind: "ReplicaSet", Name: "backend-7d9"}).
+		withReplicaSetOwner("demo", "backend-7d9", OwnerRef{Kind: "Deployment", Name: "backend"})
+
+	r := New("c1", caches)
+	got := r.ResolveSource(netip.MustParseAddr("10.1.2.3"))
+
+	if got.Class != ClassWorkload || got.Name != "backend" || got.Kind != "Deployment" {
+		t.Errorf("ResolveSource(pod IP) = %s/%s (%v), want Deployment/backend (workload)",
+			got.Kind, got.Name, got.Class)
+	}
+}

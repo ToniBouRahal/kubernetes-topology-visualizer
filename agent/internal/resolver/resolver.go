@@ -143,11 +143,25 @@ func (r *Resolver) OriginatesElsewhere(ip netip.Addr, nodeName string) bool {
 // on SYN_SENT → ESTABLISHED), so the initiator is by construction a process on this node.
 // Traffic arriving from outside the cluster is an accepted socket and was filtered in the kernel.
 func (r *Resolver) ResolveSource(ip netip.Addr) Endpoint {
-	if ns, name, owner, ok := r.caches.PodByIP(ip); ok {
-		return r.workloadFor(ns, name, owner)
-	}
+	// NODE IP FIRST, before the pod lookup. This ordering is load-bearing.
+	//
+	// Every hostNetwork pod carries the node's address as its PodIP — on a control-plane node
+	// that is etcd, kube-apiserver, kube-scheduler, kube-controller-manager, kube-proxy and the
+	// CNI agent, all indexed under one IP — and so does the kubelet itself. When a kubelet health
+	// probe arrives from that address, PodByIP returns whichever of them the indexer happens to
+	// list first, and the probe is attributed to an arbitrary control-plane component.
+	//
+	// That produced visibly false edges under a real CNI: "etcd -> coredns:8080",
+	// "kube-apiserver -> agent:8081". etcd does not call CoreDNS's health port; the kubelet does.
+	//
+	// A node IP identifies the node, not any process on it, so the honest answer is `host` —
+	// which contracts/ids.md rule 5 already excludes from the default graph. Naming a specific
+	// workload we cannot actually identify is worse than declining to name one.
 	if r.caches.IsNodeIP(ip) {
 		return host()
+	}
+	if ns, name, owner, ok := r.caches.PodByIP(ip); ok {
+		return r.workloadFor(ns, name, owner)
 	}
 	return unresolved()
 }

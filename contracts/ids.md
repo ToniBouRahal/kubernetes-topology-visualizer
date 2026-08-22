@@ -167,6 +167,20 @@ source pod IP → Pod → follow ownerReferences → collapse Pod→ReplicaSet�
 A source **never** resolves to a Service. Services are destinations; a Service does not originate a
 connection.
 
+**A node IP is checked before the pod cache, and resolves to `host`.** Every hostNetwork pod
+carries the node's address as its PodIP, so on a control-plane node etcd, kube-apiserver,
+kube-scheduler, kube-controller-manager, kube-proxy and the CNI agent are all indexed under one
+address — as is the kubelet itself. Looking that address up in the pod cache returns an arbitrary
+one of them, which attributes kubelet health probes to a random control-plane component and
+produces edges that are simply false (`etcd → coredns:8080`). A node IP identifies the node, not a
+process on it, so it resolves to `host` and is excluded from the default graph by rule 5.
+
+| # | Condition | Result |
+|---|---|---|
+| 1 | IP is a Node address | `host`, excluded from the default graph |
+| 2 | IP is a pod IP | that pod's owning workload |
+| 3 | Anything else | `unresolved`, counter incremented |
+
 ### Destination — first match wins
 
 | # | Condition | Result |
