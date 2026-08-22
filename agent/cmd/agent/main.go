@@ -48,6 +48,13 @@ func loadConfig() (config, error) {
 		backendIngest:  env("BACKEND_INGEST_URL", ""),
 	}
 
+	// Validated here rather than deep in run(): a required setting that is only checked after
+	// delivery, signal handling and the informer factory have been built reports a configuration
+	// mistake later than it needs to, and cannot be tested without starting the agent.
+	if c.backendIngest == "" {
+		return c, fmt.Errorf("BACKEND_INGEST_URL is required")
+	}
+
 	if c.nodeName == "" {
 		host, err := os.Hostname()
 		if err != nil {
@@ -148,9 +155,6 @@ func run(log *slog.Logger) error {
 	var ready atomic.Bool
 	agg := aggregate.New(cfg.clusterID, agentID, cfg.infraPorts)
 
-	if cfg.backendIngest == "" {
-		return fmt.Errorf("BACKEND_INGEST_URL is required")
-	}
 	sender := delivery.New(cfg.backendIngest, cfg.maxPendingBatches, log)
 	log.Info("delivery configured", "url", cfg.backendIngest, "max_pending", cfg.maxPendingBatches)
 

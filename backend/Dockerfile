@@ -27,8 +27,21 @@ RUN uv venv /opt/venv && VIRTUAL_ENV=/opt/venv uv pip install --no-cache .
 FROM python:3.13-slim-bookworm@sha256:00faa2debb87529f9f0764e9491d8ba400a3678976616c3bd7cb193745ac20d1
 
 # A fixed uid so the chart's runAsUser matches, and no shell for the account.
+#
+# pip is removed in the same layer. The application runs from /opt/venv, which uv built in the
+# builder stage, so pip is never used at runtime — but it ships a vendored copy of msgpack and
+# other libraries that an image scan reports as vulnerabilities in this image. They were the only
+# fixable HIGH findings against the backend, and they are fixable by deletion: code that is not
+# there cannot be exploited, and nothing in the runtime path referenced it.
 RUN groupadd --gid 10001 topology \
-    && useradd --uid 10001 --gid topology --no-create-home --shell /usr/sbin/nologin topology
+    && useradd --uid 10001 --gid topology --no-create-home --shell /usr/sbin/nologin topology \
+    && python -m pip uninstall -y pip setuptools wheel 2>/dev/null || true \
+    && rm -rf /usr/local/lib/python3.13/site-packages/pip \
+              /usr/local/lib/python3.13/site-packages/pip-* \
+              /usr/local/lib/python3.13/site-packages/setuptools \
+              /usr/local/lib/python3.13/site-packages/setuptools-* \
+              /usr/local/lib/python3.13/site-packages/pkg_resources \
+              /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.13
 
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /build/app /srv/app

@@ -334,3 +334,89 @@ meant to be composed into a sentence and this one follows a full stop.
 What the outage state gets right, and is worth keeping: the last good topology stays on screen with
 an explicit "showing the last successful reading" rather than being replaced by an error, a Retry
 control is offered, and no stack trace, DSN or credential appears anywhere.
+
+---
+
+## ADR-008 D-8.7 — image scan and triage
+
+Trivy 0.6x via container (nothing installed on the host), HIGH and CRITICAL only.
+Reproduce with `make scan-images`.
+
+"Fixable" means a fixed version exists upstream. An unfixable finding cannot be acted on by this
+project at all, so the fixable count is the one that carries a decision.
+
+### Before and after
+
+| image | fixable HIGH/CRITICAL before | after | what changed |
+|---|---:|---:|---|
+| `topology-agent:dev` | 6 HIGH | **0** | `golang.org/x/net` 0.49→0.56, `golang.org/x/text` 0.33→0.39 |
+| `topology-backend:dev` | 2 HIGH | **0** | pip removed from the runtime image |
+| `topology-frontend:dev` | 31 HIGH, 2 CRITICAL | **10 HIGH, 0 CRITICAL** | nginx base 1.27-alpine → 1.29-alpine |
+| `postgres:17-alpine` | 21 HIGH, 1 CRITICAL | unchanged | accepted, see below |
+
+**Both project images are now clean of fixable HIGH/CRITICAL findings.**
+
+### The two fixes worth explaining
+
+**The agent's findings were in our own dependency tree.** Five HIGH CVEs in `golang.org/x/net` and
+one in `golang.org/x/text`, both indirect dependencies pulled in by client-go. Updated and
+re-verified: build, full test suite and lint all clean.
+
+**The backend's findings were in code that did not need to be in the image.** `msgpack` and
+`setuptools`, reported against the Python section, turned out to live in
+`/usr/local/lib/python3.13/site-packages/pip/_vendor/` — pip's *vendored* copies, inherited from
+the base image. The application runs from `/opt/venv`, built by uv in the builder stage, and never
+invokes pip at runtime. So the fix was deletion rather than upgrade: code that is not present
+cannot be exploited. Verified the application still imports afterwards; `site-packages` now holds
+only a README.
+
+### What was accepted, and why
+
+**`postgres:17-alpine` — 21 HIGH, 1 CRITICAL, accepted.** These are Alpine base packages for which
+fixes exist upstream but which the postgres image maintainers have not yet rebuilt with; there is
+no newer `17-alpine` digest to move to, and changing the database major version to chase a base
+image would be a worse trade than the finding it fixes.
+
+The exposure is bounded and worth stating precisely: this database exists for the self-contained
+demo. It is never published outside the cluster, it now sits behind a NetworkPolicy that admits
+only the backend, it runs non-root with all capabilities dropped, and ADR-005/ADR-007 support
+pointing at an external managed database instead — which is what a real deployment would do.
+
+**The frontend's remaining 10 HIGH.** Alpine 3.23.4 base packages in an image that serves static
+files and proxies to the backend. The upgrade from 1.27-alpine removed both CRITICALs and two
+thirds of the HIGHs; the remainder have no further upstream base to move to today.
+
+### Note on the unfixable majority
+
+Roughly 90 further HIGH/CRITICAL findings across the four images have no upstream fix. They are
+recorded by the scan and deliberately not listed individually here: an entry nobody can act on adds
+length without adding information, and `make scan-images` reproduces the full list on demand.
+
+## P5-T18 — privacy check on committed images and text
+
+**Status: PASS.** ADR-001 §6 forbids persisting or exposing individual external IPs, and §9 extends
+that to anything published with the report.
+
+**Five committed screenshots**, each opened and inspected rather than assumed:
+`phase-2-ui.png`, `phase-3-compare.png`, `phase-3-compare-nodes.png`, `phase-4-a11y.png`,
+`phase-5-outage-ui.png`.
+
+None shows an IP address, hostname outside the cluster, credential, token or DSN. What they do show
+is workload names, namespaces, ports and connection counts. The external node appears only as the
+single aggregated `EXTERNAL` label — which is the privacy design visible in the artefact rather
+than merely asserted in a document.
+
+**Committed text** was scanned for DSNs with real passwords, inline credentials, AWS keys and
+private key blocks. Two files matched, both deliberately:
+
+- `Makefile` — `TEST_PG_DSN ?= postgresql://postgres:test@localhost:5433/topology`, a localhost
+  fixture for the optional PostgreSQL test run, and `--set postgresql.auth.password=throwaway` in
+  the image-pull check, which never persists data. The demo install generates a password at run
+  time and stores it only in a cluster Secret.
+- `backend/tests/test_api.py` — the string
+  `postgresql://admin:super-secret-password@db/topology` is the *input* to
+  `test_unhandled_error_hides_traceback_dsn_and_password_but_keeps_request_id`. It exists to prove
+  that value never reaches a response. Its presence is evidence the protection is tested, not a
+  leak.
+
+No public-range IP address appears anywhere under `docs/`.

@@ -13,7 +13,7 @@ RUN npm run build
 # ── Runtime ─────────────────────────────────────────────────────────────────────────────────
 # nginx-unprivileged: runs as uid 101 and listens on 8080, so the pod needs no root and no
 # NET_BIND_SERVICE capability.
-FROM nginxinc/nginx-unprivileged:1.27-alpine@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0
+FROM nginxinc/nginx-unprivileged:1.29-alpine@sha256:0c79d56aee561a1d81c63f00eee5fb5fe29279560cdc55e91425133104c7fbe6
 
 # Templated at start-up rather than baked in, so one image serves any release name.
 ENV BACKEND_HOST=topology-topology-visualizer-backend \
