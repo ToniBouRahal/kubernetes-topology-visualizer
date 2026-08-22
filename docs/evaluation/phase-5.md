@@ -420,3 +420,95 @@ private key blocks. Two files matched, both deliberately:
   leak.
 
 No public-range IP address appears anywhere under `docs/`.
+
+---
+
+## P5-T12 / P5-T13 — performance experiments
+
+**Status: DONE.** `make experiments` (or `bash scripts/experiments.sh memory|load|latency|churn`).
+Every target in ADR-001 §6 is measured. Three are met with headroom. **One is missed by orders of
+magnitude, and that is the most important result in this phase.**
+
+### Results against the stated targets
+
+| target (ADR-001 §6) | measured | verdict |
+|---|---|---|
+| agent memory < 256 MiB per node | **35 MiB** (worst of three nodes) | **MET** — 13% of budget |
+| 1,000 capture events/s/node | **1,325/s, zero kernel samples lost** | **MET** |
+| graph query p95 < 500 ms at 500 nodes / 2,000 edges | **p95 62 ms** (p50 41 ms) | **MET** — 8× headroom |
+| no UI freeze over 100 ms | **unusable beyond ~300 edges** | **MISSED** |
+
+### Agent memory — and a measurement that was wrong first
+
+The first reading was **547 MiB**, which would have failed the target outright. It was wrong: the
+DaemonSet sets `hostPID`, so reading `/sys/fs/cgroup/memory.current` inside the pod reports the
+*node's* usage, not the agent's. The pod has a 256 MiB limit and had never been OOMKilled, which is
+what made the number suspect.
+
+Measured properly — the agent process's `VmRSS` read from the node — it is **34–35 MiB** on all
+three nodes. `scripts/experiments.sh` reads it that way and says why in a comment, because the
+convenient reading is the misleading one.
+
+### Capture throughput
+
+Four parallel load generators for 30 s produced **43,725 events on one node ≈ 1,325/s**, above the
+1,000/s target, with `topology_agent_kernel_samples_lost_total` unchanged at **0**. The drop counter
+is the one that matters: a lost sample is a connection that silently never appears in the graph, and
+zero drops at above-target rate is the claim worth making.
+
+### Query latency, measured at the size the target names
+
+The demo cluster produces ~13 nodes. Measuring p95 there (6 ms) and calling a 500-node target met
+would be measuring the wrong thing, so `scripts/seed-scale.py` ingests a synthetic 500-node /
+2,000-edge graph **through the real ingest endpoint** — same validation, same transaction, same
+storage path as an agent.
+
+At that size, untruncated: **p50 41 ms, p95 62 ms, max 64 ms** over 40 requests. The target is 500 ms.
+
+### The UI does not survive its own stated ceiling
+
+This is the finding that matters, and it was only visible because the latency work put a real
+500-node graph in front of the browser.
+
+| graph | time to first paint | main thread |
+|---|---|---|
+| 11 nodes / 6 edges | 1.06 s | 2 ms frame response |
+| 102 nodes / 307 edges | 1.06 s | 2 ms frame response |
+| 172 nodes / 1,002 edges | **> 250 s (timed out)** | — |
+| 500 nodes / 1,908 edges | **> 379 s, page stopped responding** | — |
+
+Up to roughly 300 edges the interface is indistinguishable from empty — a tenth of a second of
+work, frames answered in 2 ms. Past that it does not degrade, it **stops**: at 1,000 edges the page
+never painted within four minutes, and at 1,908 it stopped answering `evaluate` at all.
+
+ADR-006's invariant was already known to be missed for a topology-changing poll — measured at 208 ms
+in `frontend/tests/layout.test.ts`. That test measures `layoutGraph` alone, and it was measuring the
+wrong thing: dagre is not the bottleneck. The cost is React Flow rendering ~2,500 DOM elements, each
+edge carrying a text label. A unit test on the layout function could never have found this, which is
+the general lesson — the isolated measurement was fast and the real one is unusable.
+
+**ADR-001 §6's UI scale target is rejected with evidence.** The honest ceiling is roughly **100
+nodes and 300 edges**, not 500 and 2,000. Recorded in `docs/limitations.md` §4.1 and tracked as
+`P5-F18`; closing it means edge virtualisation, canvas rendering instead of DOM, or refusing to
+render past a threshold and saying so — the API already returns a `truncated` flag the UI could act
+on, which is the cheapest of the three.
+
+### Pod churn
+
+`scripts/experiments.sh churn` restarts the demo backend and asserts that replacing every pod
+creates no new Pod-level node ids. Identity is the workload, not the pod.
+
+## An operational note: a backward clock jump broke the cluster
+
+Midway through these experiments the whole stack went unhealthy — CoreDNS `0/1`, the backend in
+CrashLoopBackOff on `gaierror`, agents and frontend not ready. The cause was not the code: the host
+clock jumped **backwards about three hours**, visible as a log line at `01:59:40Z` followed by one
+at `22:59:50Z`, and as `<invalid>` restart ages in `kubectl`.
+
+ServiceAccount tokens are JWTs. A backward jump puts their `iat`/`nbf` claims in the future, so the
+API server rejects them — CoreDNS logged `Unauthorized` on every watch, DNS stopped resolving, and
+everything that needed to reach another pod failed. Recovery was to restart CoreDNS and then the
+workloads, which reissues tokens against the corrected clock.
+
+Worth recording because the symptom (`gaierror` connecting to PostgreSQL) points nowhere near the
+cause, and because it is a plausible thing to hit on a laptop that suspends.

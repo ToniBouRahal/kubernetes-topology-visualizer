@@ -172,20 +172,35 @@ little exposure while making on-node troubleshooting materially easier.
 
 ## 4. Interface
 
-### 4.1 Layout cost at the stated ceiling — **measured, open**
+### 4.1 The interface does not survive its own stated scale ceiling — **measured, open**
 
-At 500 nodes and 2,000 edges:
+ADR-001 §6 states a ceiling of 500 nodes and 2,000 edges with no UI freeze beyond 100 ms. **The API
+meets it comfortably; the interface does not meet it at all.**
 
-| | measured |
-|---|---:|
-| poll, topology unchanged | **0.3 ms** |
-| poll, topology changed | **208 ms** |
-| first render | **245 ms** |
+Measured in a real browser against real ingested data:
 
-ADR-006's invariant — no polling update beyond 100 ms — holds only for the common case, because the
-topology signature skips layout entirely when nothing structural changed. A poll in which a workload
-appears or disappears re-runs the layout and exceeds the budget. Tracked as `P5-F18`; fixing it
-means moving layout off the main thread or going incremental.
+| graph | time to first paint | main thread |
+|---|---|---|
+| 11 nodes / 6 edges | 1.06 s | 2 ms frame response |
+| 102 nodes / 307 edges | 1.06 s | 2 ms frame response |
+| 172 nodes / 1,002 edges | **> 250 s (timed out)** | — |
+| 500 nodes / 1,908 edges | **> 379 s, page stopped responding** | — |
+
+Up to roughly 300 edges the interface behaves as though the graph were empty. Past that it does not
+degrade gradually — it stops.
+
+**The honest ceiling is about 100 nodes and 300 edges.** For the demo cluster, which produces a
+dozen nodes, this is invisible; for a real cluster of any size it is disqualifying, and it is the
+single largest gap between what this system claims and what it does.
+
+An earlier measurement in `frontend/tests/layout.test.ts` put a topology-changing poll at 208 ms and
+treated that as the limitation. It was measuring the wrong thing: dagre is not the bottleneck. The
+cost is React Flow rendering roughly 2,500 DOM elements, each edge carrying a text label — which no
+unit test on the layout function could have exposed.
+
+Tracked as `P5-F18`. Closing it means edge virtualisation, canvas rendering rather than DOM, or
+refusing to render past a threshold and saying so — the API already returns a `truncated` flag the
+interface could act on, which is the cheapest of the three.
 
 ### 4.2 Comparing unequal windows produces spurious CHANGED — **measured**
 

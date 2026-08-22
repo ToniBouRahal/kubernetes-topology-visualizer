@@ -192,6 +192,15 @@ image-backend: ## Build the backend image and side-load it into kind
 
 # ── Helm / Kubernetes (ADR-007) ─────────────────────────────────────────────────────────────
 
+.PHONY: experiments
+experiments: ## Measure every ADR-001 §6 performance target and report met/missed (P5-T12)
+	@bash scripts/experiments.sh all
+
+.PHONY: seed-scale
+seed-scale: ## Ingest a synthetic 500-node graph for scale measurement (needs a port-forward on 18100)
+	@echo "Ingests through the real endpoint. Remove afterwards — see phase-5.md."
+	python3 scripts/seed-scale.py --url http://localhost:18100 --nodes 500 --edges 2000
+
 .PHONY: verify-pinning
 verify-pinning: ## Assert every third-party image is pinned by digest, not just a tag (P5-K10)
 	@bash scripts/verify-image-pinning.sh

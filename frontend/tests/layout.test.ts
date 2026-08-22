@@ -147,6 +147,12 @@ describe("visual encoding (D-6.3)", () => {
  * variable than a developer laptop, and a test that fails on a noisy neighbour teaches people to
  * ignore it. It still catches the regression that matters — an accidental O(n²) in the layout or
  * signature path, which overshoots by orders of magnitude rather than a few milliseconds.
+ *
+ * WHAT THIS DOES NOT MEASURE, and a caution against reading more into it than it says: these
+ * numbers cover `layoutGraph` alone. Measured in a real browser, the same graph never paints —
+ * 172 nodes / 1,002 edges did not render within 250 s, because the cost is React Flow building
+ * ~2,500 DOM elements, not dagre computing positions. A fast result here says nothing about
+ * whether the interface is usable. See `docs/limitations.md` §4.1.
  */
 describe("scale ceiling (ADR-006 invariant)", () => {
   const NODES = 500;
