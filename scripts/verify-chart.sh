@@ -122,6 +122,80 @@ else
   bad "backend does not read DATABASE_URL from a Secret"
 fi
 
+echo "== D-7.4: security posture =="
+# Database AND network policies on: this checks the templates are right, independently of the
+# shipped defaults. NetworkPolicy is off by default until P5-K9 verifies it under an enforcing
+# CNI (kind ignores it), which is recorded in values.yaml.
+SEC_RENDERED="$(render --set postgresql.enabled=true --set postgresql.auth.password=s3cret \
+                       --set networkPolicy.enabled=true)"
+
+# Exactly ONE privileged container is expected: the agent. Anything else is a regression, and the
+# count is asserted rather than the presence, so a second privileged workload cannot slip in.
+priv=$(printf '%s' "$SEC_RENDERED" | grep -c 'privileged: true' || true)
+if [[ "$priv" -eq 1 ]]; then
+  ok "exactly one privileged container (the agent)"
+else
+  bad "expected exactly 1 privileged container, found $priv"
+fi
+
+# Every workload that is NOT the agent must be hardened. Counted against the three non-agent
+# workloads (backend, frontend, postgresql) so that adding a fourth without a securityContext
+# fails here rather than in a review.
+for setting in 'runAsNonRoot: true' 'allowPrivilegeEscalation: false' 'type: RuntimeDefault'; do
+  count=$(printf '%s' "$SEC_RENDERED" | grep -c "$setting" || true)
+  if [[ "$count" -ge 3 ]]; then
+    ok "$setting on all three non-agent workloads ($count)"
+  else
+    bad "$setting found on only $count workloads, expected >= 3"
+  fi
+done
+
+drops=$(printf '%s' "$SEC_RENDERED" | grep -c 'drop:' || true)
+if [[ "$drops" -ge 3 ]]; then
+  ok "capabilities dropped on all three non-agent workloads ($drops)"
+else
+  bad "capabilities dropped on only $drops workloads, expected >= 3"
+fi
+
+# Read-only root filesystem on the two workloads that can take it. Postgres cannot (it writes its
+# socket and initdb output), which is stated in the template rather than silently skipped.
+ro=$(printf '%s' "$SEC_RENDERED" | grep -c 'readOnlyRootFilesystem: true' || true)
+if [[ "$ro" -ge 2 ]]; then
+  ok "read-only root filesystem on backend and frontend ($ro)"
+else
+  bad "expected >= 2 read-only root filesystems, found $ro"
+fi
+
+# The agent must NOT carry seccomp RuntimeDefault: the default profile restricts bpf() and
+# perf_event_open(), so applying it would break capture. Asserted so nobody "fixes" it later.
+AGENT_BLOCK="$(printf '%s' "$SEC_RENDERED" | awk '/^kind: DaemonSet$/,/^---$/')"
+# `grep RuntimeDefault` also matches the comment in the template explaining why it is absent, so
+# the actual YAML key is what gets checked.
+if printf '%s' "$AGENT_BLOCK" | grep -qE '^\s*type:\s*RuntimeDefault'; then
+  bad "the agent has seccompProfile RuntimeDefault, which blocks bpf() and breaks capture"
+else
+  ok "agent is exempt from seccomp RuntimeDefault (documented in agent-daemonset.yaml)"
+fi
+
+# Probes and limits on every workload — a pod with no readiness probe takes traffic before it can
+# serve it, and one with no limit can starve a node.
+for probe in readinessProbe 'resources:'; do
+  count=$(printf '%s' "$SEC_RENDERED" | grep -c "$probe" || true)
+  if [[ "$count" -ge 4 ]]; then
+    ok "$probe on all four workloads ($count)"
+  else
+    bad "$probe on only $count workloads, expected >= 4"
+  fi
+done
+
+echo "== D-7.4: NetworkPolicies =="
+NP_COUNT=$(printf '%s' "$SEC_RENDERED" | grep -c '^kind: NetworkPolicy' || true)
+if [[ "$NP_COUNT" -ge 2 ]]; then
+  ok "NetworkPolicies shipped ($NP_COUNT)"
+else
+  bad "expected at least 2 NetworkPolicies, found $NP_COUNT"
+fi
+
 echo "== T-7.3: values.schema.json rejects malformed values =="
 reject "empty clusterId"                     --set clusterId=""
 reject "clusterId containing ':'"            --set clusterId="bad:id"

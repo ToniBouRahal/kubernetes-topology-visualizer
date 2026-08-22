@@ -298,8 +298,8 @@ Mirrors [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md). `[ ]` open · `[~]` in
 
 ### Phase 5 — completion and validation
 
-- [ ] **P5-K9** Probes, resource limits, security contexts, non-root + read-only rootfs — D-7.4 · test T-7.6
-- [ ] **P5-K10** NetworkPolicies shipped; kind non-enforcement documented — D-7.4
+- [x] **P5-K9** Probes, resource limits, security contexts, non-root + read-only rootfs — D-7.4 · test T-7.6 · verified against running pods, not just the render. Added seccomp RuntimeDefault, container-level hardening for postgres, and `runAsGroup` (the frontend was running as gid 0). Three exceptions are asserted rather than assumed: the agent is the *only* privileged container, the agent must NOT have seccomp (it blocks `bpf()`), and postgres needs a writable rootfs. T-7.6 passed live — readiness 503 within 5s, recovered within 10s, no restarts.
+- [x] **P5-K10** NetworkPolicies shipped; kind non-enforcement documented — D-7.4 · **the database policy was missing.** D-7.4 requires ingest restricted to agents *and* the database restricted to the backend; only the first existed, so any pod in the namespace could read the full topology on 5432. Both now ship. Left **off by default** until P5-K9's kubeadm run tests them under an enforcing CNI — kind ignores NetworkPolicy, and the untested risk is kubelet probes arriving from the node address rather than a pod.
 - [ ] **P5-K11** Make targets: `demo-up`, `demo-traffic`, `demo-change`, `demo-verify`, `demo-down` — D-7.6
 - [ ] **P5-K12** Demo workloads across ≥2 namespaces + the controlled change scenario — D-7.7
 - [ ] **P5-K13** `demo-up` on a clean machine with no hand-edited manifests — test T-7.10

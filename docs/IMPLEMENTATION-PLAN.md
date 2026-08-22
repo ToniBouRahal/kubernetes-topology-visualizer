@@ -213,7 +213,7 @@ node in kind **and** kubeadm · `demo-down` is surgical · all requirements mapp
 support or reject each target · CI passes from clean checkout · failure modes actionable · no
 secrets or external IPs in media.
 
-- [ ] **P5-K6** Complete chart: probes, resource limits, security contexts, NetworkPolicies, non-root + read-only rootfs — ADR-007 D-7.4, test T-7.6
+- [x] **P5-K6** Complete chart: probes, limits, security contexts, NetworkPolicies — ADR-007 D-7.4, test T-7.6 · `verify-chart.sh` now runs **40** assertions (was 30). Added seccomp RuntimeDefault, container-level hardening for postgres, and `runAsGroup` (the frontend was running as gid 0). **Added the missing NetworkPolicy restricting PostgreSQL to the backend** — D-7.4 requires two and only one existed. Policies stay off by default until P5-K9 tests them under an enforcing CNI. T-7.6 passed live: readiness 503 within 5s of the database going away, recovered within 10s, **no restarts** and history intact.
 - [ ] **P5-K7** Make targets: `demo-up`, `demo-traffic`, `demo-change`, `demo-verify`, `demo-down` — ADR-007 D-7.6, tests T-7.10, T-7.11
 - [ ] **P5-K8** Demo workloads across ≥2 namespaces + the controlled change scenario — ADR-007 D-7.7
 - [ ] **P5-F18** Layout cost at the stated ceiling — ADR-006 invariant. Measured: an unchanged poll is **0.3 ms** (signature cache), but a poll whose topology changed re-runs dagre at **~208 ms** and a first render costs **~245 ms**, against a 100 ms budget. Needs layout off the main thread or an incremental algorithm. Measured by `frontend/tests/layout.test.ts` ("scale ceiling").

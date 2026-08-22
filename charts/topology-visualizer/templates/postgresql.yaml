@@ -48,10 +48,22 @@ spec:
         fsGroup: 999
         runAsUser: 999
         runAsGroup: 999
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: postgresql
           image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
           imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            # NOT read-only, unlike the backend and frontend: postgres writes its socket to
+            # /var/run/postgresql and its configuration into PGDATA at initdb time. Making this
+            # read-only would need two more emptyDirs for a database that is a demo convenience,
+            # so the honest posture is a writable rootfs with everything else dropped.
+            readOnlyRootFilesystem: false
           ports:
             - name: postgresql
               containerPort: 5432

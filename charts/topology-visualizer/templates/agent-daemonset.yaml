@@ -26,7 +26,21 @@ spec:
           image: "{{ .Values.agent.image.repository }}:{{ .Values.agent.image.tag }}"
           imagePullPolicy: {{ .Values.agent.image.pullPolicy }}
           securityContext:
-            # Required to load and attach eBPF programs. Documented, not incidental.
+            # THE ONE PRIVILEGED WORKLOAD, and the asymmetry D-7.4 requires spelling out.
+            #
+            # Loading a BPF program and attaching it to a tracepoint needs CAP_BPF and
+            # CAP_PERFMON (CAP_SYS_ADMIN on older kernels), plus a raised memlock limit. There is
+            # no configuration of a non-privileged container that can do this — the capability is
+            # the feature.
+            #
+            # Deliberately NOT given seccompProfile: RuntimeDefault, unlike every other workload
+            # here. The default profile restricts bpf() and perf_event_open(), which are precisely
+            # the syscalls this agent exists to make; applying it would break capture at start-up.
+            #
+            # What limits the blast radius instead: the container is read-only in effect (it opens
+            # no files for writing), its RBAC is get/list/watch only (agent-rbac.yaml), it never
+            # reads packet payloads (ADR-001 §6), and it holds no database credentials. The
+            # privilege buys kernel-level *observation*, not cluster-level authority.
             privileged: {{ .Values.agent.privileged }}
           ports:
             - name: health

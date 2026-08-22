@@ -79,10 +79,15 @@ backend:
   securityContext:
     runAsNonRoot: true
     runAsUser: 10001
+    runAsGroup: 10001
     readOnlyRootFilesystem: true
     allowPrivilegeEscalation: false
     capabilities:
       drop: ["ALL"]
+    # Defence in depth behind the dropped capabilities: RuntimeDefault blocks the syscalls a
+    # normal service never issues. The agent is deliberately NOT given this — see agent.securityContext.
+    seccompProfile:
+      type: RuntimeDefault
 
 # ── Frontend ────────────────────────────────────────────────────────────────────────────────
 frontend:
@@ -107,10 +112,15 @@ frontend:
   securityContext:
     runAsNonRoot: true
     runAsUser: 10001
+    # Without this the container lands in gid 0. Harmless given a read-only rootfs and no
+    # capabilities, but "runs as root group" is not a sentence worth writing in a security review.
+    runAsGroup: 10001
     readOnlyRootFilesystem: true
     allowPrivilegeEscalation: false
     capabilities:
       drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
 
 # ── Database ────────────────────────────────────────────────────────────────────────────────
 # Phase 3 deliverable. Either an in-cluster instance for the self-contained demo, or an
@@ -155,4 +165,17 @@ externalDatabaseUrlSecret: ""
 # Shipped for correctness on real clusters. kind's default CNI does NOT enforce these —
 # stated plainly in docs/limitations.md rather than implying protection that is not there.
 networkPolicy:
+  # Off by default, deliberately, and this is a considered choice rather than an oversight.
+  #
+  # Two policies ship (D-7.4): ingest reachable only from agent and frontend pods, and PostgreSQL
+  # reachable only from the backend. Both are correct as written. What is NOT yet verified is how
+  # they behave under an enforcing CNI, because kind's default CNI ignores NetworkPolicy entirely —
+  # so enabling them here would prove nothing and would be untested everywhere it matters.
+  #
+  # The specific risk is kubelet health probes: they originate from the NODE address, not from a
+  # pod, so an ingress policy expressed purely as podSelectors can drop them and leave every pod
+  # permanently un-ready. Whether that happens depends on the CNI. P5-K9 (kubeadm multi-node) is
+  # where this gets tested, and this default flips to true once it passes.
+  #
+  # Shipping them enabled-but-unverified would be claiming a protection nobody has observed.
   enabled: false
