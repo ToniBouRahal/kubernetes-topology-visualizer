@@ -192,6 +192,22 @@ image-backend: ## Build the backend image and side-load it into kind
 
 # ── Helm / Kubernetes (ADR-007) ─────────────────────────────────────────────────────────────
 
+.PHONY: verify-pinning
+verify-pinning: ## Assert every third-party image is pinned by digest, not just a tag (P5-K10)
+	@bash scripts/verify-image-pinning.sh
+
+.PHONY: scan-images
+scan-images: ## Scan the built images for HIGH/CRITICAL vulnerabilities (ADR-008 D-8.7)
+	@# Trivy runs in a container so nothing has to be installed on the host. The cache is kept in
+	@# the repo-local .trivy-cache so repeated runs do not re-download a 100 MB database.
+	@mkdir -p .trivy-cache
+	@for img in topology-agent:dev topology-backend:dev topology-frontend:dev postgres:17-alpine; do \
+	  echo "== $$img =="; \
+	  docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+	    -v "$(REPO_ROOT)/.trivy-cache":/root/.cache/ aquasec/trivy:latest image \
+	    --scanners vuln --severity HIGH,CRITICAL --quiet "$$img" || true; \
+	done
+
 .PHONY: verify-db-image
 verify-db-image: ## Prove the database image PULLS rather than relying on a side-loaded copy (P3-K5, ADR-007 D-7.2)
 	@# The cluster's own database pod is not evidence: `kind load` side-loads images, and a

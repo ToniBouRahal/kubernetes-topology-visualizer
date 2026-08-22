@@ -133,6 +133,11 @@ postgresql:
   image:
     repository: postgres
     tag: "17-alpine"
+    # Pinned by digest as well as tag (D-7.4). A tag is mutable — `postgres:17-alpine` is a
+    # different image today than last month — so a tag alone cannot make a build reproducible.
+    # The tag stays for readability; the digest is what actually resolves.
+    # Set to "" to follow the tag instead.
+    digest: "sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73"
     pullPolicy: IfNotPresent
 
   auth:

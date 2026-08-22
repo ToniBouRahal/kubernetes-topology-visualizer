@@ -3,7 +3,7 @@
 # Runs as a non-root user with a read-only root filesystem in the chart (ADR-001 §6), so
 # everything it needs must be baked in at build time — nothing is written at runtime.
 
-FROM python:3.13-slim-bookworm AS builder
+FROM python:3.13-slim-bookworm@sha256:00faa2debb87529f9f0764e9491d8ba400a3678976616c3bd7cb193745ac20d1 AS builder
 
 # uv resolves and installs far faster than pip, and is already the documented local toolchain,
 # so the image and the developer environment stay in step.
@@ -24,7 +24,7 @@ COPY migrations ./migrations
 RUN uv venv /opt/venv && VIRTUAL_ENV=/opt/venv uv pip install --no-cache .
 
 # ── Runtime ─────────────────────────────────────────────────────────────────────────────────
-FROM python:3.13-slim-bookworm
+FROM python:3.13-slim-bookworm@sha256:00faa2debb87529f9f0764e9491d8ba400a3678976616c3bd7cb193745ac20d1
 
 # A fixed uid so the chart's runAsUser matches, and no shell for the account.
 RUN groupadd --gid 10001 topology \

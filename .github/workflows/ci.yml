@@ -122,6 +122,11 @@ jobs:
       - name: Verify chart
         run: bash scripts/verify-chart.sh
 
+      # P5-K10: a tag is mutable, so a build pinned only by tag is not reproducible and a scan
+      # result does not describe what will actually be pulled.
+      - name: Verify every third-party image is pinned by digest
+        run: bash scripts/verify-image-pinning.sh
+
   images:
     name: Container images
     runs-on: ubuntu-latest

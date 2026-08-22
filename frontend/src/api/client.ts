@@ -26,6 +26,30 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * A plain-language reading of a status the API itself did not explain.
+ *
+ * The backend always returns a `detail`, so this only fires for failures that never reached it —
+ * a proxy 502 while the backend is restarting, most often. The raw status text in that case is
+ * "Bad Gateway", which is accurate and tells a user nothing they can act on. ADR-001 §7 asks for
+ * failure messages that say what to do.
+ */
+function explainStatus(status: number): string {
+  switch (status) {
+    case 502:
+    case 503:
+    case 504:
+      return "the backend is not responding — it may still be starting up, or its database may be unreachable";
+    case 401:
+    case 403:
+      return "this request was refused";
+    case 404:
+      return "that endpoint does not exist on this backend";
+    default:
+      return `the request failed with status ${status}`;
+  }
+}
+
 function buildQuery(query: GraphQuery): string {
   const params = new URLSearchParams();
 
@@ -57,16 +81,16 @@ async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
   });
 
   if (!response.ok) {
-    let detail = response.statusText;
+    let detail = "";
     let requestId: string | undefined;
     try {
       const body = await response.json();
       if (typeof body?.detail === "string") detail = body.detail;
       if (typeof body?.request_id === "string") requestId = body.request_id;
     } catch {
-      // A non-JSON error body (a proxy 502, say) is still a real failure; keep the status text.
+      // A non-JSON error body (a proxy 502, say) is still a real failure.
     }
-    throw new ApiError(response.status, detail, requestId);
+    throw new ApiError(response.status, detail || explainStatus(response.status), requestId);
   }
 
   return (await response.json()) as T;

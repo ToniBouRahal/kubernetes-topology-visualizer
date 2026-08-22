@@ -40,7 +40,7 @@ spec:
     spec:
       containers:
         - name: redis
-          image: redis:7-alpine
+          image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
           args: ["--save", "", "--appendonly", "no"]
           ports:
             - {name: redis, containerPort: 6379}
@@ -75,7 +75,7 @@ spec:
       containers:
         # Serves the frontend.
         - name: server
-          image: nginx:1.27-alpine
+          image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
           ports:
             - {name: http, containerPort: 80}
           resources:
@@ -85,7 +85,7 @@ spec:
         # shares the pod IP, so its connections attribute to the backend Deployment — which is
         # exactly how a real service's outbound calls would appear.
         - name: worker
-          image: redis:7-alpine
+          image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -131,7 +131,7 @@ spec:
     spec:
       containers:
         - name: client
-          image: busybox:1.36
+          image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
           command: ["/bin/sh", "-c"]
           args:
             - |

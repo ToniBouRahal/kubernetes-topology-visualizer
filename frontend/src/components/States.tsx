@@ -33,12 +33,21 @@ export function EmptyState({ windowLabel }: { windowLabel: string }) {
   );
 }
 
+/**
+ * API messages are lowercase sentence fragments — both the backend's `detail` and the client's
+ * own explanations — because they are usually composed into a larger sentence. Here they follow a
+ * full stop, so the first letter is raised rather than reading as "reading. the backend is...".
+ */
+function asSentence(message: string): string {
+  return message.charAt(0).toUpperCase() + message.slice(1);
+}
+
 /** Shown as a banner, never replacing the graph: the last good topology stays on screen. */
 export function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="banner banner--error" role="alert">
       <span className="banner__text">
-        Showing the last successful reading. {message}
+        Showing the last successful reading. {asSentence(message)}
       </span>
       <button type="button" onClick={onRetry}>
         Retry

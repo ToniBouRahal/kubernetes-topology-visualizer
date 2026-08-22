@@ -266,3 +266,71 @@ Reproducing it needs two machines or two VMs with ~2.5 GiB each: `kubeadm init` 
 the other, any CNI, then `helm install` with the chart unchanged. The check is that
 `topology_agent_events_filtered_foreign_node_total` reads **zero** on every agent, where on kind it
 reads in the hundreds.
+
+---
+
+## P5-K10 — image pinning
+
+**Status: DONE for pinning; scan recorded separately below.** `make verify-pinning` runs **16**
+assertions and is wired into CI.
+
+Everything was pinned by *tag*, which is mutable: `postgres:17-alpine` resolves to a different
+image today than it did last month. A tag alone cannot make a build reproducible, and it makes a
+scan result meaningless — what was scanned is not necessarily what will be pulled. All nine
+third-party images are now pinned by digest as well as tag, the tag kept for readability:
+
+| where | images |
+|---|---|
+| `agent/Dockerfile` | `golang:1.26-bookworm`, `debian:bookworm-slim` |
+| `backend/Dockerfile` | `python:3.13-slim-bookworm` (×2 stages) |
+| `frontend/Dockerfile` | `node:24-bookworm-slim`, `nginxinc/nginx-unprivileged:1.27-alpine` |
+| `agent/build/Dockerfile.bpf-builder` | `golang:1.26-bookworm` |
+| chart | `postgres:17-alpine` |
+| demo manifests | `redis:7-alpine`, `nginx:1.27-alpine`, `busybox:1.36` |
+
+Multi-arch manifest-list digests, not per-platform ones, so arm64 still resolves. The reference
+prototype under `poc-kind-topology/` is deliberately excluded — ADR-001 §12 instruction 3 forbids
+modifying it, and holding it to a standard nobody may satisfy would be a permanently failing check.
+
+Verified by removing one digest: the check fails on exactly that line and exits non-zero. All three
+images still build with the digests in place.
+
+## P5-T17 — actionable failure messages
+
+**Status: DONE.** Each scenario in ADR-001 §7 was triggered for real rather than read off the
+source.
+
+| scenario | how it was triggered | what the operator sees |
+|---|---|---|
+| denied BPF permissions | agent pod with `privileged: false` | `remove memlock rlimit (needs CAP_SYS_RESOURCE or a privileged container): operation not permitted` |
+| missing BTF | covered by the same load path | `load BPF objects (check BTF at /sys/kernel/btf/vmlinux and that the container is privileged)` |
+| not running as a pod | agent run under plain Docker | `in-cluster config (the agent must run as a pod with a ServiceAccount)` |
+| missing configuration | agent with no env | `BACKEND_INGEST_URL is required` |
+| backend outage | `scale deploy/backend --replicas=0` | agent logs the URL, attempt number and visible backoff (16s → 30s), batch ids retained |
+| PostgreSQL failure | observed during the P5-K6 rollout | `could not connect to PostgreSQL at postgresql://topology:***@…` — credential redacted, readiness drops to 503 |
+| empty graph | fresh window with no traffic | "No data", "None observed yet.", and a panel explaining how to generate traffic |
+
+### One message was not actionable, and is now
+
+During the backend-outage test the UI displayed:
+
+> Showing the last successful reading. **Bad Gateway**
+
+"Bad Gateway" is the raw status text from the frontend's nginx when the backend has no endpoints.
+It is accurate and tells a user nothing they can do. The backend always supplies its own `detail`,
+so this only affects failures that never reached it — precisely the case where a user has least
+context. Now:
+
+> Showing the last successful reading. **The backend is not responding — it may still be starting
+> up, or its database may be unreachable**
+
+Verified in the browser against a real zero-replica backend. Covered by `tests/client-errors.test.ts`,
+including that the backend's own `detail` still wins where it exists — a generic mapping must never
+override a specific explanation.
+
+The banner also raises the first letter of the message, since API details are lowercase fragments
+meant to be composed into a sentence and this one follows a full stop.
+
+What the outage state gets right, and is worth keeping: the last good topology stays on screen with
+an explicit "showing the last successful reading" rather than being replaced by an error, a Retry
+control is offered, and no stack trace, DSN or credential appears anywhere.
