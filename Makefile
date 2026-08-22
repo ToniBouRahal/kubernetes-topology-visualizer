@@ -24,6 +24,9 @@ KIND_VALUES := $(CHART)/ci/kind-values.yaml
 NAMESPACE   := topology
 VENV_PY     := $(BACKEND)/.venv/bin/python
 
+# Agent flush (10s) + delivery + UI poll headroom. Kept on its own line: a trailing comment on a
+# `:=` assignment leaves the whitespace in the value, which then appears in log output as "25   s".
+DEMO_SETTLE  := 25
 RELEASE      := topology
 KIND_CLUSTER := topology
 KIND_CONTEXT := kind-$(KIND_CLUSTER)
@@ -281,12 +284,92 @@ demo-workloads: ## Apply the demo topology (two namespaces, unmodified workloads
 agent-edges: ## Print the service-level edges the agents currently report
 	@bash scripts/show-edges.sh
 
-# ── Demo loop — implemented in Phase 5 (ADR-007 D-7.6) ──────────────────────────────────────
+# ── Demo loop (ADR-007 D-7.6) ───────────────────────────────────────────────────────────────
+#
+# `make demo-up` must work on a clean supported machine with no manifest hand-editing. Every
+# target here pins the kind context and scopes every deletion by release, cluster or label — see
+# demo-down for why that matters.
 
-.PHONY: demo-up demo-traffic demo-change demo-verify demo-down
-demo-up demo-traffic demo-change demo-verify demo-down:
-	@echo "$@ is a Phase 5 deliverable (P5-K11). See docs/IMPLEMENTATION-PLAN.md."
-	@exit 1
+.PHONY: images
+images: ## Build all three images and side-load them into kind
+	docker build -t topology-agent:dev $(AGENT)
+	docker build -t topology-backend:dev backend
+	docker build -t topology-frontend:dev $(FRONTEND)
+	kind load docker-image topology-agent:dev topology-backend:dev topology-frontend:dev \
+	  --name $(KIND_CLUSTER)
+
+.PHONY: demo-up
+demo-up: ## Cluster + images + install + demo workloads, ready to observe
+	@if kind get clusters 2>/dev/null | grep -qx "$(KIND_CLUSTER)"; then \
+	  echo "kind cluster '$(KIND_CLUSTER)' already exists — reusing it"; \
+	else \
+	  $(MAKE) kind-up; \
+	fi
+	$(MAKE) images
+	@# A password is required by values.schema.json when the in-cluster database is enabled. It is
+	@# generated per install and never committed; the chart puts it in a Secret (ADR-005 D-5.7).
+	@set -e; \
+	if $(KUBECTL) get secret $(RELEASE)-visualizer-database -n $(NAMESPACE) >/dev/null 2>&1; then \
+	  echo "reusing the existing database secret"; \
+	  PW=$$($(KUBECTL) get secret $(RELEASE)-visualizer-database -n $(NAMESPACE) \
+	        -o jsonpath='{.data.password}' | base64 -d); \
+	else \
+	  PW=$$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24); \
+	  echo "generated a new database password (stored only in the cluster Secret)"; \
+	fi; \
+	$(HELM_K) upgrade --install $(RELEASE) $(CHART) \
+	  --namespace $(NAMESPACE) --create-namespace \
+	  -f $(KIND_VALUES) \
+	  --set postgresql.enabled=true --set postgresql.auth.password="$$PW" \
+	  --wait --timeout 6m
+	$(MAKE) demo-workloads
+	@echo
+	@echo "Ready. Watch the topology build up with:"
+	@echo "    make demo-traffic && make demo-verify"
+	@echo "    $(KUBECTL) -n $(NAMESPACE) port-forward svc/$(RELEASE)-visualizer-frontend 8080:8080"
+
+.PHONY: demo-traffic
+demo-traffic: ## Generate a known, counted burst of traffic and wait for it to be aggregated
+	-$(KUBECTL) delete job demo-traffic -n demo --ignore-not-found --now
+	$(KUBECTL) apply -f demo/demo-traffic.yaml
+	@# The job settles for 25s before opening anything (see demo-traffic.yaml), so this waits well
+	@# past that rather than timing out on a job that is working correctly.
+	$(KUBECTL) wait --for=condition=complete job/demo-traffic -n demo --timeout=300s
+	@$(KUBECTL) logs job/demo-traffic -n demo | tail -2
+	@# The agent aggregates on a 10s flush; without this wait, demo-verify races the pipeline and
+	@# reports a missing edge that arrives a second later.
+	@echo "waiting $(DEMO_SETTLE)s for aggregation and delivery..."
+	@sleep $(DEMO_SETTLE)
+
+.PHONY: demo-change
+demo-change: ## Apply the controlled topology change (a new dependency appears)
+	$(KUBECTL) apply -f demo/demo-change.yaml
+	$(KUBECTL) -n data rollout status deploy/payment --timeout=180s
+	$(KUBECTL) -n demo rollout status deploy/reporter --timeout=180s
+	@echo "waiting $(DEMO_SETTLE)s for the new edge to be observed..."
+	@sleep $(DEMO_SETTLE)
+
+.PHONY: demo-verify
+demo-verify: ## Assert the expected edges through the API (T-7.10, T-7.11)
+	@KIND_CONTEXT=$(KIND_CONTEXT) NAMESPACE=$(NAMESPACE) RELEASE=$(RELEASE) \
+	  bash scripts/demo-verify.sh
+
+.PHONY: demo-down
+demo-down: ## Remove ONLY what this project created
+	@# Surgical by construction (D-7.6). Deleting a developer's unrelated cluster during a demo
+	@# teardown is unrecoverable, so nothing here takes a wildcard:
+	@#   - the release is removed by name, in this project's namespace
+	@#   - demo namespaces are selected by the topology-demo label this project sets, never by
+	@#     bare name, so a pre-existing `demo` namespace belonging to someone else is untouched
+	@#   - the kind cluster is deleted by name, and only if it exists
+	-$(HELM_K) uninstall $(RELEASE) --namespace $(NAMESPACE) --wait --timeout 3m
+	-$(KUBECTL) delete namespace -l topology-demo=true --ignore-not-found --timeout=3m
+	-$(KUBECTL) delete namespace $(NAMESPACE) --ignore-not-found --timeout=3m
+	@if kind get clusters 2>/dev/null | grep -qx "$(KIND_CLUSTER)"; then \
+	  kind delete cluster --name $(KIND_CLUSTER); \
+	else \
+	  echo "no kind cluster named '$(KIND_CLUSTER)' — nothing to delete"; \
+	fi
 
 # ── Tooling report ──────────────────────────────────────────────────────────────────────────
 

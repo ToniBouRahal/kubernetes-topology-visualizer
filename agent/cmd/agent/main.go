@@ -85,6 +85,13 @@ func loadConfig() (config, error) {
 	return c, nil
 }
 
+// Connections observed by this agent but originating on another node.
+//
+// Should be zero on any cluster where each node runs its own kernel. It is NOT zero on kind,
+// where the nodes share one — which is exactly why it is a metric rather than a silent drop:
+// a non-zero value tells an operator their counts would have been inflated without the filter.
+var foreignEvents atomic.Uint64
+
 func env(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -231,6 +238,15 @@ func run(log *slog.Logger) error {
 				"dst", ev.DstIP.String(), "dst_port", ev.DstPort, "pid", ev.PID)
 		}
 
+		// ADR-002: "the agent sees only active opens originating on its own node." That is
+		// automatic where each node has its own kernel, but not on kind, where the nodes share
+		// one — so without this filter every agent records every connection in the cluster and
+		// each one is counted once per node.
+		if res.OriginatesElsewhere(ev.SrcIP, cfg.nodeName) {
+			foreignEvents.Add(1)
+			return
+		}
+
 		agg.Add(aggregate.Observation{
 			Source:          res.ResolveSource(ev.SrcIP),
 			Target:          res.ResolveDestination(ev.DstIP, ev.DstPort),
@@ -331,6 +347,7 @@ func startHealthServer(
 			{"topology_agent_filtered_infrastructure_port_total", "Observations dropped on an infrastructure port", "counter", c.FilteredInfraPort},
 			{"topology_agent_endpoints_unresolved_total", "Observations dropped because an endpoint could not be resolved", "counter", c.UnresolvedEndpoints},
 			{"topology_agent_filtered_not_graphable_total", "Observations dropped as host or non-graph traffic", "counter", c.FilteredNotGraphable},
+			{"topology_agent_events_filtered_foreign_node_total", "Events discarded: the source pod runs on another node (ADR-002 node-scoped observation)", "counter", foreignEvents.Load()},
 			{"topology_agent_edges_flushed_total", "Aggregated edges emitted", "counter", c.AggregatedEdgesFlushed},
 			{"topology_agent_batches_flushed_total", "Batches emitted", "counter", c.BatchesFlushed},
 			{"topology_agent_batches_sent_total", "Batches accepted by the backend", "counter", d.Sent},
@@ -363,13 +380,43 @@ func startHealthServer(
 		}
 	}()
 
+	// A SECOND listener on the metrics port.
+	//
+	// AGENT_METRICS_PORT was read from the environment and the chart declared a 9090 containerPort,
+	// but only the health listener was ever started — so anything scraping the advertised metrics
+	// port got "connection refused". An endpoint a chart advertises has to answer.
+	//
+	// The same mux is served on both, so /metrics remains reachable on the health port too and
+	// nothing that already worked breaks.
+	if cfg.metricsPort != cfg.healthPort {
+		metricsSrv := &http.Server{
+			Addr:              fmt.Sprintf(":%d", cfg.metricsPort),
+			Handler:           mux,
+			ReadHeaderTimeout: 5 * time.Second,
+		}
+		go func() {
+			if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Error("metrics server", "error", err)
+			}
+		}()
+		metricsServer.Store(metricsSrv)
+	}
+
 	return srv
 }
+
+// Held so shutdown can close it alongside the health listener.
+var metricsServer atomic.Pointer[http.Server]
 
 func shutdown(srv *http.Server, log *slog.Logger) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Warn("health server shutdown", "error", err)
+	}
+	if m := metricsServer.Load(); m != nil {
+		if err := m.Shutdown(ctx); err != nil {
+			log.Warn("metrics server shutdown", "error", err)
+		}
 	}
 }

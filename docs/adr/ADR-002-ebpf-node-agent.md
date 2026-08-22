@@ -296,9 +296,32 @@ counted once (verified from the backend side, ADR-004).
   environment-specific value rather than special-casing the code.
 - **Connections are not requests.** Connection pooling means a busy service can show a low count.
   Label the metric `connections` everywhere (ADR-001 §10 mitigation).
-- **Node-scoped observation.** The agent sees only active opens originating on its own node. Both
-  directions of a conversation appear only because both endpoints' nodes run an agent — which is
-  why Phase 5's "reports from every node" criterion is a correctness check, not a scale check.
+- **Node-scoped observation.** The agent records only active opens originating on its own node.
+  Both directions of a conversation appear only because both endpoints' nodes run an agent — which
+  is why Phase 5's "reports from every node" criterion is a correctness check, not a scale check.
+
+  **This was stated as an invariant but never enforced, and on kind it was false.** kind's "nodes"
+  are containers sharing ONE host kernel, and `tracepoint/sock/inet_sock_set_state` fires for every
+  network namespace on that kernel — so every agent observed every connection in the cluster and
+  each one was counted once per node. Proof: the `topology-control-plane` agent, which runs none of
+  the demo workloads, reported the identical complete edge set (`edges=5`) as the two workers.
+  With three nodes, every `connection_count` was inflated roughly threefold.
+
+  Now enforced by `Resolver.OriginatesElsewhere`, which drops an event when its source IP belongs
+  to a pod known to be running on a different node. The check is deliberately one-sided: an
+  unresolvable IP, a host-network pod or a node-local process is kept, because dropping what cannot
+  be identified would trade a visible counting error for an invisible missing edge. The drops are
+  exposed as `topology_agent_events_filtered_foreign_node_total`, which should read zero on any
+  cluster where nodes have their own kernels — a non-zero value tells an operator their counts
+  would otherwise have been inflated.
+
+  Measured after the fix: 20 connections opened, 20 reported. Exactly.
+
+- **Cold-start under-counting.** A pod's first connections are recorded only once the agent's
+  informer has seen its IP. A Job that starts and immediately connects loses its opening seconds —
+  measured at 13 of 20 connections when connecting immediately, and 20 of 20 after a 25s settle.
+  This is inherent to resolving identity from the API server rather than a defect, and it is why
+  `demo/demo-traffic.yaml` waits before opening its counted burst.
 
 ## 9. Implementation tracker
 

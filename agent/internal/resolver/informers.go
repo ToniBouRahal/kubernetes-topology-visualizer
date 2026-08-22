@@ -185,6 +185,25 @@ func (c *InformerCaches) PodByIP(ip netip.Addr) (namespace, name string, owner O
 	return pod.Namespace, pod.Name, controllerOf(pod.OwnerReferences), true
 }
 
+// NodeForPodIP reports which node runs the pod holding ip.
+//
+// Used to enforce ADR-002's "node-scoped observation": the agent must record only connections
+// originating on its own node. That is automatic when every node has its own kernel, but NOT on
+// kind, where the "nodes" are containers sharing one host kernel and a tracepoint fires for every
+// netns — so without this, each agent records every connection in the cluster and counts are
+// multiplied by the number of nodes.
+func (c *InformerCaches) NodeForPodIP(ip netip.Addr) (string, bool) {
+	objs, err := c.pods.ByIndex(indexPodIP, ip.String())
+	if err != nil || len(objs) == 0 {
+		return "", false
+	}
+	pod, isPod := objs[0].(*corev1.Pod)
+	if !isPod || pod.Spec.NodeName == "" {
+		return "", false
+	}
+	return pod.Spec.NodeName, true
+}
+
 func (c *InformerCaches) ServiceByClusterIP(ip netip.Addr) (namespace, name string, ok bool) {
 	objs, err := c.services.ByIndex(indexClusterIP, ip.String())
 	if err != nil || len(objs) == 0 {

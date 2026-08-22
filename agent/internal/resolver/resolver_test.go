@@ -24,6 +24,7 @@ type podEntry struct {
 	namespace string
 	name      string
 	owner     OwnerRef
+	node      string
 }
 
 type endpointEntry struct {
@@ -44,6 +45,20 @@ func newFake() *fakeCaches {
 func (f *fakeCaches) withPod(ip, ns, name string, owner OwnerRef) *fakeCaches {
 	f.pods[ip] = podEntry{namespace: ns, name: name, owner: owner}
 	return f
+}
+
+// withPodOnNode records which node runs the pod, for the node-scoped observation filter.
+func (f *fakeCaches) withPodOnNode(ip, ns, name, node string, owner OwnerRef) *fakeCaches {
+	f.pods[ip] = podEntry{namespace: ns, name: name, owner: owner, node: node}
+	return f
+}
+
+func (f *fakeCaches) NodeForPodIP(ip netip.Addr) (string, bool) {
+	entry, ok := f.pods[ip.String()]
+	if !ok || entry.node == "" {
+		return "", false
+	}
+	return entry.node, true
 }
 
 func (f *fakeCaches) withClusterIP(ip, ns, name string) *fakeCaches {
@@ -481,6 +496,61 @@ func TestGraphableClasses(t *testing.T) {
 	for class, want := range cases {
 		if got := (Endpoint{Class: class}).IsGraphable(); got != want {
 			t.Errorf("%s: IsGraphable() = %v, want %v", class, got, want)
+		}
+	}
+}
+
+// Node-scoped observation — ADR-002 §8.
+//
+// The ADR states the agent "sees only active opens originating on its own node". Nothing enforced
+// it. On a real cluster that is free, because each node runs its own kernel; on kind the nodes are
+// containers sharing one kernel, so every agent observed every connection and each was counted
+// once per node — a threefold inflation of connection_count on a three-node cluster.
+func TestOriginatesElsewhere(t *testing.T) {
+	caches := newFake().
+		withPodOnNode("10.1.0.5", "demo", "local-pod", "node-a", OwnerRef{}).
+		withPodOnNode("10.1.0.6", "demo", "remote-pod", "node-b", OwnerRef{}).
+		withPod("10.1.0.7", "demo", "node-unknown", OwnerRef{})
+	r := New("c1", caches)
+
+	cases := []struct {
+		name   string
+		ip     string
+		node   string
+		expect bool
+		why    string
+	}{
+		{"a pod on this node is kept", "10.1.0.5", "node-a", false,
+			"the connection originated here"},
+		{"a pod on another node is dropped", "10.1.0.6", "node-a", true,
+			"this is the kind shared-kernel case the filter exists for"},
+		{"a pod whose node is unknown is kept", "10.1.0.7", "node-a", false,
+			"dropping the unidentifiable would trade a counting error for data loss"},
+		{"an unknown IP is kept", "203.0.113.9", "node-a", false,
+			"external and host traffic must still be recorded"},
+		{"no node name configured keeps everything", "10.1.0.6", "", false,
+			"without NODE_NAME the filter cannot be applied safely"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := r.OriginatesElsewhere(netip.MustParseAddr(tc.ip), tc.node)
+			if got != tc.expect {
+				t.Errorf("OriginatesElsewhere(%s, %q) = %v, want %v — %s",
+					tc.ip, tc.node, got, tc.expect, tc.why)
+			}
+		})
+	}
+}
+
+// The property that makes the filter safe to apply: it never drops something it cannot identify.
+func TestOriginatesElsewhereNeverDropsUnidentifiedTraffic(t *testing.T) {
+	r := New("c1", newFake())
+
+	for _, ip := range []string{"10.1.0.99", "192.168.1.1", "203.0.113.1", "127.0.0.1"} {
+		if r.OriginatesElsewhere(netip.MustParseAddr(ip), "node-a") {
+			t.Errorf("%s was dropped despite being unresolvable; an inflated count is visibly "+
+				"wrong, a missing edge is not", ip)
 		}
 	}
 }

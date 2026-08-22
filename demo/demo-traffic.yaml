@@ -1,0 +1,57 @@
+# A KNOWN, BOUNDED burst of traffic — the input `make demo-verify` asserts against.
+#
+# The standing demo workloads already talk continuously, which proves capture works but gives no
+# number to check. This Job opens a counted set of connections and exits, so a reviewer can say
+# "200 connections were made" and compare that against what the graph reports.
+#
+# Each iteration opens a NEW connection: the collector records active opens, so a reused pooled
+# connection produces no event at all. `wget` and `redis-cli` both connect per invocation.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: demo-traffic
+  namespace: demo
+  labels: {topology-demo: "true"}
+spec:
+  # A failed burst should not silently retry into a different number.
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels: {app: demo-traffic, topology-demo: "true"}
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: burst
+          image: redis:7-alpine
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -u
+              COUNT=${COUNT:-100}
+              # Wait for the agent's informer to see THIS pod's IP before opening anything.
+              #
+              # Without it the first few seconds of connections come from an IP the resolver
+              # cannot yet map to a workload, so they are dropped as unresolved and the burst
+              # under-reports — measured at 13 of 20. After settling, 20 of 20 are reported
+              # exactly. A burst whose whole purpose is to be counted has to be countable.
+              echo "waiting ${SETTLE}s for this pod to appear in the agent's informer cache"
+              sleep "${SETTLE}"
+              echo "opening $COUNT connections each to redis.data:6379 and backend.demo:8080"
+              i=0
+              while [ "$i" -lt "$COUNT" ]; do
+                # nc opens exactly one TCP connection per call and exits. /dev/tcp would be the
+                # obvious idiom but is bash-only, and this image runs BusyBox ash.
+                nc -w 2 redis.data.svc.cluster.local 6379 </dev/null >/dev/null 2>&1 || true
+                nc -w 2 backend.demo.svc.cluster.local 8080 </dev/null >/dev/null 2>&1 || true
+                i=$((i + 1))
+              done
+              echo "done: $COUNT connections to each destination"
+          env:
+            - name: COUNT
+              value: "100"
+            - name: SETTLE
+              value: "25"
+          resources:
+            requests: {cpu: 50m, memory: 32Mi}
+            limits: {memory: 64Mi}

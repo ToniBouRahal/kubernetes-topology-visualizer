@@ -91,10 +91,14 @@ spec:
             - |
               while true; do
                 redis-cli -h redis.data.svc.cluster.local -p 6379 PING >/dev/null 2>&1 || true
-                # External dependency. Produces a source -> EXTERNAL edge. In an offline
-                # cluster this connection never establishes, so the edge simply does not
-                # appear — it is not an error.
-                (echo > /dev/tcp/example.com/80) >/dev/null 2>&1 || true
+                # External dependency, producing a source -> EXTERNAL edge.
+                #
+                # `nc`, not `(echo > /dev/tcp/host/port)`. /dev/tcp is a BASH feature and this
+                # image runs BusyBox ash, where the redirection silently fails — so with `|| true`
+                # swallowing it, this line opened no connection at all and the documented
+                # backend -> EXTERNAL edge never appeared in 24h of running. The comment here
+                # used to blame an offline cluster, which made a real bug look expected.
+                nc -w 2 example.com 80 </dev/null >/dev/null 2>&1 || true
                 sleep 5
               done
           resources:

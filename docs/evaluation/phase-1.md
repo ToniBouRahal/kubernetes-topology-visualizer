@@ -21,7 +21,7 @@
 
 | # | Criterion (ADR-001 §7 Phase 1) | Result | Evidence |
 |---|---|---|---|
-| 1 | Real unmodified demo workloads produce captured IPv4 TCP events | **PASS** | 7,634 active opens across three agents; observed topology below |
+| 1 | Real unmodified demo workloads produce captured IPv4 TCP events | **PASS** | 7,634 active opens across three agents; observed topology below. *(See the Phase 5 addendum: this figure was inflated ~3x by cross-node observation on kind's shared kernel. The criterion — that events are captured at all — is unaffected.)* |
 | 2 | `Frontend → Backend` and `Backend → Redis` become service-level edges | **PASS** | Both present, resolved to `Service` destinations |
 | 3 | Multiple replicas collapse to one logical node and edge | **PASS** | 2 frontend and 2 backend replicas, split across both workers, produce ONE edge each |
 | 4 | External traffic becomes `source → EXTERNAL`, never one node per IP | **PASS** | Two `→ EXTERNAL` edges; no per-IP nodes anywhere |
@@ -165,3 +165,20 @@ None contradicts an ADR decision, so no new ADR is required (ADR-001 §12 instru
 
 Phase 2 — end-to-end live product. First task `P2-B1`: FastAPI layering and the app factory. The
 agent's `emitBatch` log sink is replaced by the bounded, retrying delivery queue in `P2-A17`.
+
+
+---
+
+## Addendum, 2026-08-22: the event counts on this page were inflated
+
+Phase 5 found that kind's "nodes" are containers sharing one host kernel, so
+`tracepoint/sock/inet_sock_set_state` fired for every network namespace and **each agent observed
+every connection in the cluster**. With three agents, every count on this page — including the
+7,634 active opens — is roughly threefold what actually occurred.
+
+The gate's criteria are unaffected: each asked whether something was captured, resolved, collapsed
+or excluded, and none depended on the magnitude of a count. The topology shown was correct; the
+volume was not.
+
+Fixed in `Resolver.OriginatesElsewhere` (ADR-002 §8). After the fix, 20 connections opened are
+reported as exactly 20. Full account in `phase-5.md`.

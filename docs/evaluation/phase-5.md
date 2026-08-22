@@ -79,3 +79,100 @@ migrations have run, and serving an empty graph from an unmigrated database woul
 failing loudly. Observed during this phase's rollout, where the backend restarted twice with
 `ConnectionError: could not connect to PostgreSQL at postgresql://topology:***@...` — note the
 credential is redacted, which is the ADR-001 §6 requirement working.
+
+---
+
+## P5-K7 / P5-K8 — the demo loop, and the counting defect it exposed
+
+**Status: DONE.** `make demo-up · demo-traffic · demo-change · demo-verify · demo-down`, plus
+`make images`. `demo-verify` runs **8** assertions through the API.
+
+Building a demo that asserts a *number* rather than a screenshot turned up three real defects.
+
+### 1. Connection counts were inflated ~3x on kind
+
+ADR-002 states the agent "sees only active opens originating on its own node". Nothing enforced it,
+and on kind it was false: the "nodes" are containers sharing **one host kernel**, and
+`inet_sock_set_state` fires for every network namespace on that kernel. Every agent observed every
+connection cluster-wide.
+
+The proof was unambiguous — `topology-control-plane` runs none of the demo workloads, yet its agent
+reported the identical complete edge set as both workers:
+
+```
+topology-worker            edges=5
+topology-worker2           edges=5
+topology-control-plane     edges=5     <- runs none of these workloads
+```
+
+A counted burst of 100 connections was reported as 297.
+
+Fixed by `Resolver.OriginatesElsewhere`, which drops an event whose source IP belongs to a pod
+running on another node. The check is one-sided on purpose: unresolvable IPs, host-network pods and
+node-local processes are all kept, because dropping the unidentifiable would trade a visible
+counting error for an invisible missing edge. Drops are exposed as
+`topology_agent_events_filtered_foreign_node_total` — zero on any cluster with per-node kernels,
+non-zero on kind, where it measured 304 of 1,136 raw events on one agent.
+
+After the fix the agents report *different* edge sets, as they should.
+
+### 2. Cold-start under-counting, found while verifying the fix
+
+With the inflation gone, a 20-connection burst reported 13. The cause is not the fix: a pod's first
+connections are unresolvable until the agent's informer has seen its IP, so a Job that starts and
+immediately connects loses its opening seconds.
+
+| scenario | opened | reported |
+|---|---:|---:|
+| before the node-scope fix | 100 | 297 |
+| after the fix, connecting immediately | 20 | 13 |
+| after the fix, 25s settle first | 20 | **20** |
+| `make demo-traffic` (settles, both edges) | 100 each | **100 each** |
+
+This is inherent to resolving identity from the API server rather than a defect, and it is why
+`demo/demo-traffic.yaml` settles before opening its burst. `demo-verify` now asserts the exact
+number, which is a far stronger claim than "traffic appears".
+
+### 3. The `backend -> EXTERNAL` edge had never once worked
+
+`demo-workloads.yaml` documented this edge and used `(echo > /dev/tcp/example.com/80)` to produce
+it. `/dev/tcp` is a **bash** feature and the container runs BusyBox `ash`, so with `|| true`
+swallowing the failure the line opened no connection at all. Over 24 hours of running, the only
+EXTERNAL edges came from `kindnet` and `kube-proxy`.
+
+The manifest's comment blamed an offline cluster — "the edge simply does not appear, it is not an
+error" — which made a real bug look expected. Replaced with `nc`; the edge appeared within 45
+seconds and `demo-verify` now reports it.
+
+### 4. The agent's advertised metrics port refused connections
+
+The chart declared `containerPort: 9090` and set `AGENT_METRICS_PORT`, but only one HTTP listener
+was ever started, on the health port. Anything scraping the advertised port got connection refused.
+A second listener now serves the same mux, so `/metrics` works on both.
+
+### `demo-verify` output
+
+```
+== T-7.10: the expected demo edges are present ==
+  PASS frontend -> backend TCP:8080 (872)
+  PASS backend  -> redis   TCP:6379 (475)
+  NOTE external edge: present
+== T-7.11: replicas collapse and identity holds ==
+  PASS no duplicate (kind, name, namespace) — replicas collapsed to one node each
+  PASS no ReplicaSet nodes (owner-reference walk reached the workload)
+== the counted burst is reported exactly ==
+  PASS demo-traffic -> redis:   opened 100, reported 100
+  PASS demo-traffic -> backend: opened 100, reported 100
+== the controlled change is visible ==
+  PASS reporter -> payment TCP:6380 (660)
+
+demo verification: 8 passed, 0 failed
+```
+
+### `demo-down` is surgical
+
+D-7.6 requires teardown that never deletes something it did not create. Nothing in it takes a
+wildcard: the release is removed by name in this project's namespace, demo namespaces are selected
+by the `topology-demo=true` label this project sets rather than by bare name — so a pre-existing
+`demo` namespace belonging to someone else is untouched — and the kind cluster is deleted by name,
+only if it exists.

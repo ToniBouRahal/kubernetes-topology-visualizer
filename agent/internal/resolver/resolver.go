@@ -71,6 +71,9 @@ type Caches interface {
 	// declared target port matches port.
 	ServicesForEndpoint(ip netip.Addr, port uint16) []ServiceRef
 
+	// NodeForPodIP reports which node runs the pod holding ip, if it is a known pod.
+	NodeForPodIP(ip netip.Addr) (string, bool)
+
 	// ResolveOwner walks one link of an ownership chain, e.g. ReplicaSet → Deployment.
 	ResolveOwner(namespace string, owner OwnerRef) (OwnerRef, bool)
 
@@ -105,6 +108,30 @@ func unresolved() Endpoint {
 
 func host() Endpoint {
 	return Endpoint{Class: ClassHost, Name: "host"}
+}
+
+// OriginatesElsewhere reports whether a connection from ip demonstrably started on a DIFFERENT
+// node than nodeName.
+//
+// ADR-002 states the agent "sees only active opens originating on its own node". On a real
+// cluster that holds for free: each node runs its own kernel, so its tracepoint only ever fires
+// for its own sockets. On kind it does NOT — the "nodes" are containers on one shared host
+// kernel, so every agent observes every connection cluster-wide and each one is counted once per
+// agent. With three nodes that inflates every connection_count threefold.
+//
+// The check is deliberately one-sided. It returns true ONLY when the source is a known pod known
+// to be running elsewhere; an unresolvable IP, a host-network pod, or a node-local process all
+// return false and are kept. Dropping what cannot be identified would trade a counting error for
+// a data-loss error, which is worse — an inflated count is visibly wrong, a missing edge is not.
+func (r *Resolver) OriginatesElsewhere(ip netip.Addr, nodeName string) bool {
+	if nodeName == "" {
+		return false
+	}
+	node, ok := r.caches.NodeForPodIP(ip)
+	if !ok {
+		return false
+	}
+	return node != nodeName
 }
 
 // ResolveSource identifies the initiating end of a connection.
