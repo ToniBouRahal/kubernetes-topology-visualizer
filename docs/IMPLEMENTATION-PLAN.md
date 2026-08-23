@@ -216,7 +216,7 @@ secrets or external IPs in media.
 - [x] **P5-K6** Complete chart: probes, limits, security contexts, NetworkPolicies — ADR-007 D-7.4, test T-7.6 · `verify-chart.sh` now runs **40** assertions (was 30). Added seccomp RuntimeDefault, container-level hardening for postgres, and `runAsGroup` (the frontend was running as gid 0). **Added the missing NetworkPolicy restricting PostgreSQL to the backend** — D-7.4 requires two and only one existed. Policies stay off by default until P5-K9 tests them under an enforcing CNI. T-7.6 passed live: readiness 503 within 5s of the database going away, recovered within 10s, **no restarts** and history intact.
 - [x] **P5-K7** Make targets: `demo-up`, `demo-traffic`, `demo-change`, `demo-verify`, `demo-down`, plus `images` — ADR-007 D-7.6, tests T-7.10, T-7.11 · `demo-verify` runs 8 assertions through the API, including **exact** burst counts (100 opened → 100 reported). `demo-down` is surgical: namespaces are selected by the `topology-demo` label, never by bare name.
 - [x] **P5-K8** Demo workloads across ≥2 namespaces + the controlled change scenario — ADR-007 D-7.7 · `demo`/`data` namespaces plus the reporter→payment change, all asserted. **Fixed: the documented `backend → EXTERNAL` edge had never once worked** — `/dev/tcp` is bash-only and the image runs BusyBox ash, so the line silently opened nothing.
-- [ ] **P5-F18** Layout cost at the stated ceiling — ADR-006 invariant. Measured: an unchanged poll is **0.3 ms** (signature cache), but a poll whose topology changed re-runs dagre at **~208 ms** and a first render costs **~245 ms**, against a 100 ms budget. Needs layout off the main thread or an incremental algorithm. Measured by `frontend/tests/layout.test.ts` ("scale ceiling").
+- [ ] **P5-F18** **OPEN — the largest gap between what this system claims and what it does.** ADR-001 §6 states a ceiling of 500 nodes / 2,000 edges with no UI freeze beyond 100 ms. The API meets it (p95 62 ms); the interface does not meet it at all. Measured in a real browser: 102 nodes / 307 edges paints in 1.06 s with 2 ms frames, but **172 nodes / 1,002 edges never painted within 250 s** and 500 nodes / 1,908 edges stopped responding entirely. It does not degrade past ~300 edges, it stops. An earlier `layout.test.ts` figure of 208 ms measured dagre alone and was measuring the wrong thing — the cost is React Flow building ~2,500 DOM elements. Closing it needs edge virtualisation, canvas rendering, or honouring the `truncated` flag the API already returns. Recorded in `limitations.md` §4.1.
 - [~] **P5-K9** Validation under an enforcing CNI — ADR-007 D-7.8, test T-7.12 · **NetworkPolicy half DONE**, on a throwaway Calico cluster (`kind/networkpolicy-cluster.yaml`): all pods Ready with policies enforced (kubelet probes not dropped), legitimate paths work, and an unlabelled pod is BLOCKED from 5432 and ingest. Default flipped to `true`. The run also exposed **false edges** — kubelet probes attributed to arbitrary hostNetwork pods (`etcd → coredns:8080`); fixed by checking node IPs before the pod cache. **Separate-kernel half NOT possible here** (kind shares one kernel; a kubeadm pair needs VMs this host cannot spare) — reproduction steps and the exact check are in `docs/evaluation/phase-5.md`.
 - [x] **P5-K10** Pin all images by digest — ADR-007 D-7.4 · all nine third-party images pinned by multi-arch manifest digest; `make verify-pinning` runs 16 assertions and is wired into CI. **Scan and triage done**: both project images now have **0 fixable** HIGH/CRITICAL findings (Go deps updated; pip removed from the backend runtime image), and the frontend dropped from 31 HIGH / 2 CRITICAL to 10 HIGH / 0 CRITICAL by moving nginx 1.27→1.29. `postgres:17-alpine` accepted with reasons. `make scan-images`.
 - [x] **P5-T12** Experiments — ADR-008 D-8.6 · `make experiments`. Memory **35 MiB** (target 256), throughput **1,325 events/s with zero kernel drops** (target 1,000), query **p95 62 ms at 500 nodes/2,000 edges** (target 500 ms). **UI target REJECTED with evidence**: unusable beyond ~300 edges — 172 nodes/1,002 edges never painted in 250 s.
@@ -236,17 +236,17 @@ secrets or external IPs in media.
 
 Tick only when the corresponding ADR-001 §9 item is demonstrable, not merely implemented.
 
-- [ ] Clean kind deployment from committed Helm and Make commands — P5-K7, P5-T16
-- [ ] Validated on multi-node kubeadm — P5-K9
-- [ ] Agent observes real TCP without app changes or sidecars — P1-T2
-- [ ] Pod churn does not fragment workload identity — P5-T12 / test T-8.6
-- [ ] Service destinations resolved via EndpointSlices and ports — P1-A10 / test T-2.6
-- [ ] PostgreSQL persists history across backend and database restarts — P3-T7 / tests T-5.9, T-5.10
-- [ ] Agent retries do not double-count — P3-D2 / tests T-5.2, T-5.3
+- [x] Clean kind deployment from committed Helm and Make commands — P5-K7, P5-T16 · cluster destroyed and rebuilt: `make demo-up` **8m01s**, exit 0, nothing hand-edited
+- [~] Validated on multi-node kubeadm — P5-K9 · **partial and stays partial.** NetworkPolicy enforcement verified under Calico; separate-kernel validation needs VMs this host cannot spare. Reproduction steps and the exact check in `limitations.md` §3.4
+- [x] Agent observes real TCP without app changes or sidecars — P1-T2 · demo workloads are stock `nginx`/`redis`/`busybox`; nothing instrumented, no sidecar injected
+- [x] Pod churn does not fragment workload identity — P5-T12 · `bash scripts/experiments.sh churn` run live: every backend pod replaced, **no new Pod-level node ids**
+- [x] Service destinations resolved via EndpointSlices and ports — P1-A10 / test T-2.6 · demo edges resolve to `Service/backend`, `Service/redis`, `Service/payment`, asserted by `demo-verify`
+- [x] PostgreSQL persists history across backend and database restarts — P3-T7 · at the Phase 5 gate **both** pods were deleted and the finished burst edges stayed at exactly 100 while live totals moved 502→736
+- [x] Agent retries do not double-count — P3-D2 · `test_replaying_a_batch_moves_no_counter` and `test_concurrent_replays_are_counted_once` against **both** repository adapters
 - [x] UI supports presets, custom history, comparison, filters, details — P3-F8, P3-F9, P4-F10
-- [ ] Controlled changes classified deterministically — P3-B9 / test T-4.6
+- [x] Controlled changes classified deterministically — P3-B9 / test T-4.6 · `test_output_is_ordered_by_the_edge_key`; `reporter → payment` appears as NEW in compare mode, labelled in words
 - [x] Byte volume **documented with evidence** (declined, not delivered) — P4-X1, P4-T9
-- [ ] Automated tests validate the expected demo topology — P2-T5 / tests T-8.1, T-8.3
-- [ ] Metrics and logs expose collection or delivery failure — P1-A7, P2-A21, P2-B7
-- [ ] Security and privacy constraints documented and enforced — P5-T18, P5-T19
-- [ ] Known limitations stated honestly in docs and report — P5-T14
+- [x] Automated tests validate the expected demo topology — P2-T5 · `make demo-verify` **8/8** through the API plus 12 Playwright E2E against the live cluster
+- [x] Metrics and logs expose collection or delivery failure — P1-A7, P2-A21, P2-B7 · kernel drops, unresolved endpoints, foreign-node filtering, queue depth and retry backoff all exposed; verified live by scaling the backend to zero
+- [x] Security and privacy constraints documented and enforced — P5-T18, P5-T19 · `make verify-privacy` (9 checks, verified to catch a planted credential); security review found and fixed an unbounded ingest batch
+- [x] Known limitations stated honestly in docs and report — P5-T14 · `docs/limitations.md`, every entry marked measured or argued, including the rejected UI scale target and the declined byte metric
