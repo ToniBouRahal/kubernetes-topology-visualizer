@@ -113,7 +113,12 @@ class IngestBatch(BaseModel):
     batch_id: str = Field(min_length=26, max_length=26, examples=["01J8ZQ9X7K4M2N6P8R3T5V7W9Y"])
     observed_at: AwareDatetime
     interval_seconds: Annotated[int, Field(ge=1, le=3600)]
-    edges: list[EdgeObservation]
+    # Bounded, deliberately. Ingestion is unauthenticated by design — ADR-001 puts authentication
+    # out of scope and relies on a NetworkPolicy to limit who can reach it — so an unbounded list
+    # meant one request could pin the backend for as long as it took to validate and insert.
+    # A real agent batch carries edges in the single or double digits; 10,000 is far above any
+    # legitimate interval while still refusing an obviously abusive one.
+    edges: Annotated[list[EdgeObservation], Field(max_length=10_000)]
 
     @model_validator(mode="after")
     def _check_batch_id(self) -> IngestBatch:

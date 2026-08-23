@@ -217,6 +217,19 @@ cluster contacted.
 
 ---
 
+### 4.4 Ingestion is unauthenticated — **by design, mitigated**
+
+Any workload that can reach the ingest port could submit fabricated topology data. ADR-001 places
+authentication and role-based access explicitly out of scope, so this is a scope boundary rather
+than an oversight — but it is worth stating plainly rather than leaving a reader to infer it.
+
+What limits it: a NetworkPolicy admits only agent and frontend pods, nothing is exposed outside the
+cluster by default, and the request body is bounded at 10,000 edges so a single call cannot pin the
+backend. On a cluster where any pod reaching the ingest port is an acceptable trust boundary, this
+is fine; where it is not, the NetworkPolicy is doing the work and must be enforced by the CNI.
+
+---
+
 ## 5. Not yet observed
 
 Honest gaps rather than known-bad behaviour.

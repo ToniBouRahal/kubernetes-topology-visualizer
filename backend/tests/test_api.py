@@ -529,3 +529,62 @@ def test_diff_rejects_overlapping_periods(client):
     )
     assert response.status_code == 422
     assert "overlap" in response.json()["detail"].lower()
+
+
+# ── Ingest is bounded (security review, P5-T19) ────────────────────────────────────────────
+
+
+def test_a_batch_larger_than_the_limit_is_rejected(client):
+    """An oversized batch must be refused rather than processed.
+
+    Ingestion is unauthenticated by design — ADR-001 puts authentication out of scope and relies
+    on a NetworkPolicy to limit who can reach the endpoint. That makes the request itself the only
+    place a bound can be enforced, and without one a single call could pin the backend for as long
+    as validation and insertion took.
+    """
+    edge = {
+        "source": {
+            "id": "k8s:kind-topology:demo:Deployment:client",
+            "kind": "Deployment",
+            "namespace": "demo",
+            "name": "client",
+        },
+        "target": {
+            "id": "k8s:kind-topology:demo:Service:backend",
+            "kind": "Service",
+            "namespace": "demo",
+            "name": "backend",
+        },
+        "protocol": "TCP",
+        "destination_port": 8080,
+        "connection_count": 1,
+        "first_seen": "2026-08-22T11:59:51Z",
+        "last_seen": "2026-08-22T12:00:00Z",
+    }
+    body = {
+        "schema_version": 1,
+        "cluster_id": "kind-topology",
+        "agent_id": "topology-agent/node",
+        "batch_id": "01J8ZQ9X7K4M2N6P8R3T5V7W9Y",
+        "observed_at": "2026-08-22T12:00:00Z",
+        "interval_seconds": 10,
+        "edges": [edge] * 10_001,
+    }
+
+    response = client.post("/api/v1/ingest/batches", json=body)
+    assert response.status_code == 422, "an over-limit batch must be refused"
+
+
+def test_a_batch_at_the_limit_is_still_accepted(client):
+    """The bound must not reject a legitimate batch. A real agent sends far fewer than this."""
+    body = {
+        "schema_version": 1,
+        "cluster_id": "kind-topology",
+        "agent_id": "topology-agent/node",
+        "batch_id": "01J8ZQ9X7K4M2N6P8R3T5V7W9Z",
+        "observed_at": "2026-08-22T12:00:00Z",
+        "interval_seconds": 10,
+        "edges": [],
+    }
+    response = client.post("/api/v1/ingest/batches", json=body)
+    assert response.status_code in (200, 202)

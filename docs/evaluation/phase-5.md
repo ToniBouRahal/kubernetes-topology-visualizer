@@ -554,3 +554,66 @@ Create it with:  make venv
 ```
 
 ADR-001 §7 asks for actionable failure messages; that applies to the build as much as to the runtime.
+
+---
+
+## P5-T19 — security review
+
+Reviewed by hand across the whole branch. `/security-review` could not run because this session's
+working directory is the ADR staging folder rather than the repository, so the areas below were
+worked through explicitly.
+
+### Clean
+
+| area | finding |
+|---|---|
+| committed credentials | none — `make verify-privacy`, 9 checks, verified to catch a planted one |
+| RBAC | `get`/`list`/`watch` only, on every resource. No wildcard; the chart asserts this |
+| privileged containers | exactly one (the agent), asserted by count so a second cannot appear unnoticed |
+| SQL injection | asyncpg with `$n` placeholders throughout; see below for the one dynamic query |
+| input validation | `extra="forbid"` on every model; ports bounded 1–65535; batch id length and ULID grammar enforced |
+| XSS | no `dangerouslySetInnerHTML`, `innerHTML`, `eval` or `new Function` anywhere in `src/` |
+| CORS | `allow_credentials=False`; origins come from configuration and the schema rejects a wildcard |
+| network exposure | ClusterIP only. No Ingress, LoadBalancer or NodePort in the default render |
+| error responses | no stack trace, DSN or credential — tested by `test_unhandled_error_hides_traceback_dsn_and_password_but_keeps_request_id` |
+| dependency CVEs | both project images carry **zero fixable** HIGH/CRITICAL findings |
+
+### The one dynamic query, examined
+
+`PostgresRepository` builds the graph query's `WHERE` clause dynamically. Only `len(params)` — an
+integer — is interpolated, to produce placeholder numbers:
+
+```python
+conditions.append(f"(s.namespace = ANY(${len(params)}) OR t.namespace = ANY(${len(params)}))")
+...
+rows = await conn.fetch(sql, *params)
+```
+
+Every user-controlled value goes into `params` and is bound. **Not injectable.** One behavioural
+note that is not a vulnerability: the `query` filter is bound as `%value%`, so a `%` or `_` typed by
+a user acts as a LIKE wildcard.
+
+### Finding: ingestion accepted an unbounded batch — fixed
+
+`IngestBatch.edges` had no upper bound. Ingestion is unauthenticated **by design** — ADR-001 lists
+authentication as out of scope and relies on a NetworkPolicy to limit who can reach the endpoint —
+which makes the request body the only place a bound can be enforced. Without one, a single call
+could pin the backend for as long as validation and insertion took.
+
+Now `Field(max_length=10_000)`. A real agent batch carries edges in the single or double digits, so
+the limit is far above anything legitimate while refusing an obviously abusive request. Two tests
+cover it: an over-limit batch is refused with 422, and a normal batch still succeeds.
+
+The contract test caught the resulting schema change immediately — `maxItems: 10000` — which is the
+guard working as intended. Contract regenerated and all three consumers re-verified.
+
+### Accepted, with the reasoning stated
+
+**Ingestion is unauthenticated.** Any workload that can reach the ingest port could submit
+fabricated topology. This is a documented scope boundary, not an oversight, and the mitigations are
+real: a NetworkPolicy admitting only agent and frontend pods, no external exposure by default, and
+a bounded request body. It is recorded in `limitations.md` so a reader is not left to infer it.
+
+**The agent is privileged.** Unavoidable — loading a BPF program requires CAP_BPF and CAP_PERFMON.
+Bounded by read-only RBAC, no payload capture, no database credentials, and an asserted count of
+exactly one privileged container.

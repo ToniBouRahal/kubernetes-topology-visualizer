@@ -669,6 +669,7 @@
             "items": {
               "$ref": "#/components/schemas/EdgeObservation"
             },
+            "maxItems": 10000,
             "title": "Edges",
             "type": "array"
           },
