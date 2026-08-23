@@ -192,6 +192,10 @@ image-backend: ## Build the backend image and side-load it into kind
 
 # ── Helm / Kubernetes (ADR-007) ─────────────────────────────────────────────────────────────
 
+.PHONY: verify-privacy
+verify-privacy: ## Screenshots, log defaults and committed credentials (P5-T18, ADR-008 D-8.7)
+	@bash scripts/verify-privacy.sh
+
 .PHONY: experiments
 experiments: ## Measure every ADR-001 §6 performance target and report met/missed (P5-T12)
 	@bash scripts/experiments.sh all

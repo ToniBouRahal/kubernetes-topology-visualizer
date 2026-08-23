@@ -123,4 +123,4 @@ Status: ✅ verified · 🔄 in progress · ⬜ not started · 📄 documented l
 | Retention bounds comparison range | ADR-005 §8 | `limitations.md` | 📄 planned |
 | Runtime-only topology misses silent deps | ADR-001 §10 | `limitations.md` | 📄 planned |
 | Privileged DaemonSet required | ADR-001 §5.7 | `limitations.md` | 📄 planned |
-| No screenshots expose secrets or IPs | ADR-001 §9 | all five committed screenshots inspected; committed text scanned for DSNs/keys — `evaluation/phase-5.md` P5-T18 | ✅ |
+| No screenshots expose secrets or IPs | ADR-001 §9 | `make verify-privacy` — 5 images OCR'd for public IPs/DSNs/credentials, all clean; verified to catch a planted credential | ✅ |
