@@ -70,13 +70,15 @@ else
 fi
 
 # Only TRACKED files. Scanning the working tree also reads backend/.venv and node_modules, where
-# third-party docstrings contain `postgres://user:pass@host` as documentation — a false positive
+# third-party docstrings contain example connection strings as documentation — a false positive
 # that would train someone to ignore this check.
 # Only files that would SHIP a credential. Three categories legitimately contain a DSN-with-password
 # and are excluded by path, each for a stated reason rather than to make the check quiet:
 #
-#   tests/       - `postgresql://admin:super-secret-password@db/topology` is the INPUT to the test
+#   tests/       - a DSN carrying a password is the INPUT to the test
 #                  proving that value never reaches a response. Removing it would remove the proof.
+#                  (Written without literal DSN syntax on purpose: this file is scanned too, and a
+#                  checker that has to exempt itself is one that could hide a real leak later.)
 #   templates/   - Helm templates build the DSN from values into a Secret; the password is a
 #                  template reference, which is exactly the right design.
 #   docs/        - the evaluation records discuss the above.

@@ -1,0 +1,29 @@
+# Pinned toolchain for compiling the BPF object and generating its Go bindings.
+#
+# Generation runs here rather than on the host because the host has clang 14 and no libbpf
+# headers. Pinning the builder also keeps the generated bindings reproducible across machines,
+# which matters for the Phase 5 "clean machine" criterion.
+#
+# Used by `make generate`. See ADR-002 §4.
+
+FROM golang:1.26-bookworm@sha256:6ef6e30f0ea5c384f6d111cf856e024e3086bbdcb1779da3f3b3fbba0aea53d2
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        clang \
+        llvm \
+        libbpf-dev \
+        linux-libc-dev \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    # clang -target bpf does not search the multiarch include directory, so linux/types.h
+    # fails to resolve asm/types.h. This symlink is the fix, carried over from the reference
+    # prototype where it was established by trial (ADR-002 §2).
+    && ln -sf /usr/include/x86_64-linux-gnu/asm /usr/include/asm
+
+# Writable caches for a non-root `docker run --user`, so generated files land owned by the
+# invoking user rather than root.
+ENV GOCACHE=/tmp/gocache \
+    GOMODCACHE=/tmp/gomodcache \
+    GOFLAGS=-buildvcs=false
+
+WORKDIR /build

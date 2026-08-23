@@ -23,7 +23,11 @@ venv/
 .mypy_cache/
 *.egg-info/
 dist/
-build/
+# Anchored to the repo root: a bare `build/` also matched agent/build/, which silently kept
+# Dockerfile.bpf-builder out of every clone — so `make generate` could not run from a fresh
+# checkout at all. Python build artefacts only appear at the top level or under backend/.
+/build/
+/backend/build/
 
 # ── Node / frontend ──
 node_modules/
