@@ -56,6 +56,35 @@ export function ErrorBanner({ message, onRetry }: { message: string; onRetry: ()
   );
 }
 
+/**
+ * Shown when the graph was too large to draw.
+ *
+ * Past roughly 300 edges this canvas stops responding rather than slowing down
+ * (docs/limitations.md §4.1), so the alternative to this banner is a locked tab. Saying what was
+ * left out, and that it was the quietest traffic, is the honest version of a limitation that
+ * cannot yet be engineered away.
+ */
+export function RenderBudgetBanner({
+  shownEdges,
+  totalEdges,
+  hiddenNodes,
+}: {
+  shownEdges: number;
+  totalEdges: number;
+  hiddenNodes: number;
+}) {
+  return (
+    <div className="banner banner--warn" role="status">
+      <span className="banner__text">
+        Showing the {shownEdges.toLocaleString()} busiest of {totalEdges.toLocaleString()} edges
+        {hiddenNodes > 0 && <> and hiding {hiddenNodes.toLocaleString()} workloads</>}. Drawing them
+        all would stop the browser responding. Narrow by namespace, search for a workload, or
+        shorten the window.
+      </span>
+    </div>
+  );
+}
+
 export function TruncationBanner({ reason }: { reason: string }) {
   return (
     <div className="banner banner--warn" role="status">

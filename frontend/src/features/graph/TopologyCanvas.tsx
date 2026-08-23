@@ -8,9 +8,10 @@ import {
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import type { GraphEdge, GraphNode, GraphResponse } from "../../api/types";
+import { applyRenderBudget } from "./renderBudget";
 import { TopologyNode, type TopologyNodeData } from "./TopologyNode";
 import { edgeWidth, layoutGraph, type PositionCache } from "./layout";
 
@@ -20,22 +21,29 @@ interface Props {
   graph: GraphResponse;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  /** Told what was dropped, so the banner can say so outside the canvas. */
+  onBudget?: (capped: { shownEdges: number; totalEdges: number; hiddenNodes: number } | null) => void;
 }
 
-export function TopologyCanvas({ graph, selectedId, onSelect }: Props) {
+export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props) {
   // Positions survive across polls; see layoutGraph for why this matters.
   const cache = useRef<{ positions: PositionCache; signature: string } | undefined>(undefined);
 
-  const { nodes, edges } = useMemo(() => {
-    const result = layoutGraph(graph.nodes, graph.edges, cache.current);
+  const { nodes, edges, capped } = useMemo(() => {
+    // Cap BEFORE layout. Past roughly 300 edges React Flow stops responding altogether
+    // (docs/limitations.md §4.1), and laying out a graph that will never paint wastes the work
+    // twice over.
+    const budget = applyRenderBudget(graph.nodes, graph.edges);
+
+    const result = layoutGraph(budget.nodes, budget.edges, cache.current);
     cache.current = { positions: result.positions, signature: result.signature };
 
-    const maxConnections = graph.edges.reduce(
+    const maxConnections = budget.edges.reduce(
       (max: number, e: GraphEdge) => Math.max(max, e.connection_count),
       0,
     );
 
-    const flowNodes: Node<TopologyNodeData>[] = graph.nodes.map((node: GraphNode) => ({
+    const flowNodes: Node<TopologyNodeData>[] = budget.nodes.map((node: GraphNode) => ({
       id: node.id,
       type: "topology",
       position: result.positions.get(node.id) ?? { x: 0, y: 0 },
@@ -43,7 +51,7 @@ export function TopologyCanvas({ graph, selectedId, onSelect }: Props) {
       draggable: true,
     }));
 
-    const flowEdges: Edge[] = graph.edges.map((edge: GraphEdge) => {
+    const flowEdges: Edge[] = budget.edges.map((edge: GraphEdge) => {
       const touchesSelection =
         selectedId !== null && (edge.source_id === selectedId || edge.target_id === selectedId);
 
@@ -78,8 +86,14 @@ export function TopologyCanvas({ graph, selectedId, onSelect }: Props) {
       };
     });
 
-    return { nodes: flowNodes, edges: flowEdges };
+    return { nodes: flowNodes, edges: flowEdges, capped: budget.capped };
   }, [graph, selectedId]);
+
+  // Reported through an effect, not during render: calling a parent's setState mid-render is what
+  // React warns about, and the banner lives outside the canvas so it is not clipped by the pane.
+  useEffect(() => {
+    onBudget?.(capped);
+  }, [capped, onBudget]);
 
   return (
     <ReactFlow

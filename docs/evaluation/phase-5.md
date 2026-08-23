@@ -687,3 +687,47 @@ design decision that a backend which cannot reach its database at startup exits 
 unready, racing PostgreSQL's own startup. Kubernetes' restart backoff resolves it. An init container
 waiting for the database would remove the noise; it is recorded rather than changed, because altering
 a documented decision at the gate is worse than noting its cost.
+
+---
+
+## P5-F18 — the UI scale limitation, mitigated
+
+The gate recorded the interface as unusable past roughly 300 edges, with the API meeting its target
+comfortably. Of the three ways to close that — edge virtualisation, canvas rendering, or honouring
+a render budget — the third is the cheapest and was implemented.
+
+`applyRenderBudget` caps the canvas at **400 edges**, chosen from the measurements rather than
+guessed: 307 edges rendered comfortably, 1,002 never painted. It keeps the **busiest** edges, not an
+arbitrary slice, because a subset chosen by sort order would look like a complete graph while hiding
+whichever relationships happened to fall off the end. Nodes left with no remaining edge are dropped
+too — a node is only in the graph because an edge put it there.
+
+Measured on the same 500-node / 1,939-edge graph that previously hung:
+
+| | before | after |
+|---|---|---|
+| time to first paint | **never** (>379 s, page stopped responding) | **1,198 ms** |
+| frame response | unresponsive | **16 ms** |
+| rendered | nothing | 400 edges, 388 nodes |
+
+The banner states exactly what was dropped:
+
+> Showing the 400 busiest of 1,939 edges and hiding 112 workloads. Drawing them all would stop the
+> browser responding. Narrow by namespace, search for a workload, or shorten the window.
+
+![Capped render with both banners](./phase-5-render-budget.png)
+
+### A layout defect this exposed
+
+Adding a second banner revealed that every `.banner` was `position: absolute` at the same `top`.
+Only one had ever been shown at a time, so they had never collided; with two, the render-budget
+banner drew straight over the backend's truncation notice and hid it. Banners now stack in a flex
+column. The bug predated this change and would have surfaced the first time an error and a
+truncation happened together.
+
+### Why it stays open
+
+At 400 edges the graph is **responsive but not readable** — a dense column of overlapping labels.
+The cap converts a hung tab into a navigable interface, which is worth having and is what the gate
+needed, but it is not the same as making a large topology legible. That still needs edge
+virtualisation or canvas rendering, and `P5-F18` remains open to say so.

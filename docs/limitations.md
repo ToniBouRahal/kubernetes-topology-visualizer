@@ -198,9 +198,21 @@ treated that as the limitation. It was measuring the wrong thing: dagre is not t
 cost is React Flow rendering roughly 2,500 DOM elements, each edge carrying a text label — which no
 unit test on the layout function could have exposed.
 
-Tracked as `P5-F18`. Closing it means edge virtualisation, canvas rendering rather than DOM, or
-refusing to render past a threshold and saying so — the API already returns a `truncated` flag the
-interface could act on, which is the cheapest of the three.
+**Mitigated, not solved.** The canvas now refuses to draw more than **400 edges**, keeping the
+busiest and saying what it left out:
+
+> Showing the 400 busiest of 1,939 edges and hiding 112 workloads. Drawing them all would stop the
+> browser responding. Narrow by namespace, search for a workload, or shorten the window.
+
+The same 500-node / 1,939-edge graph that previously never painted within 379 seconds now paints in
+**1.2 s** with **16 ms** frame response. Busiest-first rather than an arbitrary slice, because a
+subset chosen by sort order would look like a complete graph while hiding whichever relationships
+happened to fall off the end.
+
+What this does **not** fix: at 400 edges the graph is responsive but still visually dense — a
+reader gets a usable interface, not a readable diagram. The cap converts a hung tab into a
+navigable one, which is worth having, but the real answer is still edge virtualisation or canvas
+rendering rather than a DOM element per edge. `P5-F18` stays open for that reason.
 
 ### 4.2 Comparing unequal windows produces spurious CHANGED — **measured**
 

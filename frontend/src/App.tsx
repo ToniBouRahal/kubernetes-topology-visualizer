@@ -4,7 +4,13 @@ import { fetchNamespaces, fetchNodeDetail } from "./api/client";
 import type { GraphQuery, NodeDetail, WindowPreset } from "./api/types";
 import { WINDOW_PRESETS } from "./api/types";
 import { Header, type Mode } from "./components/Header";
-import { EmptyState, ErrorBanner, LoadingState, TruncationBanner } from "./components/States";
+import {
+  EmptyState,
+  ErrorBanner,
+  LoadingState,
+  RenderBudgetBanner,
+  TruncationBanner,
+} from "./components/States";
 import { WindowStrip } from "./components/WindowStrip";
 import { DetailsPanel } from "./features/details/DetailsPanel";
 import { FilterPanel } from "./features/filters/FilterPanel";
@@ -25,6 +31,12 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [includeExternal, setIncludeExternal] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // What the canvas had to leave out to stay responsive; null when the whole graph fits.
+  const [renderCap, setRenderCap] = useState<{
+    shownEdges: number;
+    totalEdges: number;
+    hiddenNodes: number;
+  } | null>(null);
   const [detail, setDetail] = useState<NodeDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [compareSpan, setCompareSpan] = useState<CompareSpanId>("5m");
@@ -219,15 +231,25 @@ export default function App() {
             </>
           ) : (
           <>
-          {error && <ErrorBanner message={error} onRetry={refresh} />}
-          {graph?.summary.truncated && graph.summary.truncation_reason && (
-            <TruncationBanner reason={graph.summary.truncation_reason} />
+          {(error || (graph?.summary.truncated && graph.summary.truncation_reason) || renderCap) && (
+            <div className="banner-stack">
+              {error && <ErrorBanner message={error} onRetry={refresh} />}
+              {graph?.summary.truncated && graph.summary.truncation_reason && (
+                <TruncationBanner reason={graph.summary.truncation_reason} />
+              )}
+              {renderCap && <RenderBudgetBanner {...renderCap} />}
+            </div>
           )}
 
           {initialLoading && <LoadingState />}
           {!initialLoading && isEmpty && <EmptyState windowLabel={preset} />}
           {hasGraph && !isEmpty && (
-            <TopologyCanvas graph={graph} selectedId={selectedId} onSelect={setSelectedId} />
+            <TopologyCanvas
+              graph={graph}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onBudget={setRenderCap}
+            />
           )}
           </>
           )}
