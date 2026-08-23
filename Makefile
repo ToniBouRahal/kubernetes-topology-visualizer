@@ -130,13 +130,23 @@ spike-bytes-docker: bpf-builder ## Same experiment in a privileged container —
 venv: ## Create the backend virtualenv
 	cd $(BACKEND) && uv venv --python $(PYTHON_VERSION) && uv pip install -e ".[dev]"
 
+# Every target below needs the virtualenv. Without this guard a clean checkout gets
+# "make: *** [contracts-check] Error 127" — the shell's "command not found", which says nothing
+# about what to do. ADR-001 §7 asks for actionable failures; that applies to the build too.
+.PHONY: require-venv
+require-venv:
+	@test -x $(VENV_PY) || { \
+	  echo "The backend virtualenv is missing: $(VENV_PY)"; \
+	  echo "Create it with:  make venv"; \
+	  exit 1; }
+
 .PHONY: lint-python
-lint-python: ## ruff check + format check
+lint-python: require-venv ## ruff check + format check
 	cd $(BACKEND) && $(VENV_PY) -m ruff check .
 	cd $(BACKEND) && $(VENV_PY) -m ruff format --check .
 
 .PHONY: test-python
-test-python: ## Backend unit + contract tests (PostgreSQL half skips without a database)
+test-python: require-venv ## Backend unit + contract tests (PostgreSQL half skips without a database)
 	cd $(BACKEND) && $(VENV_PY) -m pytest -q
 
 TEST_PG_DSN ?= postgresql://postgres:test@localhost:5433/topology
@@ -156,11 +166,11 @@ test-db-down: ## Stop the test database
 # ── Contracts (ADR-003) ─────────────────────────────────────────────────────────────────────
 
 .PHONY: contracts
-contracts: ## Regenerate contracts/openapi.json from the FastAPI app
+contracts: require-venv ## Regenerate contracts/openapi.json from the FastAPI app
 	$(VENV_PY) scripts/export_openapi.py
 
 .PHONY: contracts-check
-contracts-check: ## Fail if the committed contract drifts from the app (T-3.6)
+contracts-check: require-venv ## Fail if the committed contract drifts from the app (T-3.6)
 	$(VENV_PY) scripts/export_openapi.py --check
 
 # ── Frontend ────────────────────────────────────────────────────────────────────────────────

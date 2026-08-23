@@ -512,3 +512,45 @@ workloads, which reissues tokens against the corrected clock.
 
 Worth recording because the symptom (`gaierror` connecting to PostgreSQL) points nowhere near the
 cause, and because it is a plausible thing to hit on a laptop that suspends.
+
+---
+
+## P5-T16 — clean checkout
+
+**Status: DONE.** The repository was cloned to a fresh directory with no virtualenv, no
+`node_modules`, no build cache, and everything built and tested from committed instructions only.
+
+| step | result |
+|---|---|
+| `go build ./...` + `go test ./...` | clean — no clang needed, because the bpf2go bindings and object are committed deliberately |
+| `make venv` + `make test-python` | 139 passed, 21 skipped |
+| `npm ci` + typecheck, lint, test, build | clean, 55 tests |
+| `make lint-helm` | 40 assertions |
+| `verify-image-pinning.sh` | 16 assertions |
+| `verify-privacy.sh` | 9 checks |
+| `docker build` for all three images | all build |
+
+### It found three defects that only exist on a clean checkout
+
+**The BPF builder Dockerfile had never been committed.** `.gitignore` carried a bare `build/` for
+Python artefacts, which also matches `agent/build/` — so `Dockerfile.bpf-builder` was silently
+excluded from every clone. A fresh checkout could not run `make generate` at all. The committed
+bindings mean nobody normally needs to, which is exactly why this stayed invisible: it only breaks
+for someone changing the BPF C source. The rule is now anchored to the paths it was meant for.
+
+**`verify-privacy.sh` failed on itself.** Its explanatory comments contained literal example DSNs,
+so the check flagged its own source. It passed locally only because `git ls-files` was reading the
+pre-edit version — the failure appeared the moment the file was committed. Fixed by removing the
+literal syntax rather than exempting the file: a checker that has to exempt itself is one that could
+hide a real leak later. Re-verified that it still catches a planted credential.
+
+**`make contracts-check` on a venv-less checkout printed `Error 127`.** That is the shell's "command
+not found" and says nothing about what to do. Every target that shells into the virtualenv now
+depends on a `require-venv` guard:
+
+```
+The backend virtualenv is missing: …/backend/.venv/bin/python
+Create it with:  make venv
+```
+
+ADR-001 §7 asks for actionable failure messages; that applies to the build as much as to the runtime.
