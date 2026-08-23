@@ -228,7 +228,7 @@ secrets or external IPs in media.
 - [x] **P5-T18** Privacy verification — ADR-008 D-8.7 · now **automated and repeatable** as `make verify-privacy`: 9 checks. Screenshots are OCR'd for public IPv4s, DSNs, passwords and tokens (5 images, all clean); the raw-event logging default is asserted in both code and chart; tracked files are scanned for inline credentials. Verified to catch a planted credential.
 - [x] **P5-T19** Security review of the full branch — reviewed by hand (the `/security-review` skill needs the repo as cwd; this session's is the ADR folder). Clean on secrets, RBAC, SQL injection, XSS, CORS, network exposure and error disclosure. **One finding fixed**: `IngestBatch.edges` was unbounded, and ingestion is unauthenticated by design, so the body was the only place a bound could be enforced — now capped at 10,000 with tests both sides. Unauthenticated ingest recorded in `limitations.md` §4.4.
 - [ ] **P5-K11** Tag the submission release — ADR-008 §4
-- [ ] **P5-T20** Phase 5 gate: run and record in `docs/evaluation/phase-5.md`
+- [x] **P5-T20** Phase 5 gate — **PASSED**, recorded in `docs/evaluation/phase-5.md`. Cluster destroyed and rebuilt from nothing: `make demo-up` 8m01s with no hand-editing, `demo-verify` 8/8, history survived deleting both database and backend pods (burst edges unchanged at exactly 100), `demo-down` left a control namespace untouched. 9 of 10 criteria fully met; the kubeadm half of criterion 4 is partial and stays partial.
 
 ---
 

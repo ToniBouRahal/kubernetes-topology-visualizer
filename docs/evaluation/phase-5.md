@@ -617,3 +617,73 @@ a bounded request body. It is recorded in `limitations.md` so a reader is not le
 **The agent is privileged.** Unavoidable — loading a BPF program requires CAP_BPF and CAP_PERFMON.
 Bounded by read-only RBAC, no payload capture, no database credentials, and an asserted count of
 exactly one privileged container.
+
+---
+
+## P5-T20 — Phase 5 gate
+
+**Verdict: PASSED, with one criterion partially met and recorded as such.**
+
+Run on 2026-08-23 against a cluster **destroyed and rebuilt from nothing** for this gate, so nothing
+below depends on accumulated state.
+
+| # | Criterion (ADR-001 §7 Phase 5) | Result | Evidence |
+|---|---|---|---|
+| 1 | A clean machine runs `make demo-up` without hand-editing manifests | **PASS** | full teardown then `make demo-up` in **8m 01s**, exit 0, nothing edited |
+| 2 | `demo-traffic` and `demo-change` produce the expected topology and diff | **PASS** | `demo-verify` **8/8**, including exact burst counts and the `reporter → payment` change |
+| 3 | Deleting and recreating backend or database pods preserves history | **PASS** | both pods deleted; the finished burst edges stayed at exactly **100**, see below |
+| 4 | The agent reports from every node, in kind **and** kubeadm | **PARTIAL** | kind: 3/3 nodes. kubeadm: not possible on this host — §3.4 of `limitations.md` |
+| 5 | `demo-down` removes only resources this project created | **PASS** | a control namespace survived the label-scoped deletion, see below |
+| 6 | Every ADR requirement maps to a test, demo step, or documented limitation | **PASS** | 73 verified, 3 documented limitations, 0 unresolved |
+| 7 | Measured results support or explicitly reject each performance target | **PASS** | 3 met with headroom, 1 rejected with evidence |
+| 8 | CI passes from a clean checkout; the demo runs from committed instructions | **PASS** | fresh clone built and tested; found 3 defects, all fixed |
+| 9 | Failure modes have actionable messages | **PASS** | every scenario triggered live; one was not actionable and was fixed |
+| 10 | Screenshots expose no secrets or individual external IPs | **PASS** | `make verify-privacy`, 5 images OCR'd |
+
+### How criterion 3 was actually tested
+
+Comparing totals before and after a restart proves nothing: live traffic continues, so a total that
+grows is indistinguishable from one that double-counted. The test pins something that **cannot
+legitimately grow** — the `demo-traffic` Job had already finished, so its edges are fixed:
+
+```
+before   demo-traffic → backend:8080 = 100      demo-traffic → redis:6379 = 100
+         (delete BOTH the postgresql-0 pod and the backend pod)
+after    demo-traffic → backend:8080 = 100      demo-traffic → redis:6379 = 100
+```
+
+Unchanged, while the overall total moved 502 → 736 from ongoing traffic. History survived both pods
+being replaced, with no inflation.
+
+### How criterion 5 was actually tested
+
+A namespace the project did not create was added first, as a control:
+
+```
+kubectl create namespace not-ours
+helm uninstall topology -n topology          → release removed
+kubectl delete namespace -l topology-demo=true → deleted: data, demo
+kubectl get ns not-ours                       → Active
+```
+
+The demo namespaces are selected by the label this project sets, never by bare name, so a
+pre-existing `demo` namespace belonging to someone else is untouched. The kind cluster is then
+deleted by name — correct, because this project created it.
+
+### Criterion 4 is partial, and stays partial
+
+kind's nodes share one host kernel, so no kind-based cluster can validate separate-kernel operation,
+and a kubeadm pair needs VMs this host cannot spare. The NetworkPolicy half of that validation *was*
+completed under Calico. The remainder is an argument supported by unit tests rather than a
+measurement, and `limitations.md` §3.4 says so along with the exact reproduction steps.
+
+Ticking this criterion would have been the easy thing and the wrong one.
+
+### One observation from the fresh install
+
+The backend restarted **5 times** during `make demo-up` before settling. It is not a failure —
+`helm --wait` completed and the stack is healthy — but it is noisy. The cause is the documented
+design decision that a backend which cannot reach its database at startup exits rather than starting
+unready, racing PostgreSQL's own startup. Kubernetes' restart backoff resolves it. An init container
+waiting for the database would remove the noise; it is recorded rather than changed, because altering
+a documented decision at the gate is worse than noting its cost.
