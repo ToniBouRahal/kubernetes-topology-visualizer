@@ -248,7 +248,13 @@ test passes.
 ### Phase 3 — history and comparison
 
 - [x] **P3-F9** History picker: presets + custom range; polling stops in history mode — D-6.5 · test T-6.4
-- [x] **P3-F10** Compare mode: baseline/current pickers, `include_unchanged` toggle — D-6.5
+- [x] **P3-F10** Compare mode: baseline/current pickers, `include_unchanged` toggle — D-6.5 ·
+  the pickers this decision asked for shipped as preset spans only ("last 5m vs previous 5m"),
+  which cannot express two arbitrary moments. **Two points in time** now sits beside the presets:
+  a chosen moment for each period and ONE shared length, so the two sides stay comparable —
+  connection counts are totals rather than rates, and an unequal pair would make the longer period
+  win every edge. Overlap is rejected in the panel rather than by a 422, and a rejected pair is
+  not requested at all
 - [x] **P3-F11** Diff styling: stroke pattern + text badge per class, readable without colour — D-6.3 · test T-6.5
 
 ### Phase 4 — completeness and accessibility

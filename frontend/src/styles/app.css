@@ -329,6 +329,21 @@
 .compare__row { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
 .compare__row select { flex: 1; min-width: 120px; }
 
+/* Two chosen moments. Stacked rather than side by side: the panel is narrow, and a
+   datetime-local control cannot shrink below its own text without clipping the date. */
+.compare__moments { display: flex; flex-direction: column; gap: var(--s-2); }
+.compare__moment { display: flex; flex-direction: column; gap: 2px; }
+.compare__moment input { width: 100%; }
+
+/* A rejected pair of periods says why, next to the inputs that caused it. */
+.compare__problem {
+  margin: 0;
+  font-size: var(--step--1);
+  color: var(--danger);
+  border-left: 2px solid currentColor;
+  padding-left: var(--s-2);
+}
+
 /* The compared periods, stated rather than implied. */
 .compare__periods {
   margin: 0;

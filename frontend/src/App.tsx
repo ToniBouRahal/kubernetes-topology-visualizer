@@ -18,8 +18,14 @@ import { CompareCanvas } from "./features/graph/CompareCanvas";
 import { NodeList } from "./features/graph/NodeList";
 import { TopologyCanvas } from "./features/graph/TopologyCanvas";
 import { useDiff } from "./features/graph/useDiff";
-import { CompareControls } from "./features/timerange/CompareControls";
-import { adjacentPeriods, type CompareSpanId } from "./features/timerange/periods";
+import { CompareControls, type CompareMode } from "./features/timerange/CompareControls";
+import {
+  adjacentPeriods,
+  periodsFromMoments,
+  periodsProblem,
+  toLocalInputValue,
+  type CompareSpanId,
+} from "./features/timerange/periods";
 import { useGraph } from "./features/graph/useGraph";
 
 export default function App() {
@@ -40,6 +46,15 @@ export default function App() {
   const [detail, setDetail] = useState<NodeDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [compareSpan, setCompareSpan] = useState<CompareSpanId>("5m");
+  const [compareMode, setCompareMode] = useState<CompareMode>("recent");
+  // datetime-local values, in the viewer's own wall-clock. Seeded an hour and two hours back so
+  // the inputs open on something valid and non-overlapping rather than empty.
+  const [baselineStart, setBaselineStart] = useState(() =>
+    toLocalInputValue(new Date(Date.now() - 2 * 60 * 60_000)),
+  );
+  const [currentStart, setCurrentStart] = useState(() =>
+    toLocalInputValue(new Date(Date.now() - 60 * 60_000)),
+  );
   const [includeUnchanged, setIncludeUnchanged] = useState(false);
   // Recomputed only when the span or a manual refresh changes it, so the compared periods stay
   // FIXED while the user reads them. Recomputing on every render would make the answer move.
@@ -60,9 +75,13 @@ export default function App() {
     paused: paused || mode !== "live",
   });
 
+  // A pair of periods the backend would reject is not requested at all. Letting it through would
+  // spend a round trip to be told what is already known locally, and would leave the PREVIOUS
+  // comparison's counts on screen beside the error — numbers that no longer describe the periods
+  // in the inputs, which is worse than showing none.
   const diffQuery = useMemo(
     () =>
-      mode === "compare"
+      mode === "compare" && periodsProblem(periods) === null
         ? {
             ...periods,
             namespace: selectedNamespaces.length ? selectedNamespaces : undefined,
@@ -91,11 +110,58 @@ export default function App() {
     return merged;
   }, [graph, comparedNodes]);
 
-  const changeCompareSpan = useCallback((id: CompareSpanId) => {
-    setCompareSpan(id);
-    const minutes = { "5m": 5, "15m": 15, "1h": 60, "6h": 360 }[id];
-    setPeriods(adjacentPeriods(minutes));
-  }, []);
+  const spanMinutes = useCallback(
+    (id: CompareSpanId) => ({ "5m": 5, "15m": 15, "1h": 60, "6h": 360 })[id],
+    [],
+  );
+
+  // Recomputing the periods is always an explicit act — a span change, a moment change, or the
+  // Compare button. The windows a reader is looking at must not move underneath them.
+  const recomputePeriods = useCallback(
+    (mode: CompareMode, id: CompareSpanId, baseline: string, current: string) => {
+      const minutes = spanMinutes(id);
+      if (mode === "recent") {
+        setPeriods(adjacentPeriods(minutes));
+        return;
+      }
+      // `new Date("YYYY-MM-DDTHH:mm")` parses as LOCAL time, which is what the input offers and
+      // what the viewer meant; toISOString then converts to the UTC the contract requires.
+      setPeriods(periodsFromMoments(new Date(baseline), new Date(current), minutes));
+    },
+    [spanMinutes],
+  );
+
+  const changeCompareMode = useCallback(
+    (next: CompareMode) => {
+      setCompareMode(next);
+      recomputePeriods(next, compareSpan, baselineStart, currentStart);
+    },
+    [compareSpan, baselineStart, currentStart, recomputePeriods],
+  );
+
+  const changeCompareSpan = useCallback(
+    (id: CompareSpanId) => {
+      setCompareSpan(id);
+      recomputePeriods(compareMode, id, baselineStart, currentStart);
+    },
+    [compareMode, baselineStart, currentStart, recomputePeriods],
+  );
+
+  const changeBaselineStart = useCallback(
+    (value: string) => {
+      setBaselineStart(value);
+      recomputePeriods(compareMode, compareSpan, value, currentStart);
+    },
+    [compareMode, compareSpan, currentStart, recomputePeriods],
+  );
+
+  const changeCurrentStart = useCallback(
+    (value: string) => {
+      setCurrentStart(value);
+      recomputePeriods(compareMode, compareSpan, baselineStart, value);
+    },
+    [compareMode, compareSpan, baselineStart, recomputePeriods],
+  );
 
   // The namespace list comes from the unfiltered window: filtering it by the current selection
   // would make a namespace disappear the moment you deselected it.
@@ -189,17 +255,24 @@ export default function App() {
           extra={
             mode === "compare" ? (
               <CompareControls
+                mode={compareMode}
+                onModeChange={changeCompareMode}
                 span={compareSpan}
                 onSpanChange={changeCompareSpan}
+                baselineStart={baselineStart}
+                currentStart={currentStart}
+                onBaselineStartChange={changeBaselineStart}
+                onCurrentStartChange={changeCurrentStart}
                 periods={periods}
                 includeUnchanged={includeUnchanged}
                 onToggleUnchanged={() => setIncludeUnchanged((v) => !v)}
                 summary={diff?.summary ?? null}
                 threshold={diff?.threshold_percent ?? null}
-                onRefresh={() => {
-                  const minutes = { "5m": 5, "15m": 15, "1h": 60, "6h": 360 }[compareSpan];
-                  setPeriods(adjacentPeriods(minutes));
-                }}
+                // In `recent` mode this re-reads the clock, which is the point of the button.
+                // With fixed moments the periods do not move, so it re-runs the same comparison.
+                onRefresh={() =>
+                  recomputePeriods(compareMode, compareSpan, baselineStart, currentStart)
+                }
                 loading={diffLoading}
               />
             ) : null
