@@ -28,6 +28,14 @@ VENV_PY     := $(BACKEND)/.venv/bin/python
 # `:=` assignment leaves the whitespace in the value, which then appears in log output as "25   s".
 DEMO_SETTLE  := 25
 RELEASE      := topology
+
+# The chart names this secret `<fullname>-db` (templates/secrets.yaml). This used to read
+# `$(RELEASE)-visualizer-database`, a name the chart never creates, so the "reuse the existing
+# secret" branch below could never be taken: every `demo-up` against a surviving cluster minted a
+# NEW password while PostgreSQL still had the old one persisted in its PVC, and the backend then
+# failed to authenticate against its own database.
+DB_SECRET    := $(RELEASE)-visualizer-db
+
 KIND_CLUSTER := topology
 KIND_CONTEXT := kind-$(KIND_CLUSTER)
 
@@ -348,9 +356,9 @@ demo-up: ## Cluster + images + install + demo workloads, ready to observe
 	@# A password is required by values.schema.json when the in-cluster database is enabled. It is
 	@# generated per install and never committed; the chart puts it in a Secret (ADR-005 D-5.7).
 	@set -e; \
-	if $(KUBECTL) get secret $(RELEASE)-visualizer-database -n $(NAMESPACE) >/dev/null 2>&1; then \
+	if $(KUBECTL) get secret $(DB_SECRET) -n $(NAMESPACE) >/dev/null 2>&1; then \
 	  echo "reusing the existing database secret"; \
-	  PW=$$($(KUBECTL) get secret $(RELEASE)-visualizer-database -n $(NAMESPACE) \
+	  PW=$$($(KUBECTL) get secret $(DB_SECRET) -n $(NAMESPACE) \
 	        -o jsonpath='{.data.password}' | base64 -d); \
 	else \
 	  PW=$$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24); \
