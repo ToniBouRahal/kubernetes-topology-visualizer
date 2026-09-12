@@ -111,14 +111,17 @@ describe("edge width (D-6.4)", () => {
 });
 
 describe("visual encoding (D-6.3)", () => {
-  it("gives every allowed kind its own shape", () => {
+  it("draws every kind with the same shape", () => {
+    // The shape vocabulary was removed deliberately. This asserts the replacement is uniform
+    // rather than half-applied: one stray outline is worse than seven, because it reads as
+    // meaningful.
     const kinds = ["Service", "Deployment", "StatefulSet", "DaemonSet", "Job", "Pod", "External"];
     const shapes = kinds.map((k) => encodingFor(k).shape);
-    expect(new Set(shapes).size).toBe(kinds.length);
+    expect(new Set(shapes).size).toBe(1);
   });
 
-  it("names every kind in words, so shape is never the only cue", () => {
-    for (const kind of ["Service", "Deployment", "Pod", "External"]) {
+  it("names every kind in words, which is now the only cue that carries the kind", () => {
+    for (const kind of ["Service", "Deployment", "StatefulSet", "DaemonSet", "Job", "Pod", "External"]) {
       expect(encodingFor(kind).label.length).toBeGreaterThan(0);
     }
   });
@@ -130,8 +133,10 @@ describe("visual encoding (D-6.3)", () => {
   });
 
   it("gives the external node its own treatment", () => {
+    // A dashed stroke, not a different shape: it marks the cluster boundary, not a kind.
     expect(namespaceHue(null)).toBe("var(--external)");
-    expect(encodingFor("External").shape).toBe("dashed-pill");
+    expect(encodingFor("External").dashed).toBe(true);
+    expect(encodingFor("Deployment").dashed).toBeUndefined();
   });
 });
 

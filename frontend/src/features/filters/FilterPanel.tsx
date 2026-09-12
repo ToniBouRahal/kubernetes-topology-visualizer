@@ -1,26 +1,6 @@
 import type React from "react";
 
-import { KIND_ENCODING, encodingFor, namespaceHue, shapePath } from "../graph/encoding";
-
-const LEGEND_KINDS = ["Service", "Deployment", "StatefulSet", "DaemonSet", "Job", "Pod", "External"];
-
-/** A miniature of the real node outline, so the legend shows the same mark the canvas draws. */
-function ShapeSwatch({ kind }: { kind: string }) {
-  const encoding = encodingFor(kind);
-  const w = 30;
-  const h = 16;
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true" className="swatch">
-      <path
-        d={shapePath(encoding.shape, w, h)}
-        fill="var(--panel)"
-        stroke="var(--text-dim)"
-        strokeWidth={1.25}
-        strokeDasharray={encoding.shape === "dashed-pill" ? "3 2.5" : undefined}
-      />
-    </svg>
-  );
-}
+import { namespaceHue } from "../graph/encoding";
 
 export function FilterPanel({
   namespaces,
@@ -103,19 +83,14 @@ export function FilterPanel({
 
       {nodeList}
 
+      {/* The shape key is gone: every node is drawn the same way and the kind is written on the
+          node itself. What survives is the one claim a viewer cannot infer from the picture and
+          would otherwise get wrong — thickness is connections, not requests (docs/demo-script.md
+          §4 asks for this line to be on screen). */}
       <section className="panel__section panel__section--legend">
-        <span className="label">Node kinds</span>
-        <ul className="legend">
-          {LEGEND_KINDS.map((kind) => (
-            <li key={kind} className="legend__row">
-              <ShapeSwatch kind={kind} />
-              <span className="legend__name">{KIND_ENCODING[kind]?.label ?? kind}</span>
-            </li>
-          ))}
-        </ul>
         <p className="panel__hint">
-          Shape shows kind, colour shows namespace. Edge thickness shows{" "}
-          <b>connection count</b> — TCP establishments, not requests.
+          Colour shows namespace. Edge thickness shows <b>connection count</b> — TCP
+          establishments, not requests.
         </p>
       </section>
 

@@ -162,7 +162,7 @@
 .check { display: flex; align-items: center; gap: var(--s-2); cursor: pointer; }
 .check input { width: auto; }
 
-.ns-list, .legend, .dep-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.ns-list, .dep-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 
 .ns {
   width: 100%;
@@ -181,8 +181,6 @@
 /* A checkmark, so selection does not rest on background colour alone. */
 .ns--on .ns__name::after { content: " ✓"; color: var(--ok); }
 
-.legend__row { display: flex; align-items: center; gap: var(--s-2); font-size: var(--step--1); color: var(--text-dim); }
-.swatch { flex-shrink: 0; }
 
 .dep {
   display: flex;

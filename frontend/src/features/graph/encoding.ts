@@ -3,9 +3,16 @@ import type { NodeKind } from "../../api/types";
 /**
  * Visual encoding rules.
  *
- * KIND is carried by SHAPE, colour only reinforces (ADR-006 D-6.3). That is not merely an
- * accessibility box to tick: it frees colour to encode NAMESPACE, which shape cannot express,
- * so the two channels carry two facts instead of one fact twice.
+ * Every node is drawn with ONE shape. Kind was carried by shape until the shape vocabulary was
+ * removed deliberately: seven outlines had to be learned from a legend before the picture could
+ * be read, and the kind is already written on every node in words (see TopologyNode), which is
+ * the cue a screen reader and a greyscale print both get. ADR-006 D-6.3 asks that colour never be
+ * the only carrier of a fact — the written kind satisfies that, so colour stays free for
+ * NAMESPACE.
+ *
+ * The external node keeps a dashed outline. That is a stroke, not a shape: it marks a boundary —
+ * everything outside the cluster collapses into one node and no remote address is ever stored —
+ * and that claim is worth a visual mark of its own.
  */
 
 export const NAMESPACE_HUES = [
@@ -32,59 +39,25 @@ export function namespaceHue(namespace: string | null | undefined): string {
   return NAMESPACE_HUES[hash % NAMESPACE_HUES.length]!;
 }
 
-export type ShapeName =
-  | "hexagon"
-  | "rounded"
-  | "spine"
-  | "notched"
-  | "clipped"
-  | "pill"
-  | "dashed-pill";
+/** One shape, drawn for every node. Kept as a named type so the call sites stay explicit. */
+export type ShapeName = "rounded";
 
 interface KindEncoding {
   shape: ShapeName;
-  /** Spoken/echoed in the legend and in the accessible name — never colour alone. */
+  /** Spoken/echoed on the node and in the accessible name — never colour alone. */
   label: string;
-  /** Why this shape, so the legend can explain itself rather than just asserting. */
-  rationale: string;
+  /** Dashed outline. Only the external node: it marks the cluster boundary, not a kind. */
+  dashed?: boolean;
 }
 
 export const KIND_ENCODING: Record<string, KindEncoding> = {
-  Service: {
-    shape: "hexagon",
-    label: "Service",
-    rationale: "a routing point traffic passes through",
-  },
-  Deployment: {
-    shape: "rounded",
-    label: "Deployment",
-    rationale: "interchangeable replicas",
-  },
-  StatefulSet: {
-    shape: "spine",
-    label: "StatefulSet",
-    rationale: "the bar marks ordered, stable identity",
-  },
-  DaemonSet: {
-    shape: "notched",
-    label: "DaemonSet",
-    rationale: "notches mark one instance per node",
-  },
-  Job: {
-    shape: "clipped",
-    label: "Job",
-    rationale: "the cut corner marks work that finishes",
-  },
-  Pod: {
-    shape: "pill",
-    label: "Pod",
-    rationale: "a single unit with no controller",
-  },
-  External: {
-    shape: "dashed-pill",
-    label: "External",
-    rationale: "outside the cluster; the dashed edge marks an unmeasured interior",
-  },
+  Service: { shape: "rounded", label: "Service" },
+  Deployment: { shape: "rounded", label: "Deployment" },
+  StatefulSet: { shape: "rounded", label: "StatefulSet" },
+  DaemonSet: { shape: "rounded", label: "DaemonSet" },
+  Job: { shape: "rounded", label: "Job" },
+  Pod: { shape: "rounded", label: "Pod" },
+  External: { shape: "rounded", label: "External", dashed: true },
 };
 
 export function encodingFor(kind: NodeKind | string): KindEncoding {
@@ -92,46 +65,12 @@ export function encodingFor(kind: NodeKind | string): KindEncoding {
 }
 
 /**
- * SVG path for a node's shape, drawn to fill w x h.
+ * SVG path for a node's outline, drawn to fill w x h.
  *
- * Paths rather than clip-path so the outline is a real stroke: the shape has to stay legible as
- * an outline at low zoom, when the fill is too small to read.
+ * A path rather than clip-path or a CSS border radius, so the outline is a real stroke: it has to
+ * stay legible at low zoom, when the fill is too small to read.
  */
-export function shapePath(shape: ShapeName, w: number, h: number): string {
+export function shapePath(_shape: ShapeName, w: number, h: number): string {
   const r = 7;
-  const notch = 9;
-
-  switch (shape) {
-    case "hexagon": {
-      const inset = 13;
-      return `M ${inset} 0 H ${w - inset} L ${w} ${h / 2} L ${w - inset} ${h} H ${inset} L 0 ${h / 2} Z`;
-    }
-    case "spine":
-      // Square left edge reads as the fixed end of an ordered set; rounded right end does not.
-      return `M 0 0 H ${w - r} A ${r} ${r} 0 0 1 ${w} ${r} V ${h - r} A ${r} ${r} 0 0 1 ${w - r} ${h} H 0 Z`;
-    case "notched":
-      return [
-        `M ${notch} 0 H ${w - notch}`,
-        `L ${w} ${notch} V ${h - notch}`,
-        `L ${w - notch} ${h} H ${notch}`,
-        `L 0 ${h - notch} V ${notch} Z`,
-      ].join(" ");
-    case "clipped": {
-      const cut = 14;
-      return `M 0 ${r} A ${r} ${r} 0 0 1 ${r} 0 H ${w - cut} L ${w} ${cut} V ${h - r} A ${r} ${r} 0 0 1 ${w - r} ${h} H ${r} A ${r} ${r} 0 0 1 0 ${h - r} Z`;
-    }
-    case "pill":
-    case "dashed-pill": {
-      const rad = h / 2;
-      return `M ${rad} 0 H ${w - rad} A ${rad} ${rad} 0 0 1 ${w - rad} ${h} H ${rad} A ${rad} ${rad} 0 0 1 ${rad} 0 Z`;
-    }
-    case "rounded":
-    default:
-      return `M ${r} 0 H ${w - r} A ${r} ${r} 0 0 1 ${w} ${r} V ${h - r} A ${r} ${r} 0 0 1 ${w - r} ${h} H ${r} A ${r} ${r} 0 0 1 0 ${h - r} V ${r} A ${r} ${r} 0 0 1 ${r} 0 Z`;
-  }
-}
-
-/** The StatefulSet spine, drawn separately so it can sit inside the outline. */
-export function spineMark(h: number): string {
-  return `M 3.5 4 V ${h - 4}`;
+  return `M ${r} 0 H ${w - r} A ${r} ${r} 0 0 1 ${w} ${r} V ${h - r} A ${r} ${r} 0 0 1 ${w - r} ${h} H ${r} A ${r} ${r} 0 0 1 0 ${h - r} V ${r} A ${r} ${r} 0 0 1 ${r} 0 Z`;
 }

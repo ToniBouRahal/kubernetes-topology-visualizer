@@ -3,7 +3,7 @@ import { memo } from "react";
 
 import type { GraphNode } from "../../api/types";
 import { NODE_HEIGHT, NODE_WIDTH } from "./layout";
-import { encodingFor, namespaceHue, shapePath, spineMark } from "./encoding";
+import { encodingFor, namespaceHue, shapePath } from "./encoding";
 
 export interface TopologyNodeData extends Record<string, unknown> {
   node: GraphNode;
@@ -13,16 +13,16 @@ export interface TopologyNodeData extends Record<string, unknown> {
 /**
  * One graph node.
  *
- * The shape carries the kind and the colour carries the namespace, so the node is fully
- * readable in greyscale — the kind is still distinguishable, and only the namespace grouping is
- * lost. Rendering the outline as an SVG stroke keeps that true at low zoom, where a fill would
- * be too small to read.
+ * Every node is the same outline; the kind is written on the node and the colour carries the
+ * namespace. That keeps the node fully readable in greyscale — the kind is still there in words,
+ * and only the namespace grouping is lost. Rendering the outline as an SVG stroke keeps it
+ * legible at low zoom, where a fill would be too small to read.
  */
 function TopologyNodeComponent({ data }: { data: TopologyNodeData }) {
   const { node, selected } = data;
   const encoding = encodingFor(node.kind);
   const hue = namespaceHue(node.namespace);
-  const isExternal = encoding.shape === "dashed-pill";
+  const isExternal = encoding.dashed === true;
 
   return (
     <div
@@ -48,9 +48,6 @@ function TopologyNodeComponent({ data }: { data: TopologyNodeData }) {
           strokeWidth={selected ? 2.5 : 1.5}
           strokeDasharray={isExternal ? "5 4" : undefined}
         />
-        {encoding.shape === "spine" && (
-          <path d={spineMark(NODE_HEIGHT)} stroke={hue} strokeWidth={4} strokeLinecap="round" />
-        )}
       </svg>
 
       <div className="topology-node__content">
@@ -58,7 +55,7 @@ function TopologyNodeComponent({ data }: { data: TopologyNodeData }) {
           {node.label}
         </div>
         <div className="topology-node__meta">
-          {/* The kind is always spelled out. A shape is a fast cue, not a substitute for the word. */}
+          {/* The kind is always spelled out — it is now the only cue that carries it. */}
           <span className="topology-node__kind" style={{ color: hue }}>
             {encoding.label}
           </span>
