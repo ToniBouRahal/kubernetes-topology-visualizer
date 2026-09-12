@@ -63,7 +63,10 @@ backend:
     type: ClusterIP
     port: 8000
 
-  retentionHours: 24
+  # Two months. Storage grows with DISTINCT EDGES x minutes, not with traffic volume, so a busy
+  # cluster with a stable topology costs no more than a quiet one. Size the database volume below
+  # against this number — see docs/operator-guide.md.
+  retentionHours: 1440
   graphMaxNodes: 500
   graphMaxEdges: 2000
   diffChangeThresholdPercent: 20

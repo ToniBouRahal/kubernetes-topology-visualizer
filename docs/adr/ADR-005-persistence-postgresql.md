@@ -261,9 +261,17 @@ recorded evidence under `docs/evaluation/`.
 - **One-minute buckets fix the resolution floor.** Sub-minute queries cannot be more precise than
   the bucket, and a window shorter than a minute returns whole buckets. Document this in
   `docs/limitations.md` — the `1m` preset is a bucket, not a sliding window.
-- **Retention bounds the history.** A 24-hour default means a comparison against yesterday is
-  impossible unless `RETENTION_HOURS` is raised. This is a deliberate resource trade (ADR-001 §13
-  defers long-term analytics), and the UI must say so rather than showing an empty baseline.
+- **Retention bounds the history.** The original 24-hour default made a comparison against
+  yesterday impossible, which the compare UI could offer and then never satisfy. The chart now
+  ships **1440 hours (two months)**, taking the resource trade this consequence describes in the
+  other direction: measured at roughly 1 MB per distinct edge per day, so the shipped 2Gi volume
+  holds about 30 distinct edges for two months (`docs/operator-guide.md`, Capacity). The code
+  default stays 24 hours — it is the floor for a bare `uvicorn` with no chart, not a deployment
+  profile. The UI still states the limit rather than showing an unexplained empty baseline.
+- **The purge interval needs a ceiling, not just a floor.** It is a twenty-fourth of the retention
+  period, which is an hourly sweep at 24 hours but one sweep every *sixty* hours at two months —
+  and the loop sleeps before its first pass, so a restart would leave expired rows readable for
+  two and a half days with nothing reporting it. Capped at one hour (`_retention_interval_seconds`).
 - **PostgreSQL raises the demo's resource footprint.** Accepted in ADR-001 §10; the kind values must
   set modest resource requests so a laptop can run the full stack.
 - **Foreign keys couple node and edge writes.** Slightly more transaction work per batch, in

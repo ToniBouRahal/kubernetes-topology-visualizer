@@ -54,7 +54,7 @@ appears in a log line or an API response — it is redacted to `postgresql://use
 | `agent.flushIntervalSeconds` | `10` | Longer means fewer, larger batches and a slower graph. |
 | `agent.infrastructurePorts` | control-plane ports | Ports excluded as infrastructure noise rather than topology. |
 | `agent.debugRawEvents` | `false` | **Leave off.** Logs source and destination addresses, including external ones. |
-| `backend.retentionHours` | `24` | Storage grows with distinct edges × buckets, not with traffic volume. |
+| `backend.retentionHours` | `1440` (2 months) | Storage grows with distinct edges × buckets, not with traffic volume — see Capacity for the per-edge cost and the volume size it implies. |
 | `networkPolicy.enabled` | `true` | Verified under Calico. Inert on a CNI that ignores NetworkPolicy. |
 | `backend.replicaCount` | `1` | The schema rejects more; horizontal scaling is untested, not forbidden. |
 
@@ -93,6 +93,22 @@ so it drops to 503 during a database outage and recovers without a restart.
 
 Storage is proportional to **distinct edges × buckets retained**, not to traffic volume: a busy edge
 and a quiet one occupy the same row. One minute-bucket per edge per minute, `retentionHours` deep.
+
+Measured on the running demo rather than estimated — 190-byte average tuple, and about 700 bytes a
+row once the primary key and three indexes are counted:
+
+```text
+≈ 1 MB per distinct edge per day      (1,440 minute-buckets × ~700 B)
+≈ 60 MB per distinct edge for the 1440-hour default
+```
+
+So the shipped 2Gi database volume holds roughly **30 distinct edges for two months**, or 900 edges
+for a day. The demo topology has 8. Past that, raise `postgresql.persistence.size` — and raise it
+*before* installing: a StatefulSet's `volumeClaimTemplates` are immutable, so changing the value on
+a running release does nothing and the volume can only grow by recreating it.
+
+Only edges that actually carried traffic in a minute occupy a bucket for it, so an idle cluster
+costs nothing and the figures above are the busy-case ceiling.
 
 Measured on the demo cluster: agent ~35 MiB RSS per node, 1,325 events/s sustained with no kernel
 drops, graph query p95 62 ms at 500 nodes / 2,000 edges.

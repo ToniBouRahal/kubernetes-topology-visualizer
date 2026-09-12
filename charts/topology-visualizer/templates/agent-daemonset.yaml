@@ -12,6 +12,14 @@ spec:
       {{- include "topology.agent.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      annotations:
+        # Roll the pods when the ConfigMap changes.
+        #
+        # envFrom reads a ConfigMap at container START, so without this a value change applies to
+        # nothing: `helm upgrade` reports success, the ConfigMap holds the new value, and the
+        # running pod keeps serving the old one indefinitely. That is how a retention change from
+        # 24 to 1440 hours was observed to take effect nowhere at all.
+        checksum/config: {{ include (print $.Template.BasePath "/configmaps.yaml") . | sha256sum }}
       labels:
         {{- include "topology.agent.selectorLabels" . | nindent 8 }}
     spec:

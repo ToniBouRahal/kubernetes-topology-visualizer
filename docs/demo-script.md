@@ -102,6 +102,16 @@ manifest of the existing services mentions.
 In the UI, switch to **Compare** and compare the last 5 minutes against the previous 5. The new
 edge is labelled `NEW` in words, not only in colour — the whole comparison is readable in greyscale.
 
+Switching the first dropdown to **Two points in time** compares any two chosen moments instead of
+two adjacent windows — "this morning against yesterday morning". Both periods take the same length,
+because connection counts are totals and not rates: an unequal pair would make the longer period
+win every edge and read as a system-wide increase. Worth saying out loud if asked why the length is
+not per-period.
+
+**The limit to state here, not hide:** history reaches back only as far as the backend's retention
+window — `backend.retentionHours`, **1440 (two months)** by default. A period older than that
+returns an empty comparison, because the data was deleted rather than never recorded.
+
 ```bash
 make demo-verify
 ```

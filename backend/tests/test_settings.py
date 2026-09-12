@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.main import _retention_interval_seconds
 from app.settings import Settings
 
 
@@ -72,3 +73,45 @@ def test_chart_templated_variables_parse(
     """
     monkeypatch.setenv(variable, value)
     assert getattr(Settings(), attribute) == expected
+
+
+class TestRetentionInterval:
+    """How often the purge runs, given how long data is kept.
+
+    This exists because the bare fraction it replaced was correct at the value it was written for
+    and quietly wrong at every larger one — and wrong in the direction that leaves expired data
+    readable while every dashboard reports normal.
+    """
+
+    def test_sweeps_hourly_at_the_original_day_long_retention(self) -> None:
+        # The behaviour ADR-005 D-5.5 describes, unchanged.
+        assert _retention_interval_seconds(24) == 3600
+
+    def test_still_sweeps_hourly_at_a_two_month_retention(self) -> None:
+        """The defect the cap fixes.
+
+        A twenty-fourth of 1440 hours is 60 hours. Because the loop sleeps BEFORE its first pass,
+        that left a restarted backend serving rows up to two and a half days past the cutoff, with
+        no error anywhere — queries simply reached further back than retention claimed.
+        """
+        assert _retention_interval_seconds(1440) == 3600
+
+    def test_scales_down_with_a_short_retention(self) -> None:
+        # A twenty-fourth of an hour. The floor does not bind here and is not supposed to.
+        assert _retention_interval_seconds(1) == 150
+
+    def test_the_floor_holds_if_retention_is_ever_shorter_than_an_hour(self) -> None:
+        """Defensive, and currently unreachable through the chart.
+
+        values.schema.json sets `retentionHours` minimum 1, and a twenty-fourth of one hour is
+        already 150 s, so no valid configuration reaches the floor today. It stays because the
+        cost is one comparison and the failure it prevents — a sweep every few seconds against a
+        growing table — is a live database issue rather than a wrong number.
+        """
+        assert _retention_interval_seconds(0) == 60
+
+    @pytest.mark.parametrize("hours", [1, 6, 24, 168, 720, 1440, 8760])
+    def test_stays_between_a_minute_and_an_hour_at_every_plausible_retention(
+        self, hours: int
+    ) -> None:
+        assert 60 <= _retention_interval_seconds(hours) <= 3600

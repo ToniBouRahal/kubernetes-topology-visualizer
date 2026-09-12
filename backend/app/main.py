@@ -76,10 +76,28 @@ async def lifespan(app: FastAPI):
             await owned.close()
 
 
+def _retention_interval_seconds(retention_hours: int) -> int:
+    """How often to purge, given how long data is kept.
+
+    A twenty-fourth of the retention period, so a short retention is swept often and a long one is
+    not swept pointlessly — but CAPPED AT AN HOUR, which the bare fraction was not.
+
+    The cap is not cosmetic. At the 24-hour default the fraction gives an hourly sweep, which is
+    what ADR-005 D-5.5 describes. At a two-month retention it gives one sweep every SIXTY HOURS,
+    and since the loop sleeps before its first pass, a backend restart would leave expired rows
+    in place for two and a half days. The overshoot is invisible: the data is simply still there,
+    and every query silently reaches further back than retention claims.
+
+    The floor stays for the opposite reason — a one-hour retention must not sweep every 2.5
+    seconds.
+    """
+    return min(3600, max(60, retention_hours * 3600 // 24))
+
+
 async def _retention_loop(app: FastAPI) -> None:
     """Delete expired buckets periodically (ADR-005 D-5.5)."""
     log = logging.getLogger("app.retention")
-    interval = max(60, settings.retention_hours * 3600 // 24)
+    interval = _retention_interval_seconds(settings.retention_hours)
 
     while True:
         await asyncio.sleep(interval)
