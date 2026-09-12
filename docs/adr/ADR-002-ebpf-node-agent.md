@@ -101,6 +101,13 @@ clusters, which Phase 5 explicitly validates.
 
 ### D-2.4 — Asymmetric endpoint resolution
 
+> **Amended by [ADR-009](ADR-009-destination-workload-resolution.md).** The destination ladder below
+> resolves to the Service in front of a workload. That made the graph impossible to connect —
+> `Deployment:backend` and `Service:backend` are different identities, so a chain of dependencies
+> split at every hop. A destination now resolves to the **workload**, with the Service kept only as
+> the fallback when the workload cannot be determined. The asymmetry this decision is named for is
+> gone; source and destination now agree on what a node is.
+
 Source and destination are **not** symmetric. This is the correction to C5.
 
 ```text

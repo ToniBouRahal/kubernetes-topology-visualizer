@@ -5,7 +5,7 @@
 # rather than a cloud of differences that could hide a misclassification.
 #
 #   make demo-change   applies this
-#   compare mode       must then show demo/Deployment:reporter -> data/Service:payment as NEW
+#   compare mode       must then show demo/Deployment:reporter -> data/Deployment:payment as NEW
 ---
 apiVersion: v1
 kind: Service

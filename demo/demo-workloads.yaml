@@ -1,8 +1,8 @@
 # Deterministic demo topology across two namespaces (ADR-007 D-7.7).
 #
 # Expected edges once traffic is flowing:
-#   Deployment/frontend -> Service/backend   TCP:8080   (demo)
-#   Deployment/backend  -> Service/redis     TCP:6379   (demo -> data)
+#   Deployment/frontend -> Deployment/backend   TCP:8080   (demo)
+#   Deployment/backend  -> StatefulSet/redis    TCP:6379   (demo -> data)
 #   Deployment/backend  -> EXTERNAL          TCP:80
 #
 # Nothing here is instrumented, and no sidecar is injected. That is the point: the agent

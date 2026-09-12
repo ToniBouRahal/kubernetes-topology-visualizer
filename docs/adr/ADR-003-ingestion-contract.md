@@ -37,7 +37,10 @@ external:EXTERNAL
 ```
 
 - `kind` ∈ {`Service`, `Deployment`, `StatefulSet`, `DaemonSet`, `Job`, `Pod`}. No other value is
-  accepted; the API rejects unknown kinds rather than storing them.
+  accepted; the API rejects unknown kinds rather than storing them. The set is unchanged by
+  [ADR-009](ADR-009-destination-workload-resolution.md), which changes only how often `Service` is
+  produced — it is now the fallback for "the workload behind this Service is unknown" rather than
+  the normal identity of a destination.
 - IDs are **opaque**. Consumers must never parse an ID to derive a namespace or a label — the API
   returns `namespace`, `name`, and display `label` as separate fields (ADR-001 §5.2).
   The prototype's frontend does exactly this at `frontend/src/App.jsx:48` (`id.split('/')[0]`) and

@@ -113,10 +113,22 @@ The cost is real: a genuine outbound call *from* a host-network pod is also excl
 cannot be distinguished from a kubelet probe. Declining to name a workload is preferred over naming
 the wrong one.
 
-### 2.4 Ambiguous Service attribution is preserved, not resolved — **by design**
+### 2.4 Which Service carried the traffic is not reported — **by design, with a cost**
 
-Where several Services select the same pod and port, the destination resolves to the **workload**
-with the candidate Service names carried as metadata, rather than picking one.
+A destination resolves to the **workload** that serves it, not to the Service in front of it
+(ADR-009). A Service is a ClusterIP and a set of routing rules with no process behind it, and
+resolving to it split every dependency chain in two: a source resolved to `Deployment:backend`
+while a destination resolved to `Service:backend`, so `frontend → backend → redis` could never
+connect at a shared node.
+
+The cost is that the route is no longer visible. In a cluster where several Services point at one
+workload, the graph shows the dependency but not which Service was used. Carrying it would need a
+new field in the batch envelope, the API schema, the generated clients and a database column;
+ADR-009 D-9.4 records that as a deliberate omission, not an oversight.
+
+Ambiguity in the other direction is still preserved rather than guessed: where a Service's
+endpoints span several **distinct** workloads, the destination stays the Service. A fan-out is
+real, and naming one of its arms would invent a dependency that was never observed.
 
 ---
 

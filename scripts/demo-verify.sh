@@ -90,9 +90,11 @@ else:
   fi
 }
 
+# Destinations are workloads, not the Services in front of them (ADR-009 D-9.1). That is what
+# makes these two edges share the `backend` node and the chain connect.
 echo "== T-7.10: the expected demo edges are present =="
-edge_check "frontend -> backend TCP:8080"  Deployment frontend Service backend 8080
-edge_check "backend  -> redis   TCP:6379"  Deployment backend  Service redis   6379
+edge_check "frontend -> backend TCP:8080"  Deployment frontend Deployment  backend 8080
+edge_check "backend  -> redis   TCP:6379"  Deployment backend  StatefulSet redis   6379
 
 # The external edge depends on the machine having outbound network. Absent is not a failure —
 # demo-workloads.yaml says so explicitly — so this is reported, never asserted.
@@ -103,6 +105,29 @@ ext = [n for n in g["nodes"] if n["kind"] == "External"]
 print("present" if ext else "absent")
 ' 2>/dev/null)"
 echo "  NOTE external edge: $EXT (absent is expected on an offline cluster, not a failure)"
+
+# T-9.6. The two edges above can both pass while the graph is still two disconnected pairs —
+# that was exactly the defect ADR-009 fixes, and it is invisible unless something checks that the
+# node `frontend` reaches is the same node `redis` is reached FROM.
+echo "== T-9.6: the chain is connected, not two disjoint pairs =="
+CHAIN="$(printf '%s' "$GRAPH" | python3 -c '
+import json, sys
+g = json.load(sys.stdin)
+nodes = {n["id"]: n for n in g["nodes"]}
+out = {}
+for e in g["edges"]:
+    s, t = nodes.get(e["source_id"]), nodes.get(e["target_id"])
+    if s and t:
+        out.setdefault(s["name"], set()).add(t["name"])
+# frontend reaches backend, and that same backend node reaches redis.
+print("connected" if "backend" in out.get("frontend", set())
+      and "redis" in out.get("backend", set()) else "split")
+' 2>/dev/null)"
+if [[ "$CHAIN" == "connected" ]]; then
+  ok "frontend -> backend -> redis is one connected chain"
+else
+  bad "frontend -> backend -> redis is not connected; the hop through backend is split"
+fi
 
 echo "== T-7.11: replicas collapse and identity holds =="
 printf '%s' "$GRAPH" | python3 -c '
@@ -174,7 +199,7 @@ if kubectl --context "$CONTEXT" get deploy reporter -n demo >/dev/null 2>&1; the
   echo "== the controlled change is visible =="
   # 6380, not 6379: the payment Service deliberately publishes a different port from redis
   # (targetPort 6379) so the new dependency is distinguishable from the existing one at a glance.
-  edge_check "reporter -> payment TCP:6380" Deployment reporter Service payment 6380
+  edge_check "reporter -> payment TCP:6380" Deployment reporter Deployment payment 6380
 else
   echo "  NOTE change scenario not applied (run 'make demo-change' to add it)"
 fi

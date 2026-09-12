@@ -109,6 +109,25 @@ func (f *fakeCaches) ServicesForEndpoint(ip netip.Addr, port uint16) []ServiceRe
 	return out
 }
 
+// EndpointsForService inverts the same table ServicesForEndpoint reads, so the two directions
+// cannot disagree in a test the way two hand-maintained maps eventually would.
+func (f *fakeCaches) EndpointsForService(namespace, name string) []netip.Addr {
+	want := ServiceRef{Namespace: namespace, Name: name}
+	var out []netip.Addr
+	for podIP, entries := range f.endpoints {
+		for _, e := range entries {
+			if e.ref != want {
+				continue
+			}
+			if a, err := netip.ParseAddr(podIP); err == nil {
+				out = append(out, a)
+			}
+			break
+		}
+	}
+	return out
+}
+
 func (f *fakeCaches) ResolveOwner(namespace string, owner OwnerRef) (OwnerRef, bool) {
 	next, ok := f.owners[namespace+"/"+owner.Kind+"/"+owner.Name]
 	return next, ok
@@ -290,7 +309,51 @@ func TestUnknownSourceIsUnresolvedNotExternal(t *testing.T) {
 
 // ── T-2.6: the destination ladder, first match wins ────────────────────────────────────────
 
-func TestDestinationClusterIPResolvesToService(t *testing.T) {
+// T-9.1: a ClusterIP resolves PAST the Service to the workload serving it. Before ADR-009 this
+// returned Service/backend, and that is exactly what made the graph impossible to connect.
+func TestDestinationClusterIPResolvesToBackingWorkload(t *testing.T) {
+	f := newFake().
+		withClusterIP("10.96.0.10", "demo", "backend").
+		withPod("10.244.1.11", "demo", "backend-abc-1", OwnerRef{Kind: "ReplicaSet", Name: "backend-abc"}).
+		withReplicaSetOwner("demo", "backend-abc", OwnerRef{Kind: "Deployment", Name: "backend"}).
+		withEndpoint("10.244.1.11", "demo", "backend", 8080)
+
+	got := New(testCluster, f).ResolveDestination(addr(t, "10.96.0.10"), 8080)
+
+	if got.Class != ClassWorkload || got.Kind != "Deployment" || got.Name != "backend" {
+		t.Errorf("got class=%q %s/%s, want workload Deployment/backend",
+			got.Class, got.Kind, got.Name)
+	}
+	if want := wantID(t, "demo", "Deployment", "backend"); got.ID != want {
+		t.Errorf("ID = %q, want %q", got.ID, want)
+	}
+}
+
+// T-9.5: the property the whole of ADR-009 exists for. The same workload reached as a source and
+// as a destination must produce ONE id, or the graph cannot connect at the hop between them.
+func TestSourceAndDestinationAgreeOnOneWorkloadIdentity(t *testing.T) {
+	f := newFake().
+		withClusterIP("10.96.0.10", "demo", "backend").
+		withPod("10.244.1.11", "demo", "backend-abc-1", OwnerRef{Kind: "ReplicaSet", Name: "backend-abc"}).
+		withReplicaSetOwner("demo", "backend-abc", OwnerRef{Kind: "Deployment", Name: "backend"}).
+		withEndpoint("10.244.1.11", "demo", "backend", 8080)
+
+	r := New(testCluster, f)
+
+	// frontend -> backend, through the Service's ClusterIP.
+	asDestination := r.ResolveDestination(addr(t, "10.96.0.10"), 8080)
+	// backend -> redis, observed leaving a backend pod.
+	asSource := r.ResolveSource(addr(t, "10.244.1.11"))
+
+	if asDestination.ID != asSource.ID {
+		t.Fatalf("backend has two identities: destination %q, source %q — the chain "+
+			"frontend -> backend -> redis cannot connect", asDestination.ID, asSource.ID)
+	}
+}
+
+// T-9.2: nothing is serving, so there is no workload to name. Keeping the Service is the honest
+// answer — inventing one would be worse than a node that says "a Service, and that is all I know".
+func TestClusterIPWithNoReadyEndpointsKeepsTheService(t *testing.T) {
 	f := newFake().withClusterIP("10.96.0.10", "demo", "backend")
 
 	got := New(testCluster, f).ResolveDestination(addr(t, "10.96.0.10"), 8080)
@@ -303,20 +366,61 @@ func TestDestinationClusterIPResolvesToService(t *testing.T) {
 	}
 }
 
-func TestDestinationPodIPWithOneMatchingServiceResolvesToService(t *testing.T) {
+// T-9.3: a Service fronting two DIFFERENT workloads is a real fan-out. Collapsing it onto one of
+// them would invent a dependency that was never observed, so the Service stays.
+func TestClusterIPSpanningSeveralWorkloadsKeepsTheService(t *testing.T) {
+	f := newFake().
+		withClusterIP("10.96.0.20", "demo", "api").
+		withPod("10.244.1.31", "demo", "api-blue-1", OwnerRef{Kind: "StatefulSet", Name: "api-blue"}).
+		withPod("10.244.1.32", "demo", "api-green-1", OwnerRef{Kind: "StatefulSet", Name: "api-green"}).
+		withEndpoint("10.244.1.31", "demo", "api", 8080).
+		withEndpoint("10.244.1.32", "demo", "api", 8080)
+
+	got := New(testCluster, f).ResolveDestination(addr(t, "10.96.0.20"), 8080)
+
+	if got.Class != ClassService {
+		t.Fatalf("got %s/%s; a Service backed by two workloads must not collapse onto either",
+			got.Kind, got.Name)
+	}
+}
+
+// Several endpoints collapsing to ONE workload is a Deployment with replicas, not ambiguity. It
+// is the single most common shape in any cluster and must resolve, not fall back.
+func TestClusterIPWithManyReplicasResolvesToTheOneWorkload(t *testing.T) {
+	f := newFake().
+		withClusterIP("10.96.0.30", "demo", "frontend").
+		withReplicaSetOwner("demo", "frontend-rs", OwnerRef{Kind: "Deployment", Name: "frontend"})
+	for _, ip := range []string{"10.244.4.1", "10.244.4.2", "10.244.4.3"} {
+		f.withPod(ip, "demo", "frontend-rs-"+ip, OwnerRef{Kind: "ReplicaSet", Name: "frontend-rs"}).
+			withEndpoint(ip, "demo", "frontend", 80)
+	}
+
+	got := New(testCluster, f).ResolveDestination(addr(t, "10.96.0.30"), 80)
+
+	if got.Class != ClassWorkload || got.Name != "frontend" {
+		t.Errorf("got class=%q name=%q, want workload/frontend — replicas are not ambiguity",
+			got.Class, got.Name)
+	}
+}
+
+// T-9.4: reached at its pod IP instead of through the ClusterIP, the answer is the same workload.
+// The two paths must not disagree, or the same dependency splits into two nodes again.
+func TestDestinationPodIPBehindOneServiceResolvesToItsWorkload(t *testing.T) {
 	f := newFake().
 		withPod("10.244.2.11", "data", "redis-0", OwnerRef{Kind: "StatefulSet", Name: "redis"}).
 		withEndpoint("10.244.2.11", "data", "redis", 6379)
 
 	got := New(testCluster, f).ResolveDestination(addr(t, "10.244.2.11"), 6379)
 
-	if got.Class != ClassService || got.Name != "redis" {
-		t.Errorf("got class=%q name=%q, want service/redis", got.Class, got.Name)
+	if got.Class != ClassWorkload || got.Kind != "StatefulSet" || got.Name != "redis" {
+		t.Errorf("got class=%q %s/%s, want workload StatefulSet/redis",
+			got.Class, got.Kind, got.Name)
 	}
 }
 
-// The most important case in the ladder. Several Services selecting the same pod and port is
-// genuinely ambiguous; picking one would fabricate certainty the data does not support.
+// Several Services selecting the same pod and port. The WORKLOAD was already the answer here
+// before ADR-009 and still is; what is ambiguous is only which Service carried the traffic, which
+// is kept as diagnostic metadata and never delivered on the wire (ADR-009 D-9.4).
 func TestAmbiguousServiceKeepsWorkloadAndRecordsCandidates(t *testing.T) {
 	f := newFake().
 		withPod("10.244.2.20", "demo", "api-abc-1", OwnerRef{Kind: "ReplicaSet", Name: "api-abc"}).
@@ -359,7 +463,9 @@ func TestDestinationPodWithNoServiceResolvesToWorkload(t *testing.T) {
 	}
 }
 
-// A Service that exists but on a different port must not match: the port is part of the rule.
+// The port is still part of the Service match, but since ADR-009 the pod path answers with the
+// workload either way. What this pins is that a non-matching port cannot promote a destination
+// back to a Service identity.
 func TestServiceOnDifferentPortDoesNotMatch(t *testing.T) {
 	f := newFake().
 		withPod("10.244.2.40", "demo", "api-1", OwnerRef{Kind: "StatefulSet", Name: "api"}).

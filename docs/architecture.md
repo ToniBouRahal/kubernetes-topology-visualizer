@@ -69,8 +69,8 @@ sequenceDiagram
     Note over C: No payload is ever read
 
     C->>R: resolve source IP, destination IP:port
-    R-->>C: workload / Service identity
-    Note over R: Node IP → host (excluded)<br/>Pod IP → owner walk → Deployment<br/>ClusterIP → Service
+    R-->>C: workload identity
+    Note over R: Node IP → host (excluded)<br/>Pod IP → owner walk → Deployment<br/>ClusterIP → endpoints → owner walk → Deployment
 
     C->>A: observation
     Note over A: Keyed by source · target ·<br/>protocol · port — counted, not stored
@@ -95,7 +95,7 @@ receiving a connection never produces an event at all — which is why the graph
 reverse edges. Payload is never read anywhere in the path.
 
 **Identity is resolved at the edge, not in the database.** By the time an observation leaves the
-agent it names a Deployment or a Service, never an IP. External traffic has already collapsed to a
+agent it names a workload — a Deployment, StatefulSet, DaemonSet, Job or Pod — never an IP. External traffic has already collapsed to a
 single `EXTERNAL` node, so no individual external address is ever transmitted or stored.
 
 ## Where identity comes from
@@ -105,15 +105,14 @@ flowchart LR
     ip["Observed address"] --> q1{"A Node address?"}
     q1 -->|yes| host["host<br/><i>excluded from the graph</i>"]
     q1 -->|no| q2{"A ClusterIP?"}
-    q2 -->|yes| svc["that Service"]
+    q2 -->|yes| q6{"Endpoints behind it<br/>resolve to ONE workload?"}
+    q6 -->|yes| wl["owner walk →<br/>Deployment / StatefulSet /<br/>DaemonSet / Job / Pod"]
+    q6 -->|"none, or several"| svc["that Service<br/><i>the workload is unknown</i>"]
     q2 -->|no| q3{"A Pod IP?"}
     q3 -->|no| q4{"Routable off-cluster?"}
     q4 -->|yes| ext["external:EXTERNAL<br/><i>address discarded</i>"]
     q4 -->|no| unres["unresolved<br/><i>counted, not shown</i>"]
-    q3 -->|yes| q5{"Backed by a Service<br/>on this port?"}
-    q5 -->|"exactly one"| svc
-    q5 -->|"several"| wl2["the workload<br/><i>candidates kept as metadata</i>"]
-    q5 -->|none| wl["owner walk →<br/>Deployment / StatefulSet /<br/>DaemonSet / Job / Pod"]
+    q3 -->|yes| wl
 
     classDef drop fill:#2b2b2b,stroke:#777,color:#bbb
     class host,unres drop
@@ -127,8 +126,18 @@ agent all at once, plus the kubelet. Looking that address up in the pod cache re
 one of them, which produced edges like `etcd → coredns:8080`. A node address identifies the node,
 not a process on it.
 
-**Ambiguity is preserved.** Where several Services select the same pod and port, the result is the
-workload with the candidates as metadata — not a guess.
+**A destination is the workload, not the Service in front of it** (ADR-009). A Service is a
+ClusterIP and a set of routing rules with no process behind it; the dependency is on whatever
+answers. Resolving to the Service was the original rule, and it made the graph impossible to
+connect: a source resolved to `Deployment:backend` while a destination resolved to
+`Service:backend`, two different identities, so `frontend → backend → redis` was two disconnected
+components that shared no node.
+
+**Ambiguity is still preserved.** Where a Service's endpoints span several distinct workloads, the
+result stays the Service rather than collapsing onto an arbitrary one of them — a fan-out is real,
+and naming one of its arms would invent a dependency that was never observed. The same holds in
+reverse for a pod selected by several Services: the workload is the answer, and which Service
+carried the traffic is not recorded (ADR-009 D-9.4).
 
 ## Why these boundaries
 

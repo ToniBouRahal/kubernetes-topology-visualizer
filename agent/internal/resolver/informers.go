@@ -20,6 +20,7 @@ const (
 	indexPodIP        = "podIP"
 	indexClusterIP    = "clusterIP"
 	indexEndpointAddr = "endpointAddress"
+	indexServiceName  = "endpointServiceName"
 	indexNodeIP       = "nodeIP"
 )
 
@@ -62,8 +63,14 @@ func NewInformerCaches(client kubernetes.Interface) (*InformerCaches, error) {
 	c.services = svcInformer.GetIndexer()
 
 	epInformer := factory.Discovery().V1().EndpointSlices().Informer()
-	if err := epInformer.AddIndexers(cache.Indexers{indexEndpointAddr: endpointAddressIndex}); err != nil {
-		return nil, fmt.Errorf("add endpoint address index: %w", err)
+	if err := epInformer.AddIndexers(cache.Indexers{
+		indexEndpointAddr: endpointAddressIndex,
+		// Indexed by owning Service, for the reverse lookup ADR-009 D-9.1 needs: given a
+		// ClusterIP's Service, which addresses actually serve it. A Service can own several
+		// slices, so this cannot be a single-object lookup.
+		indexServiceName: endpointServiceIndex,
+	}); err != nil {
+		return nil, fmt.Errorf("add endpoint indexes: %w", err)
 	}
 	c.endpointSlices = epInformer.GetIndexer()
 
@@ -157,6 +164,21 @@ func endpointAddressIndex(obj any) ([]string, error) {
 	return addrs, nil
 }
 
+// endpointServiceIndex keys an EndpointSlice by the Service that owns it. Unlike
+// endpointAddressIndex this keeps NOT-ready endpoints out too: an address that is not serving must
+// not be what a destination resolves to.
+func endpointServiceIndex(obj any) ([]string, error) {
+	slice, ok := obj.(*discoveryv1.EndpointSlice)
+	if !ok {
+		return nil, nil
+	}
+	name := slice.Labels[discoveryv1.LabelServiceName]
+	if name == "" {
+		return nil, nil
+	}
+	return []string{slice.Namespace + "/" + name}, nil
+}
+
 func nodeIPIndex(obj any) ([]string, error) {
 	node, ok := obj.(*corev1.Node)
 	if !ok {
@@ -248,6 +270,46 @@ func (c *InformerCaches) ServicesForEndpoint(ip netip.Addr, port uint16) []Servi
 		matches = append(matches, ref)
 	}
 	return matches
+}
+
+// EndpointsForService returns the ready endpoint addresses backing a Service.
+//
+// This is the lookup that lets a ClusterIP destination resolve past the Service to the workload
+// serving it (ADR-009 D-9.1). Only ready endpoints count: a terminating or failing pod is not what
+// answered the connection, and attributing the dependency to it would be wrong in the one
+// situation where being right matters most.
+func (c *InformerCaches) EndpointsForService(namespace, name string) []netip.Addr {
+	objs, err := c.endpointSlices.ByIndex(indexServiceName, namespace+"/"+name)
+	if err != nil {
+		return nil
+	}
+
+	seen := make(map[netip.Addr]struct{})
+	var addrs []netip.Addr
+
+	for _, obj := range objs {
+		slice, isSlice := obj.(*discoveryv1.EndpointSlice)
+		if !isSlice {
+			continue
+		}
+		for _, endpoint := range slice.Endpoints {
+			if endpoint.Conditions.Ready != nil && !*endpoint.Conditions.Ready {
+				continue
+			}
+			for _, raw := range endpoint.Addresses {
+				addr, parseErr := netip.ParseAddr(raw)
+				if parseErr != nil {
+					continue
+				}
+				if _, dup := seen[addr]; dup {
+					continue
+				}
+				seen[addr] = struct{}{}
+				addrs = append(addrs, addr)
+			}
+		}
+	}
+	return addrs
 }
 
 func sliceHasPort(slice *discoveryv1.EndpointSlice, port uint16) bool {

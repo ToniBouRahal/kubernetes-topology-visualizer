@@ -7,10 +7,10 @@ or injecting anything into the applications being observed.
 A manifest tells you what was declared. This tells you what happened.
 
 ```
-Deployment/frontend  →  Service/backend    TCP:8080   (586 connections)
-Deployment/backend   →  Service/redis      TCP:6379   (344)
-Deployment/backend   →  EXTERNAL           TCP:80     (57)
-Deployment/reporter  →  Service/payment    TCP:6380   (443)   ← nothing declared this
+Deployment/frontend  →  Deployment/backend   TCP:8080   (586 connections)
+Deployment/backend   →  StatefulSet/redis    TCP:6379   (344)
+Deployment/backend   →  EXTERNAL             TCP:80     (57)
+Deployment/reporter  →  Deployment/payment   TCP:6380   (443)   ← nothing declared this
 ```
 
 ## Try it

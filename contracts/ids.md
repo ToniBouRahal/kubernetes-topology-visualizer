@@ -6,6 +6,7 @@ when those three drift apart. When this document and code disagree, this documen
 code is a bug.
 
 - Governing ADR: [ADR-003](../docs/adr/ADR-003-ingestion-contract.md) D-3.2, D-3.3, D-3.5
+- Destination resolution amended by [ADR-009](../docs/adr/ADR-009-destination-workload-resolution.md) D-9.1 – D-9.4
 - Parent: ADR-001 §5.2, §5.3
 - Task IDs: `P0-C1`
 
@@ -183,21 +184,37 @@ process on it, so it resolves to `host` and is excluded from the default graph b
 
 ### Destination — first match wins
 
+A destination resolves to the **workload that serves it**, not to the Service in front of it
+(ADR-009 D-9.1). A Service is a ClusterIP and a set of routing rules; it has no process behind it,
+and a dependency is on the thing that answers. Resolving to the Service is also what made the graph
+impossible to connect: a source resolves to `Deployment:backend` and a destination resolved to
+`Service:backend`, two different IDs, so `frontend → backend → redis` could never meet at a shared
+node.
+
 | # | Condition | Result |
 |---|---|---|
-| 1 | IP is a ClusterIP in the Service cache | that Service |
-| 2 | IP is in EndpointSlice(s) **and** the observed port matches a declared Service target port | that Service |
-| 3 | Multiple Services match | the destination **workload**, with candidate Service names as metadata |
-| 4 | Pod IP, no Service match | the owning workload |
-| 5 | Node/host IP | `host` metadata, excluded from the default graph |
-| 6 | Routable non-cluster IP | `external:EXTERNAL` |
-| 7 | Private/cluster IP, unresolved | `unresolved`, counter incremented |
+| 1 | IP is a ClusterIP **and** the Service has exactly one distinct backing workload | that **workload** |
+| 2 | IP is a ClusterIP with no ready endpoints, or endpoints spanning several workloads | that **Service** |
+| 3 | IP is in EndpointSlice(s) **and** the observed port matches a declared Service target port | the pod's owning **workload** |
+| 4 | Multiple Services match a pod IP | the owning **workload** (the Services are an indirection either way) |
+| 5 | Pod IP, no Service match | the owning workload |
+| 6 | Node/host IP | `host` metadata, excluded from the default graph |
+| 7 | Routable non-cluster IP | `external:EXTERNAL` |
+| 8 | Private/cluster IP, unresolved | `unresolved`, counter incremented |
 
-Rule 3 is mandatory: **never pick a Service arbitrarily.** Preserving ambiguity is more honest than
-fabricating certainty, and the UI can show it.
+Rule 2 is mandatory: **never pick one workload out of several.** A Service fronting two workloads
+is a real fan-out, and choosing one would invent a dependency that was never observed. Keeping the
+Service node preserves the ambiguity instead of fabricating certainty — the same principle that
+governed the ambiguous-Service case before ADR-009, applied to the mirror situation.
 
-Rule 7 exists so a CNI timing race is not silently reported as internet traffic. Unresolved and
+Rule 8 exists so a CNI timing race is not silently reported as internet traffic. Unresolved and
 external are different states and must stay different.
+
+`Service` therefore remains one of the six allowed kinds: rule 2 still emits it. What changed is
+how often — it is now the exception that marks "the workload could not be determined", not the
+normal representation of a destination. **Which Service carried the traffic is not recorded**
+(ADR-009 D-9.4); the wire contract has no attribute channel for it, and adding one was judged
+disproportionate.
 
 ---
 

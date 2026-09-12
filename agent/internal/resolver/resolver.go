@@ -35,8 +35,8 @@ type Endpoint struct {
 	Class     Class
 
 	// CandidateServices is populated only when several Services select the same pod and port.
-	// The destination stays the workload and the ambiguity is preserved as metadata — never
-	// resolved by picking one arbitrarily (contracts/ids.md §6, rule 3).
+	// The destination is the workload either way (ADR-009 D-9.1); the candidates are kept for
+	// diagnostics. They are deliberately NOT delivered on the wire — ADR-009 D-9.4 records why.
 	CandidateServices []string
 }
 
@@ -70,6 +70,11 @@ type Caches interface {
 	// ServicesForEndpoint returns every Service whose EndpointSlices contain ip and whose
 	// declared target port matches port.
 	ServicesForEndpoint(ip netip.Addr, port uint16) []ServiceRef
+
+	// EndpointsForService returns the ready endpoint addresses backing a Service. It is the
+	// reverse of ServicesForEndpoint and is what lets a ClusterIP resolve past the Service to
+	// the workload serving it (ADR-009 D-9.1).
+	EndpointsForService(namespace, name string) []netip.Addr
 
 	// NodeForPodIP reports which node runs the pod holding ip, if it is a known pod.
 	NodeForPodIP(ip netip.Addr) (string, bool)
@@ -168,34 +173,39 @@ func (r *Resolver) ResolveSource(ip netip.Addr) Endpoint {
 
 // ResolveDestination identifies the receiving end, applying the ladder in contracts/ids.md §6.
 // First match wins.
+//
+// A destination resolves to the WORKLOAD that serves it, never to the Service in front of it
+// except as a fallback (ADR-009 D-9.1). Resolving to the Service was the original rule and it made
+// the graph impossible to connect: ResolveSource returns `Deployment:backend` and the old
+// ResolveDestination returned `Service:backend`, so `frontend -> backend -> redis` was two
+// disconnected components that shared no node. A Service has no process behind it; the dependency
+// is on whatever answers.
 func (r *Resolver) ResolveDestination(ip netip.Addr, port uint16) Endpoint {
-	// 1. A ClusterIP resolves directly to its Service.
+	// 1/2. A ClusterIP: follow the Service to the workload behind it.
 	if ns, name, ok := r.caches.ServiceByClusterIP(ip); ok {
+		if workload, resolved := r.workloadBehindService(ns, name); resolved {
+			return workload
+		}
+		// 2. No ready endpoint, or endpoints spanning several workloads. Keep the Service
+		// rather than guess — see workloadBehindService.
 		return r.service(ns, name)
 	}
 
 	podNS, podName, owner, isPod := r.caches.PodByIP(ip)
 
 	if isPod {
-		// 2/3. A pod IP backing one or more Services, matched on the observed port.
-		matches := r.caches.ServicesForEndpoint(ip, port)
-		switch len(matches) {
-		case 1:
-			return r.service(matches[0].Namespace, matches[0].Name)
-		case 0:
-			// 4. A pod reached directly, with no Service in front of it.
-			return r.workloadFor(podNS, podName, owner)
-		default:
-			// 3. Ambiguous: several Services select this pod and port. Keep the workload
-			// identity and attach the candidates as metadata. Choosing one arbitrarily
-			// would fabricate certainty the data does not support.
-			endpoint := r.workloadFor(podNS, podName, owner)
+		// 3/4/5. A pod IP, with or without Services in front of it. The answer is the pod's
+		// workload in every case; the Services only affect what is recorded alongside it.
+		endpoint := r.workloadFor(podNS, podName, owner)
+		if matches := r.caches.ServicesForEndpoint(ip, port); len(matches) > 1 {
+			// Several Services select this pod and port. The workload is unambiguous, but
+			// which Service carried the traffic is not; keep the candidates for diagnostics.
 			endpoint.CandidateServices = make([]string, 0, len(matches))
 			for _, m := range matches {
 				endpoint.CandidateServices = append(endpoint.CandidateServices, m.Namespace+"/"+m.Name)
 			}
-			return endpoint
 		}
+		return endpoint
 	}
 
 	// 5. Node or host traffic: classified, but excluded from the default graph.
@@ -240,6 +250,45 @@ func (r *Resolver) workloadFor(namespace, podName string, owner OwnerRef) Endpoi
 		Name:      name,
 		Class:     ClassWorkload,
 	}
+}
+
+// workloadBehindService resolves a Service to the single workload serving it.
+//
+// It reports false — and the caller keeps the Service identity — in exactly two situations, both
+// of which are honest answers rather than failures:
+//
+//   - No ready endpoints. The Service is scaled to zero, or the informer cache has not caught up.
+//     There is no workload to name.
+//   - Endpoints spanning several distinct workloads. That is a real fan-out, and picking one of
+//     them would invent a dependency that was never observed. This mirrors the rule the ambiguous
+//     multi-Service case already followed: preserve the ambiguity (contracts/ids.md §6, rule 2).
+//
+// Note that several endpoints collapsing to ONE workload is the common case, not ambiguity — it is
+// simply a Deployment with several replicas, which is precisely what workload identity exists to
+// collapse.
+func (r *Resolver) workloadBehindService(namespace, name string) (Endpoint, bool) {
+	var resolved Endpoint
+	found := false
+
+	for _, addr := range r.caches.EndpointsForService(namespace, name) {
+		podNS, podName, owner, ok := r.caches.PodByIP(addr)
+		if !ok {
+			continue
+		}
+		workload := r.workloadFor(podNS, podName, owner)
+		if workload.ID == "" {
+			continue
+		}
+		if !found {
+			resolved, found = workload, true
+			continue
+		}
+		if workload.ID != resolved.ID {
+			return Endpoint{}, false
+		}
+	}
+
+	return resolved, found
 }
 
 func (r *Resolver) service(namespace, name string) Endpoint {

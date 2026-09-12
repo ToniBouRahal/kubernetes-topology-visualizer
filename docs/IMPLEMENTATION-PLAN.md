@@ -238,9 +238,10 @@ Tick only when the corresponding ADR-001 §9 item is demonstrable, not merely im
 
 - [x] Clean kind deployment from committed Helm and Make commands — P5-K7, P5-T16 · cluster destroyed and rebuilt: `make demo-up` **8m01s**, exit 0, nothing hand-edited
 - [~] Validated on multi-node kubeadm — P5-K9 · **partial and stays partial.** NetworkPolicy enforcement verified under Calico; separate-kernel validation needs VMs this host cannot spare. Reproduction steps and the exact check in `limitations.md` §3.4
+- [x] A destination resolves to the workload, not the Service in front of it — **ADR-009** P6-A1 – P6-A6 / tests T-9.1 – T-9.6 · the graph is a connected chain rather than one disjoint pair per hop
 - [x] Agent observes real TCP without app changes or sidecars — P1-T2 · demo workloads are stock `nginx`/`redis`/`busybox`; nothing instrumented, no sidecar injected
 - [x] Pod churn does not fragment workload identity — P5-T12 · `bash scripts/experiments.sh churn` run live: every backend pod replaced, **no new Pod-level node ids**
-- [x] Service destinations resolved via EndpointSlices and ports — P1-A10 / test T-2.6 · demo edges resolve to `Service/backend`, `Service/redis`, `Service/payment`, asserted by `demo-verify`
+- [x] Service destinations resolved via EndpointSlices and ports — P1-A10 / test T-2.6 · since **ADR-009** a Service is followed through to the workload serving it, so the demo edges resolve to `Deployment/backend`, `StatefulSet/redis`, `Deployment/payment`, asserted by `demo-verify`
 - [x] PostgreSQL persists history across backend and database restarts — P3-T7 · at the Phase 5 gate **both** pods were deleted and the finished burst edges stayed at exactly 100 while live totals moved 502→736
 - [x] Agent retries do not double-count — P3-D2 · `test_replaying_a_batch_moves_no_counter` and `test_concurrent_replays_are_counted_once` against **both** repository adapters
 - [x] UI supports presets, custom history, comparison, filters, details — P3-F8, P3-F9, P4-F10

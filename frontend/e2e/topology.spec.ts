@@ -91,15 +91,53 @@ test.describe("runtime topology, end to end", () => {
     await expect(frontendNodes).toHaveCount(1);
   });
 
-  /** Kind is spelled out, so the shape encoding is never the only cue (ADR-006 D-6.3). */
+  /**
+   * Kind is spelled out. Every node is now drawn with the same outline, so the written kind is the
+   * ONLY cue that carries it — which makes this assertion load-bearing rather than a nicety
+   * (ADR-006 D-6.3).
+   */
   test("nodes state their kind in words", async ({ page }) => {
     await page.goto(BASE);
     await expect(page.getByLabel("Observation window")).toContainText(/[1-9]\d* edges/, {
       timeout: 30_000,
     });
 
+    // Deployment (frontend, backend) and StatefulSet (redis). A `Service` node would mean a
+    // destination whose workload could not be determined — ADR-009 D-9.2 — not the normal case.
     await expect(page.locator(".topology-node__kind", { hasText: "Deployment" }).first()).toBeVisible();
-    await expect(page.locator(".topology-node__kind", { hasText: "Service" }).first()).toBeVisible();
+    await expect(page.locator(".topology-node__kind", { hasText: "StatefulSet" }).first()).toBeVisible();
+  });
+
+  /**
+   * T-9.6 in the browser: the chain is connected.
+   *
+   * Both demo edges can be present while the picture is still two disjoint pairs — that was the
+   * defect ADR-009 fixes, and it is invisible to an edge-by-edge check. `backend` must appear
+   * exactly once and be both a target and a source, which is only true if the destination
+   * `frontend` reached and the source that reached `redis` are the same node.
+   */
+  test("frontend -> backend -> redis is one connected chain", async ({ page }) => {
+    await page.goto(BASE);
+    await expect(page.getByLabel("Observation window")).toContainText(/[1-9]\d* edges/, {
+      timeout: 30_000,
+    });
+
+    await expect(page.locator(".topology-node__name", { hasText: /^backend$/ })).toHaveCount(1);
+
+    const graph = await page.evaluate(async () => {
+      const res = await fetch("/api/v1/graph?window=15m");
+      return (await res.json()) as {
+        nodes: { id: string; name: string }[];
+        edges: { source_id: string; target_id: string }[];
+      };
+    });
+
+    const byId = new Map(graph.nodes.map((n) => [n.id, n.name]));
+    const reaches = (from: string, to: string) =>
+      graph.edges.some((e) => byId.get(e.source_id) === from && byId.get(e.target_id) === to);
+
+    expect(reaches("frontend", "backend"), "frontend -> backend").toBe(true);
+    expect(reaches("backend", "redis"), "backend -> redis, from the SAME backend node").toBe(true);
   });
 
   /** Selecting a node opens its dependencies — T-6.8. */
