@@ -33,7 +33,7 @@ export interface RenderBudget {
 /**
  * Keep the busiest edges when a graph exceeds what can be drawn.
  *
- * Busiest by connection count, because an arbitrary subset would be worse than useless — it would
+ * Busiest by successful connection count (failure-only edges may be hidden), because an arbitrary subset would be worse than useless — it would
  * look like a complete graph while hiding whichever relationships happened to sort last. The
  * heaviest edges are also the ones a reader is most likely to be looking for.
  *

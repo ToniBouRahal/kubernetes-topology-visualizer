@@ -83,7 +83,10 @@ class EdgeObservation(BaseModel):
     target: NodeRef
     protocol: Protocol
     destination_port: Annotated[int, Field(ge=1, le=65535)]
-    connection_count: Annotated[int, Field(ge=1)]
+    connection_count: Annotated[int, Field(ge=0)]
+    failed_connection_count: Annotated[int, Field(ge=0)] | None = None
+    connect_latency_count: Annotated[int, Field(ge=0)] = 0
+    connect_latency_sum_us: Annotated[int, Field(ge=0)] = 0
 
     # Absent until the Phase 4 byte-accounting gate passes. Absent is NOT zero
     # (contracts/ids.md §10).
@@ -95,6 +98,12 @@ class EdgeObservation(BaseModel):
 
     @model_validator(mode="after")
     def _check_interval(self) -> EdgeObservation:
+        if self.connection_count == 0 and not self.failed_connection_count:
+            raise ValueError("at least one successful or failed connection is required")
+        if self.connect_latency_count > self.connection_count:
+            raise ValueError("latency samples cannot exceed successful connections")
+        if self.connect_latency_count == 0 and self.connect_latency_sum_us != 0:
+            raise ValueError("zero latency samples require zero duration sum")
         if self.last_seen < self.first_seen:
             raise ValueError("last_seen must not precede first_seen")
         return self
@@ -158,6 +167,9 @@ class GraphEdge(BaseModel):
     protocol: Protocol
     destination_port: int
     connection_count: int
+    failed_connection_count: Annotated[int, Field(ge=0)] | None = None
+    connect_latency_count: Annotated[int, Field(ge=0)] = 0
+    connect_latency_sum_us: Annotated[int, Field(ge=0)] = 0
     bytes_sent: int | None = None
     bytes_received: int | None = None
     first_seen: AwareDatetime
@@ -257,6 +269,9 @@ class NodeDependency(BaseModel):
     protocol: Protocol
     destination_port: int
     connection_count: int
+    failed_connection_count: Annotated[int, Field(ge=0)] | None = None
+    connect_latency_count: Annotated[int, Field(ge=0)] = 0
+    connect_latency_sum_us: Annotated[int, Field(ge=0)] = 0
     bytes_total: int | None = None
     first_seen: AwareDatetime
     last_seen: AwareDatetime

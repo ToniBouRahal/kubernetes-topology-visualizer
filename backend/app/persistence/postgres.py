@@ -193,14 +193,25 @@ class PostgresRepository:
                     INSERT INTO edge_buckets (
                         bucket_start, cluster_id, source_id, target_id, protocol,
                         destination_port, connection_count, bytes_sent, bytes_received,
-                        first_seen, last_seen
+                        first_seen, last_seen, failed_connection_count,
+                        connect_latency_count, connect_latency_sum_us
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
                     ON CONFLICT (bucket_start, cluster_id, source_id, target_id, protocol,
                                  destination_port)
                     DO UPDATE SET
                         connection_count = edge_buckets.connection_count
                                            + EXCLUDED.connection_count,
+                        failed_connection_count = CASE
+                            WHEN edge_buckets.failed_connection_count IS NULL
+                                 AND EXCLUDED.failed_connection_count IS NULL THEN NULL
+                            ELSE COALESCE(edge_buckets.failed_connection_count, 0)
+                                 + COALESCE(EXCLUDED.failed_connection_count, 0)
+                        END,
+                        connect_latency_count = edge_buckets.connect_latency_count
+                                                + EXCLUDED.connect_latency_count,
+                        connect_latency_sum_us = edge_buckets.connect_latency_sum_us
+                                                 + EXCLUDED.connect_latency_sum_us,
                         -- A NULL stays NULL until something real is measured, so "not measured"
                         -- never silently becomes "measured as zero".
                         bytes_sent = CASE
@@ -230,6 +241,9 @@ class PostgresRepository:
                     edge.bytes_received,
                     edge.first_seen,
                     edge.last_seen,
+                    edge.failed_connection_count,
+                    edge.connect_latency_count,
+                    edge.connect_latency_sum_us,
                 )
 
             return IngestOutcome.INGESTED
@@ -280,6 +294,9 @@ class PostgresRepository:
                 b.protocol,
                 b.destination_port,
                 SUM(b.connection_count)::BIGINT      AS connection_count,
+                SUM(b.failed_connection_count)::BIGINT AS failed_connection_count,
+                SUM(b.connect_latency_count)::BIGINT AS connect_latency_count,
+                SUM(b.connect_latency_sum_us)::BIGINT AS connect_latency_sum_us,
                 MIN(b.first_seen)                    AS first_seen,
                 MAX(b.last_seen)                     AS last_seen,
                 -- SUM over all-NULL returns NULL, which is exactly the semantics wanted:
@@ -304,6 +321,9 @@ class PostgresRepository:
                 protocol=r["protocol"],
                 destination_port=r["destination_port"],
                 connection_count=r["connection_count"],
+                failed_connection_count=r["failed_connection_count"],
+                connect_latency_count=r["connect_latency_count"],
+                connect_latency_sum_us=r["connect_latency_sum_us"],
                 first_seen=r["first_seen"],
                 last_seen=r["last_seen"],
                 bytes_sent=r["bytes_sent"],

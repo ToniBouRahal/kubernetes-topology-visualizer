@@ -30,9 +30,21 @@ BucketKey = tuple[datetime, str, str, str, int]
 
 
 class _Bucket:
-    __slots__ = ("connection_count", "bytes_sent", "bytes_received", "first_seen", "last_seen")
+    __slots__ = (
+        "failed_connection_count",
+        "connect_latency_count",
+        "connect_latency_sum_us",
+        "connection_count",
+        "bytes_sent",
+        "bytes_received",
+        "first_seen",
+        "last_seen",
+    )
 
     def __init__(self, connection_count: int, first_seen: datetime, last_seen: datetime) -> None:
+        self.failed_connection_count: int | None = None
+        self.connect_latency_count = 0
+        self.connect_latency_sum_us = 0
         self.connection_count = connection_count
         self.bytes_sent: int | None = None
         self.bytes_received: int | None = None
@@ -75,12 +87,21 @@ class InMemoryRepository:
                 existing = self._buckets.get(key)
                 if existing is None:
                     bucket = _Bucket(edge.connection_count, edge.first_seen, edge.last_seen)
+                    bucket.failed_connection_count = edge.failed_connection_count
+                    bucket.connect_latency_count = edge.connect_latency_count
+                    bucket.connect_latency_sum_us = edge.connect_latency_sum_us
                     bucket.bytes_sent = edge.bytes_sent
                     bucket.bytes_received = edge.bytes_received
                     self._buckets[key] = bucket
                     continue
 
                 existing.connection_count += edge.connection_count
+                existing.connect_latency_count += edge.connect_latency_count
+                existing.connect_latency_sum_us += edge.connect_latency_sum_us
+                if edge.failed_connection_count is not None:
+                    existing.failed_connection_count = (
+                        existing.failed_connection_count or 0
+                    ) + edge.failed_connection_count
                 existing.first_seen = min(existing.first_seen, edge.first_seen)
                 existing.last_seen = max(existing.last_seen, edge.last_seen)
                 # Absent stays absent: only a measured value promotes the column away from None
@@ -141,6 +162,12 @@ class InMemoryRepository:
                     acc = _Bucket(0, value.first_seen, value.last_seen)
                     summed[edge_key] = acc
                 acc.connection_count += value.connection_count
+                acc.connect_latency_count += value.connect_latency_count
+                acc.connect_latency_sum_us += value.connect_latency_sum_us
+                if value.failed_connection_count is not None:
+                    acc.failed_connection_count = (
+                        acc.failed_connection_count or 0
+                    ) + value.failed_connection_count
                 acc.first_seen = min(acc.first_seen, value.first_seen)
                 acc.last_seen = max(acc.last_seen, value.last_seen)
                 if value.bytes_sent is not None:
@@ -155,6 +182,9 @@ class InMemoryRepository:
                     protocol=protocol,
                     destination_port=port,
                     connection_count=acc.connection_count,
+                    failed_connection_count=acc.failed_connection_count,
+                    connect_latency_count=acc.connect_latency_count,
+                    connect_latency_sum_us=acc.connect_latency_sum_us,
                     first_seen=acc.first_seen,
                     last_seen=acc.last_seen,
                     bytes_sent=acc.bytes_sent,

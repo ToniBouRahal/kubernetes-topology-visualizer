@@ -54,6 +54,9 @@ class EdgeAggregate:
     connection_count: int
     first_seen: datetime
     last_seen: datetime
+    failed_connection_count: int | None = None
+    connect_latency_count: int = 0
+    connect_latency_sum_us: int = 0
     bytes_sent: int | None = None
     bytes_received: int | None = None
 

@@ -357,3 +357,71 @@ async def test_the_database_rejects_a_disallowed_kind(postgres_repo) -> None:
                         now(), now())
                 """
             )
+
+
+async def test_outcomes_sum_across_flushes_and_buckets_without_duplicate_counting(repo):
+    edge = batch(1).edges[0].model_dump(mode="json")
+    edge.update(
+        connection_count=2,
+        failed_connection_count=1,
+        connect_latency_count=2,
+        connect_latency_sum_us=3000,
+    )
+    first = batch(24, edges=[edge])
+    await repo.ingest_batch(first)
+    await repo.ingest_batch(first)
+    await repo.ingest_batch(batch(25, edges=[edge]))
+    edge.update(
+        connection_count=0,
+        failed_connection_count=4,
+        connect_latency_count=0,
+        connect_latency_sum_us=0,
+        last_seen="2026-08-10T12:02:00Z",
+    )
+    await repo.ingest_batch(batch(26, edges=[edge]))
+    result = (await repo.query_edges(WIDE, EdgeFilters()))[0]
+    assert result.connection_count == 4
+    assert result.failed_connection_count == 6
+    assert result.connect_latency_count == 4
+    assert result.connect_latency_sum_us == 6000
+
+
+async def test_legacy_outcomes_are_unmeasured(repo):
+    await repo.ingest_batch(batch(27))
+    for edge in await repo.query_edges(WIDE, EdgeFilters()):
+        assert edge.failed_connection_count is None
+        assert edge.connect_latency_count == 0
+        assert edge.connect_latency_sum_us == 0
+
+
+async def test_migration_preserves_historical_measurement(postgres_repo):
+    from app.persistence.postgres import MIGRATIONS_DIR
+
+    async with postgres_repo._pool.acquire() as conn, conn.transaction():
+        await conn.execute("CREATE SCHEMA outcome_migration_test")
+        await conn.execute("SET LOCAL search_path TO outcome_migration_test")
+        await conn.execute((MIGRATIONS_DIR / "001_initial.sql").read_text())
+        await conn.execute("""
+                INSERT INTO nodes (id, cluster_id, kind, name, label, first_seen, last_seen)
+                VALUES ('a', 'c', 'Pod', 'a', 'a', now(), now());
+                INSERT INTO edge_buckets (bucket_start, cluster_id, source_id, target_id,
+                    protocol, destination_port, connection_count, first_seen, last_seen)
+                VALUES (now(), 'c', 'a', 'a', 'TCP', 80, 2, now(), now());
+            """)
+        await conn.execute((MIGRATIONS_DIR / "002_connection_outcomes.sql").read_text())
+        row = await conn.fetchrow("SELECT * FROM edge_buckets")
+        assert row["connection_count"] == 2
+        assert row["failed_connection_count"] is None
+        assert row["connect_latency_count"] == 0
+        assert row["connect_latency_sum_us"] == 0
+        await conn.execute("DROP SCHEMA outcome_migration_test CASCADE")
+
+
+async def test_mixed_measurement_preserves_measured_zero(repo):
+    legacy = batch(28).edges[0].model_dump(mode="json")
+    await repo.ingest_batch(batch(28, edges=[legacy]))
+    measured = {**legacy, "failed_connection_count": 0}
+    await repo.ingest_batch(batch(29, edges=[measured]))
+    await repo.ingest_batch(batch(30, edges=[legacy]))
+    result = (await repo.query_edges(WIDE, EdgeFilters()))[0]
+    assert result.failed_connection_count == 0

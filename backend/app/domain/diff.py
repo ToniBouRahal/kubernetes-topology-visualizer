@@ -53,8 +53,8 @@ def compare(
     classification: an edge absent from the baseline is NEW because it was measured as zero
     there, not because the data is missing.
     """
-    baseline = {e.key: e for e in baseline_edges}
-    current = {e.key: e for e in current_edges}
+    baseline = {e.key: e for e in baseline_edges if e.connection_count > 0}
+    current = {e.key: e for e in current_edges if e.connection_count > 0}
 
     results: list[DiffEdge] = []
 

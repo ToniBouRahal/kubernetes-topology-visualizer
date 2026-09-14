@@ -253,7 +253,10 @@ disproportionate.
 | `schema_version` | Currently `1`. Unsupported → **400** (not 422 — it is a version problem, not a shape problem). |
 | `batch_id` | ULID. Unique per agent batch. **This is the idempotency key.** |
 | `observed_at`, `first_seen`, `last_seen` | RFC 3339, UTC, timezone-aware. A naive datetime is rejected. |
-| `connection_count` | Integer ≥ 1. Zero is meaningless — an edge with no connections is not an edge. |
+| `connection_count` | Successful TCP establishments, integer ≥ 0. Zero requires a positive `failed_connection_count`. |
+| `failed_connection_count` | Optional nullable integer ≥ 0: failed/aborted active opens. Null means unmeasured. Aggregate measured values by sum; all-null remains null. |
+| `connect_latency_count` | Optional integer ≥ 0, default 0: successful establishment timing samples, no greater than `connection_count`. |
+| `connect_latency_sum_us` | Optional integer ≥ 0, default 0: sum of measured setup durations in microseconds. Must be zero with zero samples. Mean milliseconds is `sum_us / count / 1000` when count is positive. |
 | `bytes_sent`, `bytes_received` | Optional, integer ≥ 0. **Always absent.** The Phase 4 spike measured the agent's only available source as exact but unreadable until a connection closes, which makes persistent — usually the busiest — edges report nothing; shipping it would have drawn the heaviest edges as the faintest. Declined, with evidence, in `docs/evaluation/byte-accounting.md`. The fields stay in the schema so a future `bpf_iter/tcp` implementation needs no contract change. Absent ≠ zero. |
 | `protocol` | `TCP` only in this release. |
 | `destination_port` | 1–65535. |
@@ -321,3 +324,8 @@ A percentage delta against a zero baseline is **undefined**. Emit the reason str
 between the committed contract and what FastAPI generates (test T-3.6).
 
 Any breaking change requires `/api/v2` and a new ADR. Never a silent edit to v1.
+
+Connection outcomes are additive schema-version 1 fields. Deploy the upgraded backend before
+upgraded agents. Failed-only relationships appear in graph/detail responses but are excluded
+from successful-connection comparisons. Failure counts can cover only measured contributions
+in a mixed-version window; do not derive a failure percentage from these aggregates.

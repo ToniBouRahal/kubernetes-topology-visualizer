@@ -15,7 +15,7 @@ was withdrawn, or an edge was dropped, rather than shipped looking confident.
 
 ### 1.1 Connections are not requests — **inherent**
 
-The agent counts TCP connection *establishments*, never requests. A service handling ten thousand
+The successful connection counter counts TCP *establishments*, never requests. A separate counter records failed/aborted setup outcomes. A service handling ten thousand
 requests over one pooled connection reports **1**. A service opening a new connection per request
 reports one per request. Two workloads under identical load can therefore differ by orders of
 magnitude purely from client library configuration.
@@ -67,6 +67,34 @@ absent means "not measured", never zero. Full experiment, including the `bpf_ite
 would fix it, in [`evaluation/byte-accounting.md`](evaluation/byte-accounting.md).
 
 ---
+
+### 1.7 Connection outcomes and setup timing
+
+The collector observes IPv4 TCP active-open `SYN_SENT → ESTABLISHED` and `SYN_SENT → CLOSE`
+transitions. The latter means setup failed or was aborted, including application cancellation.
+It does not identify refusal versus timeout versus cancellation. Immediate failures before
+`SYN_SENT`, pending attempts, DNS and application/HTTP errors are not captured. A closed socket
+that had already established is not counted as a setup failure. Failure-only relationships can
+therefore appear despite carrying zero successful connections.
+
+Setup timing runs from entering `SYN_SENT` to reaching `ESTABLISHED`, including local TCP setup
+work, retransmissions, and any deferred-connect time. It is not request latency or pure network RTT.
+The start-time map has a 65,536-entry LRU bound. Attachment boundaries, evictions and failed map
+updates can omit samples; counts still survive terminal transitions. `connect_latency_count` states
+how many successes were timed, and mean milliseconds is `connect_latency_sum_us / count / 1000`.
+Sub-microsecond measurements round down to a known zero; zero samples mean unmeasured.
+
+Old buckets have no failure measurement. When old and new observations are combined, failure
+counts describe only the measured contributions; they do not imply complete failure coverage or
+support a total failure percentage. The graph's display budget still ranks by successful counts,
+so it may omit failed-only relationships; narrow filters or use grouping/focus to inspect them.
+Comparison mode retains successful-connection semantics and excludes failure-only observations.
+
+Real-kernel collector tests exercise successes, local refusal, and cancellation of a pending
+connection, as well as accepted-socket exclusion and absence of extra events on connection reuse.
+These establish behavior, not a new throughput or UI performance benchmark. The transition timing
+and pre-SYN_SENT boundary follow the [Linux IPv4 TCP connect implementation](https://github.com/torvalds/linux/blob/v6.8/net/ipv4/tcp_ipv4.c)
+and the [socket state tracepoint](https://github.com/torvalds/linux/blob/v6.8/include/trace/events/sock.h).
 
 ## 2. Accuracy of the counts
 

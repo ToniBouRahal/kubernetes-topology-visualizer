@@ -19,6 +19,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func requireBTF(t *testing.T) {
@@ -135,6 +137,9 @@ func TestPrivilegedCapturesRealConnection(t *testing.T) {
 	}
 
 	ev := matched[0]
+	if ev.Failed || ev.ConnectLatencyUS == nil {
+		t.Fatalf("expected success with measured setup duration, got %+v", ev)
+	}
 	if !ev.DstIP.IsLoopback() {
 		t.Errorf("DstIP = %s, want a loopback address", ev.DstIP)
 	}
@@ -415,4 +420,92 @@ func contains(haystack, needle string) bool {
 			}
 			return false
 		}()
+}
+
+// A refused local connection must be visible even though it never reaches ESTABLISHED.
+func TestPrivilegedCapturesRefusedConnection(t *testing.T) {
+	c := newPrivilegedCollector(t)
+	defer c.Close()
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := listener.Addr().String()
+	port := uint16(listener.Addr().(*net.TCPAddr).Port)
+	listener.Close()
+	events := collect(t, c, 200*time.Millisecond, func() {
+		conn, err := net.DialTimeout("tcp4", addr, time.Second)
+		if err == nil {
+			conn.Close()
+			t.Error("expected refusal")
+		}
+	})
+	var matched []Event
+	for _, event := range events {
+		if event.DstPort == port {
+			matched = append(matched, event)
+		}
+	}
+	if len(matched) != 1 || !matched[0].Failed || matched[0].ConnectLatencyUS != nil {
+		t.Fatalf("want one failed setup without successful latency; got %+v", matched)
+	}
+}
+
+// A full local accept queue drops a subsequent SYN, giving us a pending setup to cancel
+// without contacting an external host or changing any host firewall/routing rules.
+func TestPrivilegedCapturesCancelledPendingConnection(t *testing.T) {
+	c := newPrivilegedCollector(t)
+	defer c.Close()
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	raw, err := listener.(*net.TCPListener).SyscallConn()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var listenErr error
+	if err = raw.Control(func(fd uintptr) { listenErr = unix.Listen(int(fd), 0) }); err != nil {
+		t.Fatal(err)
+	}
+	if listenErr != nil {
+		t.Fatal(listenErr)
+	}
+	port := uint16(listener.Addr().(*net.TCPAddr).Port)
+	events := collect(t, c, 200*time.Millisecond, func() {
+		first, err := net.DialTimeout("tcp4", listener.Addr().String(), time.Second)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer first.Close()
+		second, err := net.DialTimeout("tcp4", listener.Addr().String(), 150*time.Millisecond)
+		if err == nil {
+			second.Close()
+			t.Error("second connection unexpectedly established with accept queue full")
+			return
+		}
+		var ne net.Error
+		if !errors.As(err, &ne) || !ne.Timeout() {
+			t.Errorf("expected cancelled pending dial, got %v", err)
+		}
+	})
+	successes, failures := 0, 0
+	for _, event := range events {
+		if event.DstPort != port {
+			continue
+		}
+		if event.Failed {
+			failures++
+		} else {
+			successes++
+			if event.ConnectLatencyUS == nil {
+				t.Error("missing measured establishment time")
+			}
+		}
+	}
+	if successes != 1 || failures != 1 {
+		t.Fatalf("want one establishment and one cancellation, got %d successes, %d failures", successes, failures)
+	}
 }

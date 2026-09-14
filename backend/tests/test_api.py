@@ -588,3 +588,34 @@ def test_a_batch_at_the_limit_is_still_accepted(client):
     }
     response = client.post("/api/v1/ingest/batches", json=body)
     assert response.status_code in (200, 202)
+
+
+def test_failed_only_edge_and_detail(client):
+    batch = load_batch()
+    batch["edges"] = [batch["edges"][0]]
+    batch["edges"][0].update(connection_count=0, failed_connection_count=3)
+    ingest_valid_batch(client, batch)
+    result = graph(client)
+    edge = result["edges"][0]
+    assert len(result["nodes"]) == 2
+    assert edge["failed_connection_count"] == 3
+    assert edge["connect_latency_count"] == 0
+    response = client.get("/api/v1/nodes/" + quote(edge["source_id"], safe=""), params=QUERY_WINDOW)
+    assert response.json()["outgoing"][0]["failed_connection_count"] == 3
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"failed_connection_count": -1},
+        {"connect_latency_count": -1},
+        {"connect_latency_sum_us": -1},
+        {"connection_count": 1, "connect_latency_count": 2},
+        {"connect_latency_count": 0, "connect_latency_sum_us": 1},
+        {"connection_count": 0, "failed_connection_count": 0},
+    ],
+)
+def test_invalid_outcome_counters(client, fields):
+    batch = load_batch()
+    batch["edges"][0].update(fields)
+    assert client.post("/api/v1/ingest/batches", json=batch).status_code == 422

@@ -1,7 +1,7 @@
 # Kubernetes Runtime Topology Visualizer
 
 Shows which workloads in a Kubernetes cluster **actually talk to each other**, by observing TCP
-connections in the kernel with eBPF — not by reading manifests, and without modifying, instrumenting
+connection outcomes in the kernel with eBPF — not by reading manifests, and without modifying, instrumenting
 or injecting anything into the applications being observed.
 
 A manifest tells you what was declared. This tells you what happened.
@@ -26,15 +26,48 @@ Then `kubectl -n topology port-forward svc/topology-visualizer-frontend 8080:808
 
 [`docs/demo-script.md`](docs/demo-script.md) is a fifteen-minute walkthrough.
 
+## Explore the topology
+
+In Live and History views, choose **Namespaces** to collapse workloads into namespace nodes.
+Click a namespace to expand its workloads; use **Collapse <namespace>** or **Collapse all** to
+return to the overview. Graphs initially exceeding 400 edges start grouped; smaller graphs start
+in **Workloads** view.
+
+Select a workload on the graph or in the workload list, then choose **Focus selected workload**
+to show its direct incoming and outgoing relationships. **Exit focus** returns to the previous
+view. Grouped edges sum connection counts by direction, protocol, and destination port; self-loops
+represent traffic within a collapsed namespace. External nodes stay separate. These views use only
+the API's returned observation window and filters, and the display cap still applies after grouping
+or focusing. Comparison mode retains its existing workload view.
+
 ## How it works
 
 A privileged DaemonSet attaches a BPF program to `tracepoint/sock/inet_sock_set_state` and keeps
-only *active opens* — `AF_INET`, TCP, and the `SYN_SENT → ESTABLISHED` transition. That last
-condition is what stops a server from appearing to call its own clients. Addresses are resolved to
+only *active opens* — `AF_INET`, TCP, and outcomes leaving `SYN_SENT`:
+`ESTABLISHED` counts as success; `CLOSE` counts as failed/aborted setup. Accepted server sockets
+are excluded. A bounded map records setup start times so successful events can carry measured
+TCP establishment duration. Addresses are resolved to
 workload identities in the agent, aggregated into ten-second batches, and delivered to a backend
 that stores them in one-minute buckets.
 
 [`docs/architecture.md`](docs/architecture.md) has the diagrams.
+
+## Connection outcomes
+
+Graph labels and node details separate successful establishments from **failed/aborted** setup
+attempts. Failed-only relationships remain visible, with dashed warning edges. Measured successful
+connections also show **mean TCP setup** time; namespace groups preserve weighted timing.
+
+These are observed TCP outcomes, not HTTP failures or request latency. A pending attempt appears
+only when it succeeds or closes. Refusals, timeouts and application cancellations share the
+failed/aborted category; no specific cause is inferred. Failures before entering `SYN_SENT`
+(such as an immediate routing error), IPv6 and DNS are outside capture. Historical failure data
+is labeled unmeasured; zero successful timing samples do not imply zero latency. See
+[measurement limitations](docs/limitations.md#17-connection-outcomes-and-setup-timing).
+
+Upgrade the backend before agents: its forward migration adds outcome columns while keeping old
+agent batches valid. Deploy the updated frontend to display the new fields. Comparison mode still
+compares successful establishments only.
 
 ## What it does not do
 
@@ -44,8 +77,9 @@ Stated plainly, because several of these were measured and then deliberately not
 - **Byte volume is not reported.** Measured, found exact but readable only at connection close —
   8 persistent connections carried 32 MB and reported nothing — and *declined*, because a
   byte-weighted graph would draw the busiest edges as the faintest.
-- **The interface stops past roughly 300 edges.** The API handles 500 nodes / 2,000 edges at 62 ms
-  p95; the supplied UI does not render it. Measured, not fixed.
+- **Large graphs need aggregation.** The UI offers namespace grouping, expansion, and direct-neighbor
+  focus before applying a 400-edge display cap. The original ungrouped rendering limit is documented
+  in the evaluation; grouping is not a new browser performance measurement.
 - **A dependency that did not communicate in the window does not exist.** That is the cost of the
   property that makes this useful.
 - IPv4 TCP only. Encrypted payloads are opaque by design. Individual external IPs are never stored.
@@ -59,7 +93,7 @@ Full accounting with numbers in [`docs/limitations.md`](docs/limitations.md).
 | agent memory | **35 MiB** per node | < 256 MiB |
 | capture throughput | **1,325 events/s**, zero kernel drops | 1,000/s |
 | graph query p95 | **62 ms** at 500 nodes / 2,000 edges | < 500 ms |
-| UI at that size | **unusable past ~300 edges** | *rejected with evidence* |
+| UI at that size | **ungrouped baseline unusable past ~300 edges** | *rejected with evidence* |
 
 Reproduce with `make experiments`. Raw results and method in [`docs/evaluation/`](docs/evaluation/).
 

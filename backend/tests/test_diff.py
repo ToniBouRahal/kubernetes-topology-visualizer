@@ -214,3 +214,12 @@ def test_windows_and_threshold_are_echoed():
     assert result.threshold_percent == 35.0
     assert result.baseline.start == BASELINE.start
     assert result.current.end == CURRENT.end
+
+
+def test_failed_only_edges_do_not_change_successful_presence():
+    failed = edge("a", "b", 0, failed_connection_count=4)
+    success = edge("a", "b", 2)
+    assert run([], [failed], include_unchanged=True).edges == []
+    assert run([failed], [failed], include_unchanged=True).edges == []
+    assert run([failed], [success]).edges[0].classification == "NEW"
+    assert run([success], [failed]).edges[0].classification == "REMOVED"

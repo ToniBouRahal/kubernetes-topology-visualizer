@@ -63,9 +63,9 @@ sequenceDiagram
     participant D as PostgreSQL
     participant U as Browser
 
-    App->>K: connect() → SYN_SENT → ESTABLISHED
+    App->>K: connect() → SYN_SENT → ESTABLISHED or CLOSE
     Note over K: Filtered in-kernel:<br/>AF_INET, TCP, and the<br/>active-open transition only
-    K->>C: event {src, dst, dport} via ring buffer
+    K->>C: event {src, dst, dport, outcome, setup duration} via ring buffer
     Note over C: No payload is ever read
 
     C->>R: resolve source IP, destination IP:port
@@ -76,7 +76,7 @@ sequenceDiagram
     Note over A: Keyed by source · target ·<br/>protocol · port — counted, not stored
 
     loop every 10s
-        A->>B: POST batch {batch_id, edges[]}
+        A->>B: POST batch {batch_id, edges[] with outcome counts and timing sums}
         B->>D: one transaction, upsert by batch_id
         Note over B,D: Replaying a batch_id changes nothing
         B-->>A: 202 new / 200 already ingested
@@ -89,6 +89,12 @@ sequenceDiagram
 ```
 
 The two properties worth following through that diagram:
+
+Successful connection counts, failed/aborted setup counts, and successful timing samples remain
+separate throughout the pipeline. A bounded BPF map remembers when active sockets enter SYN_SENT;
+terminal outcomes remove their start records before emitting. Failure-only edges are valid runtime
+observations. PostgreSQL and in-memory repositories sum samples and durations; the UI derives
+weighted mean setup time and labels absent failure measurements as unmeasured.
 
 **Filtering happens as early as possible.** The four-condition check runs in the kernel, so a pod
 receiving a connection never produces an event at all — which is why the graph shows no false

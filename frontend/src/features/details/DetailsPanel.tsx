@@ -1,6 +1,8 @@
 import type { GraphNode, NodeDependency, NodeDetail } from "../../api/types";
 import { encodingFor, namespaceHue } from "../graph/encoding";
 
+import { outcomeLabel } from "../graph/outcomes";
+
 function DependencyList({ title, items, empty }: { title: string; items: NodeDependency[]; empty: string }) {
   return (
     <section className="panel__section">
@@ -12,10 +14,10 @@ function DependencyList({ title, items, empty }: { title: string; items: NodeDep
       ) : (
         <ul className="dep-list">
           {items.map((dep) => (
-            <li key={`${dep.node_id}-${dep.destination_port}`} className="dep">
+            <li key={`${dep.node_id}-${dep.destination_port}`} className={`dep${(dep.failed_connection_count ?? 0) > 0 ? " dep--failed" : ""}`}>
               <span className="dep__name">{dep.label}</span>
               <span className="dep__meta mono">
-                {dep.protocol}:{dep.destination_port} · {dep.connection_count}
+                {dep.protocol}:{dep.destination_port} · {outcomeLabel(dep)}
               </span>
             </li>
           ))}

@@ -77,8 +77,9 @@ export function RenderBudgetBanner({
     <div className="banner banner--warn" role="status">
       <span className="banner__text">
         Showing the {shownEdges.toLocaleString()} busiest of {totalEdges.toLocaleString()} edges
-        {hiddenNodes > 0 && <> and hiding {hiddenNodes.toLocaleString()} workloads</>}. Drawing them
-        all would stop the browser responding. Narrow by namespace, search for a workload, or
+        {hiddenNodes > 0 && <> and hiding {hiddenNodes.toLocaleString()} nodes</>}. Drawing them
+        all would stop the browser responding. Ranking uses successful connections; failed-only
+        relationships may be hidden. Use namespace grouping, focus a workload, or
         shorten the window.
       </span>
     </div>

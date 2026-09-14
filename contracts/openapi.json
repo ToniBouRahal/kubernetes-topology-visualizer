@@ -245,8 +245,20 @@
             ],
             "title": "Bytes Sent"
           },
+          "connect_latency_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Connect Latency Count",
+            "type": "integer"
+          },
+          "connect_latency_sum_us": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Connect Latency Sum Us",
+            "type": "integer"
+          },
           "connection_count": {
-            "minimum": 1.0,
+            "minimum": 0.0,
             "title": "Connection Count",
             "type": "integer"
           },
@@ -255,6 +267,18 @@
             "minimum": 1.0,
             "title": "Destination Port",
             "type": "integer"
+          },
+          "failed_connection_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Connection Count"
           },
           "first_seen": {
             "format": "date-time",
@@ -398,6 +422,18 @@
             ],
             "title": "Bytes Sent"
           },
+          "connect_latency_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Connect Latency Count",
+            "type": "integer"
+          },
+          "connect_latency_sum_us": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Connect Latency Sum Us",
+            "type": "integer"
+          },
           "connection_count": {
             "title": "Connection Count",
             "type": "integer"
@@ -405,6 +441,18 @@
           "destination_port": {
             "title": "Destination Port",
             "type": "integer"
+          },
+          "failed_connection_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Connection Count"
           },
           "first_seen": {
             "format": "date-time",
@@ -762,6 +810,18 @@
             ],
             "title": "Bytes Total"
           },
+          "connect_latency_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Connect Latency Count",
+            "type": "integer"
+          },
+          "connect_latency_sum_us": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Connect Latency Sum Us",
+            "type": "integer"
+          },
           "connection_count": {
             "title": "Connection Count",
             "type": "integer"
@@ -769,6 +829,18 @@
           "destination_port": {
             "title": "Destination Port",
             "type": "integer"
+          },
+          "failed_connection_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Connection Count"
           },
           "first_seen": {
             "format": "date-time",

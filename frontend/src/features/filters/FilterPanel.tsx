@@ -89,8 +89,9 @@ export function FilterPanel({
           §4 asks for this line to be on screen). */}
       <section className="panel__section panel__section--legend">
         <p className="panel__hint">
-          Colour shows namespace. Edge thickness shows <b>connection count</b> — TCP
-          establishments, not requests.
+          Colour shows namespace. Edge thickness shows <b>successful TCP establishments</b>. Dashed amber edges include failed/aborted attempts.
+          Mean TCP setup measures successful establishment time. Failure counts cover measured observations;
+          older data may be unmeasured.
         </p>
       </section>
 

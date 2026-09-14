@@ -20,24 +20,28 @@ const (
 	statFilteredFamily
 	statFilteredProtocol
 	statFilteredTransition
+	statTrackingMissed
+	statTrackingFailed
 	statMax
 )
 
 // EventSchemaVersion mirrors EVENT_SCHEMA_VERSION in the BPF program. A mismatch means the
 // loaded object was built from different source than this binary.
-const EventSchemaVersion = 1
+const EventSchemaVersion = 2
 
 // Event is one observed active-open TCP connection, decoded into domain types.
 //
 // Addresses are netip.Addr built directly from the raw 4-byte network-order arrays. No
 // endianness conversion happens anywhere in this path — see ADR-002 D-2.1 (C4).
 type Event struct {
-	Timestamp time.Time
-	PID       uint32
-	SrcIP     netip.Addr
-	DstIP     netip.Addr
-	SrcPort   uint16
-	DstPort   uint16
+	Timestamp        time.Time
+	PID              uint32
+	SrcIP            netip.Addr
+	DstIP            netip.Addr
+	SrcPort          uint16
+	DstPort          uint16
+	Failed           bool
+	ConnectLatencyUS *int64
 }
 
 // Stats are the kernel-side counters. RingbufDropped is the only signal of lost events: unlike
@@ -49,6 +53,8 @@ type Stats struct {
 	FilteredFamily     uint64
 	FilteredProtocol   uint64
 	FilteredTransition uint64
+	TrackingMissed     uint64
+	TrackingFailed     uint64
 }
 
 // Collector owns the BPF objects, the tracepoint attachment, and the ring-buffer reader.
@@ -161,9 +167,19 @@ func (c *Collector) decode(raw []byte) (Event, error) {
 			e.Version, EventSchemaVersion)
 	}
 
+	if e.Outcome > 1 || e.DurationKnown > 1 || e.DurationUs > uint64(1<<63-1) || (e.Outcome == 1 && e.DurationKnown != 0) || (e.DurationKnown == 0 && e.DurationUs != 0) {
+		return Event{}, fmt.Errorf("invalid connection outcome or timing flags")
+	}
+	var latency *int64
+	if e.DurationKnown == 1 {
+		micros := int64(e.DurationUs)
+		latency = &micros
+	}
 	return Event{
-		Timestamp: c.monotonicEpoch.Add(time.Duration(e.TimestampNs)),
-		PID:       e.Pid,
+		Failed:           e.Outcome == 1,
+		ConnectLatencyUS: latency,
+		Timestamp:        c.monotonicEpoch.Add(time.Duration(e.TimestampNs)),
+		PID:              e.Pid,
 		// AddrFrom4 takes the network-order bytes as-is. No byte swapping: the bytes are
 		// already in the order an IPv4 address is written.
 		SrcIP:   netip.AddrFrom4(e.Saddr),
@@ -187,6 +203,8 @@ func (c *Collector) Stats() (Stats, error) {
 		FilteredFamily:     values[statFilteredFamily],
 		FilteredProtocol:   values[statFilteredProtocol],
 		FilteredTransition: values[statFilteredTransition],
+		TrackingMissed:     values[statTrackingMissed],
+		TrackingFailed:     values[statTrackingFailed],
 	}, nil
 }
 

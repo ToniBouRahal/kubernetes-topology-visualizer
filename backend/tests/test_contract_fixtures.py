@@ -64,7 +64,7 @@ def test_manifest_covers_every_fixture_file():
 def test_valid_fixtures_pass_model_validation(case):
     batch = IngestBatch.model_validate(load(case["fixture"]))
     assert batch.edges, "a valid batch must contain at least one edge"
-    assert all(e.connection_count >= 1 for e in batch.edges)
+    assert all(e.connection_count > 0 or (e.failed_connection_count or 0) > 0 for e in batch.edges)
 
 
 @pytest.mark.parametrize("case", MODEL_INVALID, ids=lambda c: c["fixture"])

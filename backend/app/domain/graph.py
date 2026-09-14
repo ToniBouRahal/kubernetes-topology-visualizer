@@ -147,6 +147,9 @@ def _to_edge(aggregate: EdgeAggregate) -> GraphEdge:
         protocol=aggregate.protocol,  # type: ignore[arg-type]
         destination_port=aggregate.destination_port,
         connection_count=aggregate.connection_count,
+        failed_connection_count=aggregate.failed_connection_count,
+        connect_latency_count=aggregate.connect_latency_count,
+        connect_latency_sum_us=aggregate.connect_latency_sum_us,
         bytes_sent=aggregate.bytes_sent,
         bytes_received=aggregate.bytes_received,
         first_seen=aggregate.first_seen,
@@ -200,6 +203,9 @@ def _dependency(edge: EdgeAggregate, peer_id: str, peer: StoredNode | None) -> N
         protocol=edge.protocol,  # type: ignore[arg-type]
         destination_port=edge.destination_port,
         connection_count=edge.connection_count,
+        failed_connection_count=edge.failed_connection_count,
+        connect_latency_count=edge.connect_latency_count,
+        connect_latency_sum_us=edge.connect_latency_sum_us,
         bytes_total=bytes_total,
         first_seen=edge.first_seen,
         last_seen=edge.last_seen,

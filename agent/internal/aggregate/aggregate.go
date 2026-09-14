@@ -31,11 +31,13 @@ type Key struct {
 
 // Observation is one resolved connection ready for aggregation.
 type Observation struct {
-	Source          resolver.Endpoint
-	Target          resolver.Endpoint
-	Protocol        string
-	DestinationPort uint16
-	Timestamp       time.Time
+	Source           resolver.Endpoint
+	Target           resolver.Endpoint
+	Protocol         string
+	DestinationPort  uint16
+	Timestamp        time.Time
+	Failed           bool
+	ConnectLatencyUS *int64
 }
 
 // Counters record why observations were discarded. They feed the agent's Prometheus metrics;
@@ -51,11 +53,14 @@ type Counters struct {
 }
 
 type entry struct {
-	source    resolver.Endpoint
-	target    resolver.Endpoint
-	count     int64
-	firstSeen time.Time
-	lastSeen  time.Time
+	source       resolver.Endpoint
+	target       resolver.Endpoint
+	count        int64
+	failedCount  int64
+	latencyCount int64
+	latencySumUS int64
+	firstSeen    time.Time
+	lastSeen     time.Time
 }
 
 // Aggregator accumulates observations until Flush. Safe for concurrent use.
@@ -145,17 +150,24 @@ func (a *Aggregator) Add(obs Observation) {
 
 	existing, ok := a.edges[key]
 	if !ok {
-		a.edges[key] = &entry{
+		existing = &entry{
 			source:    obs.Source,
 			target:    obs.Target,
-			count:     1,
 			firstSeen: obs.Timestamp,
 			lastSeen:  obs.Timestamp,
 		}
-		return
+		a.edges[key] = existing
 	}
 
-	existing.count++
+	if obs.Failed {
+		existing.failedCount++
+	} else {
+		existing.count++
+		if obs.ConnectLatencyUS != nil && *obs.ConnectLatencyUS >= 0 {
+			existing.latencyCount++
+			existing.latencySumUS += *obs.ConnectLatencyUS
+		}
+	}
 	if obs.Timestamp.Before(existing.firstSeen) {
 		existing.firstSeen = obs.Timestamp
 	}
@@ -189,13 +201,16 @@ func (a *Aggregator) Flush(intervalSeconds int) (contract.IngestBatch, bool) {
 	observations := make([]contract.EdgeObservation, 0, len(edges))
 	for key, e := range edges {
 		observations = append(observations, contract.EdgeObservation{
-			Source:          nodeRef(e.source),
-			Target:          nodeRef(e.target),
-			Protocol:        key.Protocol,
-			DestinationPort: int(key.DestinationPort),
-			ConnectionCount: e.count,
-			FirstSeen:       e.firstSeen.UTC(),
-			LastSeen:        e.lastSeen.UTC(),
+			Source:                nodeRef(e.source),
+			Target:                nodeRef(e.target),
+			Protocol:              key.Protocol,
+			DestinationPort:       int(key.DestinationPort),
+			ConnectionCount:       e.count,
+			FailedConnectionCount: &e.failedCount,
+			ConnectLatencyCount:   e.latencyCount,
+			ConnectLatencySumUS:   e.latencySumUS,
+			FirstSeen:             e.firstSeen.UTC(),
+			LastSeen:              e.lastSeen.UTC(),
 			// Byte fields stay absent until the Phase 4 feasibility gate. Absent is not zero
 			// (contracts/ids.md §10).
 		})

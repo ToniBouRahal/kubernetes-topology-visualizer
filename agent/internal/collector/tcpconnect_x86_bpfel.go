@@ -14,17 +14,20 @@ import (
 )
 
 type TcpConnectEvent struct {
-	_           structs.HostLayout
-	TimestampNs uint64
-	Pid         uint32
-	Saddr       [4]uint8
-	Daddr       [4]uint8
-	Sport       uint16
-	Dport       uint16
-	Family      uint8
-	Protocol    uint8
-	Version     uint8
-	Pad         [5]uint8
+	_             structs.HostLayout
+	TimestampNs   uint64
+	Pid           uint32
+	Saddr         [4]uint8
+	Daddr         [4]uint8
+	Sport         uint16
+	Dport         uint16
+	Family        uint8
+	Protocol      uint8
+	Version       uint8
+	Outcome       uint8
+	DurationKnown uint8
+	Pad           [3]uint8
+	DurationUs    uint64
 }
 
 // Names of all BPF objects in the ELF.
@@ -32,6 +35,7 @@ type TcpConnectEvent struct {
 // Used for safe lookups in a Collection or CollectionSpec.
 const (
 	TcpConnectMapEvents                 = "events"
+	TcpConnectMapStarts                 = "starts"
 	TcpConnectMapStats                  = "stats"
 	TcpConnectProgTraceInetSockSetState = "trace_inet_sock_set_state"
 	TcpConnectVarUnusedEvent            = "unused_event"
@@ -87,6 +91,7 @@ type TcpConnectProgramSpecs struct {
 // It can be passed ebpf.CollectionSpec.Assign.
 type TcpConnectMapSpecs struct {
 	Events *ebpf.MapSpec `ebpf:"events"`
+	Starts *ebpf.MapSpec `ebpf:"starts"`
 	Stats  *ebpf.MapSpec `ebpf:"stats"`
 }
 
@@ -118,12 +123,14 @@ func (o *TcpConnectObjects) Close() error {
 // It can be passed to LoadTcpConnectObjects or ebpf.CollectionSpec.LoadAndAssign.
 type TcpConnectMaps struct {
 	Events *ebpf.Map `ebpf:"events"`
+	Starts *ebpf.Map `ebpf:"starts"`
 	Stats  *ebpf.Map `ebpf:"stats"`
 }
 
 func (m *TcpConnectMaps) Close() error {
 	return _TcpConnectClose(
 		m.Events,
+		m.Starts,
 		m.Stats,
 	)
 }

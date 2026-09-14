@@ -55,7 +55,7 @@
     {
       "fixture": "batch.invalid-connection-count-zero.json",
       "expected_status": 422,
-      "rule": "connection_count >= 1. An edge with no connections is not an edge."
+      "rule": "Zero successes require a positive failed_connection_count."
     },
     {
       "fixture": "batch.invalid-connection-count-negative.json",
@@ -101,6 +101,31 @@
       "fixture": "batch.invalid-interval-seconds-zero.json",
       "expected_status": 422,
       "rule": "Aggregation interval must be >= 1 second."
+    },
+    {
+      "fixture": "batch.valid-failed-only.json",
+      "expected_status": 202,
+      "rule": "valid failed only"
+    },
+    {
+      "fixture": "batch.valid-with-outcomes.json",
+      "expected_status": 202,
+      "rule": "valid with outcomes"
+    },
+    {
+      "fixture": "batch.invalid-negative-failures.json",
+      "expected_status": 422,
+      "rule": "invalid negative failures"
+    },
+    {
+      "fixture": "batch.invalid-latency-count.json",
+      "expected_status": 422,
+      "rule": "invalid latency count"
+    },
+    {
+      "fixture": "batch.invalid-latency-sum-without-samples.json",
+      "expected_status": 422,
+      "rule": "invalid latency sum without samples"
     }
   ]
 }

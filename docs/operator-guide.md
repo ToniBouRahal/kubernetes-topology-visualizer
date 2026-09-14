@@ -150,3 +150,22 @@ kubectl delete pvc -n topology -l app.kubernetes.io/name=topology-visualizer   #
 
 `helm uninstall` leaves the PVC, so history survives a reinstall. Delete it explicitly when you mean
 to lose the data.
+
+
+## Upgrading for connection outcomes
+
+Deploy the updated backend first. Migration `002_connection_outcomes.sql` adds nullable failure
+counts and zero-sample timing columns; historical rows remain unmeasured. Existing agent batches
+are accepted. Then roll out the updated agents and frontend. New agents emit additive fields in
+schema version 1 that older backends reject, so do not upgrade agents first or roll the backend
+back while those agents are active.
+
+Monitor `topology_agent_setup_tracking_missed_total` (a terminal outcome without a recorded start,
+including eviction or attachment boundaries) and `topology_agent_setup_tracking_failed_total`
+(failed tracking map updates), alongside `topology_agent_kernel_samples_lost_total`. Missing starts
+remove timing samples but do not suppress terminal outcome counts. Setup tracking uses a bounded
+65,536-entry LRU map per agent.
+
+The UI says failed/aborted deliberately: cancellation and failure share the same terminal state.
+Inspect application logs or other network diagnostics for a cause. Successful setup timing includes
+only measured samples; it is neither an HTTP latency metric nor a failure-rate denominator.

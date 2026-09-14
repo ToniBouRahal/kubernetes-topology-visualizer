@@ -16,7 +16,7 @@ import (
 // to the C struct and forgets to regenerate, or edits rawEvent without touching the C, this
 // fails rather than silently shifting every field.
 func TestEventLayoutMatchesGeneratedStruct(t *testing.T) {
-	if got, want := eventSize, uintptr(32); got != want {
+	if got, want := eventSize, uintptr(40); got != want {
 		t.Errorf("eventSize = %d, want %d", got, want)
 	}
 
@@ -65,6 +65,9 @@ func TestFieldOffsetsMatchDecoder(t *testing.T) {
 		{"Family", offFamily},
 		{"Protocol", offProtocol},
 		{"Version", offVersion},
+		{"Outcome", offOutcome},
+		{"DurationKnown", offDurationKnown},
+		{"DurationUs", offDurationUs},
 	} {
 		f, ok := typ.FieldByName(tc.field)
 		if !ok {

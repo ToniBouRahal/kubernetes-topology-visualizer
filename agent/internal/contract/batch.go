@@ -51,11 +51,14 @@ type NodeRef struct {
 
 // EdgeObservation is one aggregated client→server relationship for a flush interval.
 type EdgeObservation struct {
-	Source          NodeRef `json:"source"`
-	Target          NodeRef `json:"target"`
-	Protocol        string  `json:"protocol"`
-	DestinationPort int     `json:"destination_port"`
-	ConnectionCount int64   `json:"connection_count"`
+	Source                NodeRef `json:"source"`
+	Target                NodeRef `json:"target"`
+	Protocol              string  `json:"protocol"`
+	DestinationPort       int     `json:"destination_port"`
+	ConnectionCount       int64   `json:"connection_count"`
+	FailedConnectionCount *int64  `json:"failed_connection_count,omitempty"`
+	ConnectLatencyCount   int64   `json:"connect_latency_count,omitempty"`
+	ConnectLatencySumUS   int64   `json:"connect_latency_sum_us,omitempty"`
 
 	// Absent until the Phase 4 byte-accounting gate passes. omitempty on a pointer emits the
 	// field only when measured — absent and zero are different (contracts/ids.md §10).
@@ -152,8 +155,14 @@ func (e *EdgeObservation) validate() error {
 	if e.DestinationPort < 1 || e.DestinationPort > 65535 {
 		return fmt.Errorf("destination_port %d out of range 1..65535", e.DestinationPort)
 	}
-	if e.ConnectionCount < 1 {
-		return fmt.Errorf("connection_count %d must be >= 1", e.ConnectionCount)
+	if e.ConnectionCount < 0 || (e.ConnectionCount == 0 && (e.FailedConnectionCount == nil || *e.FailedConnectionCount == 0)) {
+		return fmt.Errorf("at least one successful or failed connection is required")
+	}
+	if e.FailedConnectionCount != nil && *e.FailedConnectionCount < 0 {
+		return fmt.Errorf("failed_connection_count must be nonnegative")
+	}
+	if e.ConnectLatencyCount < 0 || e.ConnectLatencyCount > e.ConnectionCount || e.ConnectLatencySumUS < 0 || (e.ConnectLatencyCount == 0 && e.ConnectLatencySumUS != 0) {
+		return fmt.Errorf("invalid successful connection timing sample count or sum")
 	}
 	if e.BytesSent != nil && *e.BytesSent < 0 {
 		return fmt.Errorf("bytes_sent %d must be >= 0", *e.BytesSent)

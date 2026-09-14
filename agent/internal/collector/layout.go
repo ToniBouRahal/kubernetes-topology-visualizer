@@ -18,29 +18,35 @@ const eventSize = unsafe.Sizeof(TcpConnectEvent{})
 // be both slower and less explicit than the field-by-field reads below. The two are asserted
 // equivalent by test T-2.1.
 type rawEvent struct {
-	TimestampNs uint64
-	Pid         uint32
-	Saddr       [4]byte
-	Daddr       [4]byte
-	Sport       uint16
-	Dport       uint16
-	Family      uint8
-	Protocol    uint8
-	Version     uint8
+	TimestampNs   uint64
+	Pid           uint32
+	Saddr         [4]byte
+	Daddr         [4]byte
+	Sport         uint16
+	Dport         uint16
+	Family        uint8
+	Protocol      uint8
+	Version       uint8
+	Outcome       uint8
+	DurationKnown uint8
+	DurationUs    uint64
 }
 
-// Field offsets within the 32-byte record. Named rather than inlined so the test can assert
+// Field offsets within the 40-byte record. Named rather than inlined so the test can assert
 // against them independently of the decoder.
 const (
-	offTimestampNs = 0
-	offPid         = 8
-	offSaddr       = 12
-	offDaddr       = 16
-	offSport       = 20
-	offDport       = 22
-	offFamily      = 24
-	offProtocol    = 25
-	offVersion     = 26
+	offTimestampNs   = 0
+	offPid           = 8
+	offSaddr         = 12
+	offDaddr         = 16
+	offSport         = 20
+	offDport         = 22
+	offFamily        = 24
+	offProtocol      = 25
+	offVersion       = 26
+	offOutcome       = 27
+	offDurationKnown = 28
+	offDurationUs    = 32
 )
 
 // unmarshalEvent decodes one ring-buffer record.
@@ -54,14 +60,17 @@ const (
 // and they stay that way all the way to netip.AddrFrom4.
 func unmarshalEvent(b []byte) rawEvent {
 	return rawEvent{
-		TimestampNs: binary.LittleEndian.Uint64(b[offTimestampNs : offTimestampNs+8]),
-		Pid:         binary.LittleEndian.Uint32(b[offPid : offPid+4]),
-		Saddr:       [4]byte(b[offSaddr : offSaddr+4]),
-		Daddr:       [4]byte(b[offDaddr : offDaddr+4]),
-		Sport:       binary.LittleEndian.Uint16(b[offSport : offSport+2]),
-		Dport:       binary.LittleEndian.Uint16(b[offDport : offDport+2]),
-		Family:      b[offFamily],
-		Protocol:    b[offProtocol],
-		Version:     b[offVersion],
+		TimestampNs:   binary.LittleEndian.Uint64(b[offTimestampNs : offTimestampNs+8]),
+		Pid:           binary.LittleEndian.Uint32(b[offPid : offPid+4]),
+		Saddr:         [4]byte(b[offSaddr : offSaddr+4]),
+		Daddr:         [4]byte(b[offDaddr : offDaddr+4]),
+		Sport:         binary.LittleEndian.Uint16(b[offSport : offSport+2]),
+		Dport:         binary.LittleEndian.Uint16(b[offDport : offDport+2]),
+		Family:        b[offFamily],
+		Protocol:      b[offProtocol],
+		Version:       b[offVersion],
+		Outcome:       b[offOutcome],
+		DurationKnown: b[offDurationKnown],
+		DurationUs:    binary.LittleEndian.Uint64(b[offDurationUs : offDurationUs+8]),
 	}
 }

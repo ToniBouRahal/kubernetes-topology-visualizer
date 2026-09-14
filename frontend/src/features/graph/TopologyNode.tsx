@@ -8,6 +8,7 @@ import { encodingFor, namespaceHue, shapePath } from "./encoding";
 export interface TopologyNodeData extends Record<string, unknown> {
   node: GraphNode;
   selected?: boolean;
+  group?: { namespace: string; workloads: number };
 }
 
 /**
@@ -19,7 +20,7 @@ export interface TopologyNodeData extends Record<string, unknown> {
  * legible at low zoom, where a fill would be too small to read.
  */
 function TopologyNodeComponent({ data }: { data: TopologyNodeData }) {
-  const { node, selected } = data;
+  const { node, selected, group } = data;
   const encoding = encodingFor(node.kind);
   const hue = namespaceHue(node.namespace);
   const isExternal = encoding.dashed === true;
@@ -30,7 +31,7 @@ function TopologyNodeComponent({ data }: { data: TopologyNodeData }) {
       style={{ width: NODE_WIDTH, height: NODE_HEIGHT }}
       // The accessible name states kind and namespace in words, because a screen reader cannot
       // see either the shape or the colour.
-      aria-label={`${encoding.label} ${node.name}${node.namespace ? ` in namespace ${node.namespace}` : ""}`}
+      aria-label={`${group ? "Namespace" : encoding.label} ${node.name}${node.namespace ? ` in namespace ${node.namespace}` : ""}`}
     >
       <Handle type="target" position={Position.Left} className="topology-handle" />
 
@@ -57,9 +58,9 @@ function TopologyNodeComponent({ data }: { data: TopologyNodeData }) {
         <div className="topology-node__meta">
           {/* The kind is always spelled out — it is now the only cue that carries it. */}
           <span className="topology-node__kind" style={{ color: hue }}>
-            {encoding.label}
+            {group ? "Namespace" : encoding.label}
           </span>
-          {node.namespace && <span className="topology-node__ns mono">{node.namespace}</span>}
+          {group ? <span className="topology-node__ns mono">{group.workloads} workloads · expand</span> : node.namespace && <span className="topology-node__ns mono">{node.namespace}</span>}
         </div>
       </div>
 

@@ -252,11 +252,13 @@ func run(log *slog.Logger) error {
 		}
 
 		agg.Add(aggregate.Observation{
-			Source:          res.ResolveSource(ev.SrcIP),
-			Target:          res.ResolveDestination(ev.DstIP, ev.DstPort),
-			Protocol:        "TCP",
-			DestinationPort: ev.DstPort,
-			Timestamp:       ev.Timestamp,
+			Source:           res.ResolveSource(ev.SrcIP),
+			Target:           res.ResolveDestination(ev.DstIP, ev.DstPort),
+			Protocol:         "TCP",
+			DestinationPort:  ev.DstPort,
+			Timestamp:        ev.Timestamp,
+			Failed:           ev.Failed,
+			ConnectLatencyUS: ev.ConnectLatencyUS,
 		})
 	})
 
@@ -343,6 +345,8 @@ func startHealthServer(
 			value           uint64
 		}{
 			{"topology_agent_raw_events_received_total", "TCP active opens submitted by the BPF program", "counter", kernel.EventsSubmitted},
+			{"topology_agent_setup_tracking_missed_total", "Terminal setup outcomes without a recorded start (eviction or attachment boundary)", "counter", kernel.TrackingMissed},
+			{"topology_agent_setup_tracking_failed_total", "Failed updates to the bounded setup tracking map", "counter", kernel.TrackingFailed},
 			{"topology_agent_kernel_samples_lost_total", "Events dropped because the ring buffer was full", "counter", kernel.RingbufDropped},
 			{"topology_agent_events_filtered_family_total", "Events discarded: not AF_INET", "counter", kernel.FilteredFamily},
 			{"topology_agent_events_filtered_protocol_total", "Events discarded: not TCP", "counter", kernel.FilteredProtocol},

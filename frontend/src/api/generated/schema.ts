@@ -252,7 +252,7 @@ export interface components {
              * Truncated
              * @default false
              */
-            truncated: boolean;
+            truncated?: boolean;
             /** Unchanged Count */
             unchanged_count: number;
         };
@@ -272,10 +272,22 @@ export interface components {
             bytes_received?: number | null;
             /** Bytes Sent */
             bytes_sent?: number | null;
+            /**
+             * Connect Latency Count
+             * @default 0
+             */
+            connect_latency_count?: number;
+            /**
+             * Connect Latency Sum Us
+             * @default 0
+             */
+            connect_latency_sum_us?: number;
             /** Connection Count */
             connection_count: number;
             /** Destination Port */
             destination_port: number;
+            /** Failed Connection Count */
+            failed_connection_count?: number | null;
             /**
              * First Seen
              * Format: date-time
@@ -303,12 +315,12 @@ export interface components {
              * Include External
              * @default true
              */
-            include_external: boolean;
+            include_external?: boolean;
             /**
              * Include Unresolved
              * @default false
              */
-            include_unresolved: boolean;
+            include_unresolved?: boolean;
             /** Kind */
             kind?: ("Service" | "Deployment" | "StatefulSet" | "DaemonSet" | "Job" | "Pod") | null;
             /** Namespaces */
@@ -334,10 +346,22 @@ export interface components {
             bytes_received?: number | null;
             /** Bytes Sent */
             bytes_sent?: number | null;
+            /**
+             * Connect Latency Count
+             * @default 0
+             */
+            connect_latency_count?: number;
+            /**
+             * Connect Latency Sum Us
+             * @default 0
+             */
+            connect_latency_sum_us?: number;
             /** Connection Count */
             connection_count: number;
             /** Destination Port */
             destination_port: number;
+            /** Failed Connection Count */
+            failed_connection_count?: number | null;
             /**
              * First Seen
              * Format: date-time
@@ -417,7 +441,7 @@ export interface components {
              * Truncated
              * @default false
              */
-            truncated: boolean;
+            truncated?: boolean;
             /** Truncation Reason */
             truncation_reason?: string | null;
         };
@@ -489,10 +513,22 @@ export interface components {
         NodeDependency: {
             /** Bytes Total */
             bytes_total?: number | null;
+            /**
+             * Connect Latency Count
+             * @default 0
+             */
+            connect_latency_count?: number;
+            /**
+             * Connect Latency Sum Us
+             * @default 0
+             */
+            connect_latency_sum_us?: number;
             /** Connection Count */
             connection_count: number;
             /** Destination Port */
             destination_port: number;
+            /** Failed Connection Count */
+            failed_connection_count?: number | null;
             /**
              * First Seen
              * Format: date-time
