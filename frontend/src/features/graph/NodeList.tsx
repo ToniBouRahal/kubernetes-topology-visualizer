@@ -1,5 +1,5 @@
 import type { GraphNode } from "../../api/types";
-import { encodingFor, namespaceHue } from "./encoding";
+import { namespaceHue, namespaceLabel } from "./encoding";
 
 /**
  * A keyboard-navigable list of the graph's nodes.
@@ -32,11 +32,10 @@ export function NodeList({
   return (
     <section className="panel__section">
       <span className="label" id="node-list-label">
-        Nodes <span className="mono">({nodes.length})</span>
+        Components <span className="mono">({nodes.length})</span>
       </span>
       <ul className="node-list" aria-labelledby="node-list-label">
         {ordered.map((node) => {
-          const encoding = encodingFor(node.kind);
           const selected = node.id === selectedId;
           return (
             <li key={node.id}>
@@ -52,8 +51,10 @@ export function NodeList({
                   aria-hidden="true"
                 />
                 <span className="node-list__name">{node.label}</span>
-                {/* Kind in words, because the shape cue does not exist in a list. */}
-                <span className="node-list__kind">{encoding.label}</span>
+                {/* Namespace in words. Kind is not shown anywhere any more (ADR-010 D-10.1), and
+                    the colour chip beside the name needs a written counterpart here as much as
+                    the canvas does. */}
+                <span className="node-list__ns mono">{namespaceLabel(node)}</span>
               </button>
             </li>
           );

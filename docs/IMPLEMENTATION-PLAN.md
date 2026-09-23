@@ -232,6 +232,33 @@ secrets or external IPs in media.
 
 ---
 
+## Post-Phase-5 amendments
+
+Numbered decisions that change an earlier ADR rather than adding a component. Written under
+ADR-001 §12 instruction 6 — the ADR first, then the code.
+
+### ADR-009 — destination → workload resolution (agent)
+
+- [x] **P6-A1 – P6-A6** complete; tracker in [ADR-009](adr/ADR-009-destination-workload-resolution.md) §6, tests T-9.1 – T-9.6
+
+### ADR-010 — component-first graph encoding (frontend)
+
+Kind leaves the graph, the component's name moves inside the node, degree becomes a size channel,
+selection focuses a neighbourhood, and the ground goes light. Rationale and the losses it accepts:
+[ADR-010](adr/ADR-010-component-first-graph-encoding.md).
+
+- [x] **P6-F1** `tokens.css` re-based on the light cool-slate palette — D-10.7
+- [x] **P6-F2** `encoding.ts`: kind encoding removed, namespace hue kept — D-10.1, D-10.4
+- [x] **P6-F3** `TopologyNode`: circle, name inside, degree-scaled diameter, namespace label — D-10.2, D-10.3, D-10.4
+- [x] **P6-F4** Degree computed per window and threaded to the node — D-10.3
+- [x] **P6-F5** Curved edges keep a destination arrowhead — D-10.5
+- [x] **P6-F6** Neighbour focus on selection, for nodes and edges — D-10.6
+- [x] **P6-F7** `DetailsPanel` rows state source → destination, port, successful, failed, setup time — D-10.1
+- [x] **P6-F8** `NodeList` drops the kind column, keeps namespace — D-10.1
+- [x] **P6-F9** `contrast.test.ts` re-baselined; T-10.1 – T-10.8 — D-10.7
+
+---
+
 ## Definition of Done cross-check
 
 Tick only when the corresponding ADR-001 §9 item is demonstrable, not merely implemented.

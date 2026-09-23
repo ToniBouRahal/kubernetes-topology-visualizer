@@ -46,10 +46,10 @@ export function WindowStrip({
 
       {/* Counts are readings, so they are monospace and tabular. */}
       <span className="strip__stat">
-        <b className="mono">{summary.node_count}</b> nodes
+        <b className="mono">{summary.node_count}</b> components
       </span>
       <span className="strip__stat">
-        <b className="mono">{summary.edge_count}</b> edges
+        <b className="mono">{summary.edge_count}</b> links
       </span>
       <span className="strip__stat" title="TCP connection establishments, not requests">
         <b className="mono">{summary.total_connections}</b> connections

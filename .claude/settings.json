@@ -9,6 +9,26 @@
             "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-write-scope.sh\""
           }
         ]
+      },
+      {
+        "matcher": "Bash|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/it-laptop/.local/bin/graphify hook-guard search",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/it-laptop/.local/bin/graphify hook-guard read",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PostToolUse": [

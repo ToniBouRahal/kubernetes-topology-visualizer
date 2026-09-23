@@ -46,14 +46,16 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-// Every surface a text token can land on. --panel-high is the lightest and therefore the binding
-// constraint; testing only against --ink would pass tokens that fail in the panels.
+// Every surface a text token can land on, the canvas included: React Flow's attribution and the
+// canvas toolbar both set text directly on --ink, so exempting it would exempt real text.
 const SURFACES = ["--ink", "--panel", "--panel-high"] as const;
+const TEXT_SURFACES = SURFACES;
 const TEXT_TOKENS = ["--text", "--text-dim", "--text-faint"] as const;
+const NAMESPACE_TOKENS = ["--ns-1", "--ns-2", "--ns-3", "--ns-4", "--ns-5", "--ns-6", "--external"] as const;
 
 describe("WCAG AA text contrast", () => {
   for (const text of TEXT_TOKENS) {
-    for (const surface of SURFACES) {
+    for (const surface of TEXT_SURFACES) {
       it(`${text} on ${surface} meets 4.5:1`, () => {
         const ratio = contrast(token(text), token(surface));
         expect(
@@ -64,28 +66,62 @@ describe("WCAG AA text contrast", () => {
     }
   }
 
-  it("keeps the three text tokens visually distinct, brightest to dimmest", () => {
+  it("keeps the three text tokens in a hierarchy, strongest to faintest — T-10.8", () => {
+    // Stated as contrast against the ground rather than as raw luminance, because the palette is
+    // light (ADR-010 D-10.7): --text is now the DARKEST of the three, so an assertion on
+    // luminance ordering would have silently inverted with the redesign. Contrast is what the
+    // hierarchy actually means, and it reads the same on either ground.
+    //
     // Indexed access, not destructuring: noUncheckedIndexedAccess widens the latter to
     // `number | undefined`, and asserting on a possibly-undefined value is exactly the kind of
     // silent pass this file exists to prevent.
-    const luminances = TEXT_TOKENS.map((t) => relativeLuminance(token(t)));
-    expect(luminances).toHaveLength(3);
-    for (let i = 1; i < luminances.length; i += 1) {
-      expect(luminances[i - 1]!).toBeGreaterThan(luminances[i]!);
+    const ratios = TEXT_TOKENS.map((t) => contrast(token(t), token("--panel")));
+    expect(ratios).toHaveLength(3);
+    for (let i = 1; i < ratios.length; i += 1) {
+      expect(ratios[i - 1]!).toBeGreaterThan(ratios[i]!);
     }
   });
 
+  it("every namespace fill carries its node's name at 4.5:1 — T-10.8", () => {
+    // A namespace hue is no longer only a tint: since ADR-010 D-10.2 it is a FILL with the
+    // component's name set on it in --on-fill. A hue that is merely distinguishable from its
+    // neighbours can still be unreadable under the label it now carries.
+    for (const ns of NAMESPACE_TOKENS) {
+      const ratio = contrast(token(ns), token("--on-fill"));
+      expect(
+        ratio,
+        `${ns} (${token(ns)}) under --on-fill (${token("--on-fill")}) = ${ratio.toFixed(2)}:1`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("keeps the namespace hues distinguishable from one another", () => {
+    // Six hues that all pass the label test above could still be six shades of one colour.
+    const luminances = NAMESPACE_TOKENS.map((t) => token(t));
+    expect(new Set(luminances).size).toBe(NAMESPACE_TOKENS.length);
+  });
+
   it("the focus ring meets the 3:1 non-text contrast requirement", () => {
-    // WCAG 2.2 §1.4.11. The ring is --ns-5 and can sit against any surface.
+    // WCAG 2.2 §1.4.11. The ring owns its own token now, so it can be solved for this one job.
     for (const surface of SURFACES) {
-      const ratio = contrast(token("--ns-5"), token(surface));
+      const ratio = contrast(token("--focus"), token(surface));
       expect(ratio, `focus ring on ${surface} = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
     }
   });
 
-  it("regression: --text-faint is not the pre-Phase-4 value that failed AA", () => {
-    // Named explicitly because reverting it would break 23 elements at once and the failure is
-    // invisible without measurement.
-    expect(token("--text-faint")).not.toBe("#6b7f96");
+  it("edges meet the 3:1 graphical-object requirement on the canvas", () => {
+    // An edge is the load-bearing mark in a dependency graph and is drawn on --ink, which no
+    // text-contrast assertion above covers.
+    for (const stroke of ["--edge", "--edge-strong"] as const) {
+      const ratio = contrast(token(stroke), token("--ink"));
+      expect(ratio, `${stroke} on --ink = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("regression: the palette is the light one ADR-010 specifies, not the console it replaced", () => {
+    // Named explicitly because a revert would restore dark tokens that pass every ratio above
+    // while making --on-fill labels, the blueprint grid, and the edge strokes wrong at once.
+    expect(relativeLuminance(token("--ink"))).toBeGreaterThan(0.5);
+    expect(relativeLuminance(token("--text"))).toBeLessThan(0.1);
   });
 });

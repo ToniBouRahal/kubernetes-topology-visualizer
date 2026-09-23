@@ -182,44 +182,85 @@
 .ns--on .ns__name::after { content: " ✓"; color: var(--ok); }
 
 
+/* One observed link: the direction on its own line, then the fields it was measured in. */
 .dep {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: var(--s-2);
-  padding: var(--s-1) 0;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--s-2) 0;
   border-bottom: 1px solid var(--line);
 }
 .dep:last-child { border-bottom: none; }
-.dep__name { font-size: var(--step-0); }
-.dep__meta { font-size: var(--step--1); color: var(--text-faint); white-space: nowrap; }
+.dep__pair { font-size: var(--step-0); font-weight: 600; overflow-wrap: anywhere; }
+.dep__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--s-3);
+  font-size: var(--step--1);
+  color: var(--text-dim);
+}
+.dep__failed b { color: var(--warn); }
+.dep__timing { font-size: var(--step--1); color: var(--text-faint); }
 
 /* ── Canvas ──────────────────────────────────────────────────────────────────────────────── */
 
 .canvas { position: relative; min-width: 0; background: var(--ink); }
 
-.topology-node { position: relative; }
-.topology-node__shape { position: absolute; inset: 0; }
-.topology-node__content {
+/* A node is a circle carrying its own name, over a band carrying its namespace — ADR-010 D-10.2. */
+.topology-node {
   position: relative;
-  height: 100%;
-  padding: 0 var(--s-4);
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 1px;
-  pointer-events: none;
+  align-items: center;
 }
+.topology-node__disc {
+  border-radius: 50%;
+  border: 1.5px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8%;
+  text-align: center;
+}
+/* The cluster boundary. A stroke, not a shape: everything outside collapses into this one node. */
+.topology-node__disc--external { border-style: dashed; border-width: 2px; }
 .topology-node__name {
   font-size: var(--step-0);
   font-weight: 600;
+  line-height: 1.2;
+  /* Long workload names wrap rather than truncate — identity is the one thing not worth
+     shortening. Past three lines it does clip, and the full name is in the node list, the
+     details panel, and the title attribute. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* break-word, NOT anywhere: `anywhere` split EXTERNAL across two lines as "EXTERN / AL" even
+     though the word fits once the type steps down. Only break a word that genuinely cannot fit. */
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+/* A name too long for the circle at full size steps down rather than fragmenting. Set from the
+   label's own length in TopologyNode, because CSS cannot measure text. */
+.topology-node__name--long { font-size: var(--step--1); letter-spacing: -0.01em; }
+/* The bottom rung gives up WIDTH, not size. --step--1 (12px) is the floor for any text that
+   carries information; below it the name stops being readable across a room, which is the one
+   place this graph is guaranteed to be shown. So the disc's side padding yields instead. */
+.topology-node__name--longer { font-size: var(--step--1); letter-spacing: -0.02em; }
+.topology-node__disc:has(.topology-node__name--longer) { padding: 0 3%; }
+.topology-node__ns {
+  height: 18px;
+  line-height: 18px;
+  font-size: var(--step--1);
+  color: var(--text-dim);
+  max-width: 132px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.topology-node__meta { display: flex; gap: var(--s-2); font-size: 10px; align-items: baseline; }
-.topology-node__kind { font-weight: 600; letter-spacing: 0.03em; }
-.topology-node__ns { color: var(--text-faint); }
+/* Focusing a component drops everything outside its neighbourhood back — ADR-010 D-10.6. */
+.topology-node--dimmed { opacity: 0.22; }
+.topology-node--selected .topology-node__disc { box-shadow: 0 0 0 3px var(--line-strong); }
 .topology-handle { opacity: 0; }
 
 /* ── States and banners ──────────────────────────────────────────────────────────────────── */
@@ -386,7 +427,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.node-list__kind { font-size: 10px; color: var(--text-faint); flex-shrink: 0; }
+.node-list__ns { font-size: var(--step--1); color: var(--text-faint); flex-shrink: 0; }
 .node-list__item--on .node-list__name::after { content: " ✓"; color: var(--ok); }
 
 .topology-toolbar {
@@ -404,7 +445,7 @@
   border-radius: 8px;
   background: var(--panel);
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--step--1);
   max-height: 25%;
   overflow: auto;
 }

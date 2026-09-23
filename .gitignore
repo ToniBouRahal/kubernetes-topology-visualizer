@@ -66,3 +66,16 @@ kubeconfig
 
 # Trivy vulnerability database cache (100MB+, re-downloadable)
 /.trivy-cache/
+
+# garphify generated files
+graphify-out/
+
+#impeccable generated files
+.impeccable/
+
+# playwright generated files
+.playwright-mcp/
+
+
+# graphify backup of settings.json
+*.graphify-bak

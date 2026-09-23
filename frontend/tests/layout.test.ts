@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import type { GraphEdge, GraphNode } from "../src/api/types";
-import { encodingFor, namespaceHue } from "../src/features/graph/encoding";
-import { edgeWidth, layoutGraph } from "../src/features/graph/layout";
+import { isExternal, namespaceHue, namespaceLabel } from "../src/features/graph/encoding";
+import {
+  degreesOf,
+  edgeWidth,
+  layoutGraph,
+  nodeDiameter,
+  NODE_MAX_DIAMETER,
+  NODE_MIN_DIAMETER,
+} from "../src/features/graph/layout";
 
 function node(id: string, name: string, kind = "Deployment", namespace = "demo"): GraphNode {
   return {
@@ -110,19 +117,14 @@ describe("edge width (D-6.4)", () => {
   });
 });
 
-describe("visual encoding (D-6.3)", () => {
-  it("draws every kind with the same shape", () => {
-    // The shape vocabulary was removed deliberately. This asserts the replacement is uniform
-    // rather than half-applied: one stray outline is worse than seven, because it reads as
-    // meaningful.
-    const kinds = ["Service", "Deployment", "StatefulSet", "DaemonSet", "Job", "Pod", "External"];
-    const shapes = kinds.map((k) => encodingFor(k).shape);
-    expect(new Set(shapes).size).toBe(1);
-  });
-
-  it("names every kind in words, which is now the only cue that carries the kind", () => {
-    for (const kind of ["Service", "Deployment", "StatefulSet", "DaemonSet", "Job", "Pod", "External"]) {
-      expect(encodingFor(kind).label.length).toBeGreaterThan(0);
+describe("visual encoding (ADR-010, amending D-6.3)", () => {
+  it("exports nothing that encodes a workload kind — T-10.1", async () => {
+    // The point of D-10.1 is that kind has no visual encoding at all. Asserting on the module's
+    // surface rather than on rendered output catches a reintroduction at the source, where it
+    // would otherwise be one import away from reappearing on a node.
+    const encoding = await import("../src/features/graph/encoding");
+    for (const removed of ["encodingFor", "KIND_ENCODING", "shapePath", "NAMESPACE_SHAPES"]) {
+      expect(encoding).not.toHaveProperty(removed);
     }
   });
 
@@ -132,11 +134,43 @@ describe("visual encoding (D-6.3)", () => {
     expect(namespaceHue("data")).toBe(namespaceHue("data"));
   });
 
-  it("gives the external node its own treatment", () => {
-    // A dashed stroke, not a different shape: it marks the cluster boundary, not a kind.
+  it("writes every namespace in words, so colour is never its only carrier — T-10.4", () => {
+    expect(namespaceLabel({ namespace: "demo", kind: "Deployment" })).toBe("demo");
+    // The external node has no namespace, and an empty line there would read as missing data
+    // rather than as the cluster boundary it actually is.
+    expect(namespaceLabel({ namespace: null, kind: "External" })).toBe("outside cluster");
+    expect(namespaceLabel({ namespace: null, kind: "Pod" })).toBe("no namespace");
+  });
+
+  it("marks the external node as the cluster boundary", () => {
     expect(namespaceHue(null)).toBe("var(--external)");
-    expect(encodingFor("External").dashed).toBe(true);
-    expect(encodingFor("Deployment").dashed).toBeUndefined();
+    expect(isExternal("External")).toBe(true);
+    expect(isExternal("Deployment")).toBe(false);
+  });
+});
+
+describe("node size carries degree (D-10.3)", () => {
+  it("grows with degree and is bounded at both ends — T-10.3", () => {
+    expect(nodeDiameter(3)).toBeGreaterThan(nodeDiameter(1));
+    expect(nodeDiameter(0)).toBe(NODE_MIN_DIAMETER);
+    // Bounded, so one hub cannot swamp the canvas.
+    expect(nodeDiameter(1000)).toBe(NODE_MAX_DIAMETER);
+    // Equal degree renders equal diameter: size must be a function of the reading, nothing else.
+    expect(nodeDiameter(2)).toBe(nodeDiameter(2));
+  });
+
+  it("counts DISTINCT components, not edges", () => {
+    // Two components talking on three ports are one dependency observed three ways. Counting
+    // edges would draw a chatty pair as though it were a hub.
+    const nodes = [node("a", "a"), node("b", "b")];
+    const edges = [edge("e1", "a", "b"), edge("e2", "a", "b"), edge("e3", "a", "b")];
+    expect(degreesOf(nodes, edges).get("a")).toBe(1);
+  });
+
+  it("does not count a self-loop as another component", () => {
+    // The namespace-grouped view draws these; a namespace talking to itself is not a neighbour.
+    const degrees = degreesOf([node("a", "a")], [edge("self", "a", "a")]);
+    expect(degrees.get("a")).toBe(0);
   });
 });
 

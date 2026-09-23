@@ -13,9 +13,10 @@ one ADR per component, each written as an **implementation guide**: what to buil
 from the prototype, what must change, which tests prove it, and **which Claude Code skills and
 plugins to use while building it**.
 
-`ADR-009` is the first **amendment**: a numbered decision that changes an earlier one rather than
-adding a component. It was written after Phase 5, under the procedure in §5 item 3 — the ADR first,
-then the code.
+`ADR-009` and `ADR-010` are **amendments**: numbered decisions that change an earlier one rather than
+adding a component. Both were written after Phase 5, under the procedure in §5 item 3 — the ADR
+first, then the code. `ADR-009` changed which identity an observation is assigned; `ADR-010` changed
+what the graph draws once it has one.
 
 | ADR | Component | Repo path | ADR-001 source | Owning phases | Tracker |
 |---|---|---|---|---|---|
@@ -27,14 +28,16 @@ then the code.
 | [ADR-007](ADR-007-packaging-deployment.md) | Packaging & deployment (Helm/kind) | `charts/`, `kind/`, `demo/`, `scripts/` | §5.7 | 0, 5 | §9 |
 | [ADR-008](ADR-008-testing-ci.md) | Testing & CI | `.github/`, `*/tests/`, `Makefile` | §8, §7 | 0–5 | §8 |
 | [ADR-009](ADR-009-destination-workload-resolution.md) | Destination → workload resolution | `agent/internal/resolver/` | §5.2 | post-5 | §6 |
+| [ADR-010](ADR-010-component-first-graph-encoding.md) | Component-first graph encoding | `frontend/src/features/graph/`, `frontend/src/styles/` | §5.6 | post-5 | §6 |
 
 **Progress tracking:** [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) is the master checklist —
 every task carries an ID like `P1-A2` (phase 1, agent, task 2). Each component ADR repeats its own
 subset in the tracker section listed above, using the same IDs. Tick both.
 
 **Authority order.** `FYP_Project_Scope_Source_of_Truth.md` wins over `ADR-001`, which wins over
-`ADR-002`–`ADR-009`. Between component ADRs, a later amendment wins over what it amends — `ADR-009`
-over the destination ladder in `ADR-002` D-2.4. A component ADR may add detail but must never widen scope. Any deviation
+`ADR-002`–`ADR-010`. Between component ADRs, a later amendment wins over what it amends — `ADR-009`
+over the destination ladder in `ADR-002` D-2.4, `ADR-010` over the visual encoding table in
+`ADR-006` D-6.3. A component ADR may add detail but must never widen scope. Any deviation
 requires a new ADR in `docs/adr/` **before** implementation (ADR-001 §12 instruction 6).
 
 ## 2. Environment prerequisites (verified 2026-08-12 on the target machine)

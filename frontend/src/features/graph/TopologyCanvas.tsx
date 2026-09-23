@@ -6,7 +6,10 @@ import {
   Controls,
   MarkerType,
   ReactFlow,
+  useReactFlow,
+  useStore,
   type Edge,
+  type FitViewOptions,
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -16,7 +19,7 @@ import type { GraphEdge, GraphNode, GraphResponse } from "../../api/types";
 import { groupTopology, focusTopology } from "./grouping";
 import { applyRenderBudget, MAX_RENDERED_EDGES } from "./renderBudget";
 import { TopologyNode, type TopologyNodeData } from "./TopologyNode";
-import { edgeWidth, layoutGraph, type PositionCache } from "./layout";
+import { degreesOf, edgeWidth, layoutGraph, type PositionCache } from "./layout";
 
 import { outcomeLabel } from "./outcomes";
 
@@ -31,6 +34,57 @@ function NamespaceLoop({ id, sourceX, sourceY, targetX, targetY, markerEnd, styl
     labelStyle={labelStyle} labelBgStyle={labelBgStyle} />;
 }
 const EDGE_TYPES = { namespaceLoop: NamespaceLoop };
+
+/**
+ * Hoisted so its identity is stable. React Flow re-reads this prop, and a fresh object literal
+ * on every render means a new identity on every poll.
+ */
+const FIT_OPTIONS: FitViewOptions = { padding: 0.18, maxZoom: 1.2 };
+
+/**
+ * Re-fits the view when the pane changes size.
+ *
+ * React Flow's own `fitView` prop queues a fit that runs once the nodes are measured, and it
+ * gets the first paint right — measured at 1280x720, all eight demo components land inside the
+ * pane. What it does not do is run again: the fit is mount-only, so narrowing the window keeps
+ * the old viewport and pushes components outside it with nothing on screen to say they are
+ * missing. Dragging a window narrower is exactly what happens when someone shares a screen.
+ *
+ * This lives in a child component because `useReactFlow` only resolves inside the <ReactFlow>
+ * tree. It deliberately does NOT gate on `useNodesInitialized`: that hook stays false for this
+ * canvas even after the nodes are measured and the graph is interactive (verified in a browser),
+ * so gating on it silently disables the observer. The pane cannot resize before it exists, which
+ * is the only ordering this actually needs.
+ */
+function FitToPane() {
+  const { fitView } = useReactFlow();
+  const pane = useStore((state) => state.domNode);
+
+  useEffect(() => {
+    if (!pane) return;
+    // Debounced: a drag-resize fires this continuously, and re-solving the viewport every frame
+    // makes the graph swim under the cursor.
+    let timer: number | undefined;
+    let first = true;
+    const observer = new ResizeObserver(() => {
+      // ResizeObserver fires once on observe. That first call is the size the mount-time fit
+      // already solved for, so acting on it would re-fit the view for no reason.
+      if (first) {
+        first = false;
+        return;
+      }
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => void fitView(FIT_OPTIONS), 150);
+    });
+    observer.observe(pane);
+    return () => {
+      window.clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [pane, fitView]);
+
+  return null;
+}
 
 interface Props {
   graph: GraphResponse;
@@ -61,7 +115,11 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
     // twice over.
     const budget = applyRenderBudget(view.nodes, view.edges);
 
-    const result = layoutGraph(budget.nodes, budget.edges, cache.current);
+    // Degree sizes the nodes (D-10.3) and is computed from what will actually be DRAWN — a node
+    // whose neighbours were dropped by the render budget must not claim them.
+    const degrees = degreesOf(budget.nodes, budget.edges);
+
+    const result = layoutGraph(budget.nodes, budget.edges, cache.current, degrees);
     cache.current = { positions: result.positions, signature: result.signature };
 
     const maxConnections = budget.edges.reduce(
@@ -69,11 +127,29 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
       0,
     );
 
+    // Selecting a component focuses its neighbourhood (D-10.6): it and what it talks to stay lit,
+    // everything else recedes. Membership is decided here, once, so nodes and edges cannot
+    // disagree about who is in the neighbourhood.
+    const neighbours = new Set<string>();
+    if (selectedId !== null) {
+      for (const edge of budget.edges) {
+        if (edge.source_id === selectedId) neighbours.add(edge.target_id);
+        if (edge.target_id === selectedId) neighbours.add(edge.source_id);
+      }
+    }
+    const inFocus = (id: string) => selectedId === null || id === selectedId || neighbours.has(id);
+
     const flowNodes: Node<TopologyNodeData>[] = budget.nodes.map((node: GraphNode) => ({
       id: node.id,
       type: "topology",
       position: result.positions.get(node.id) ?? { x: 0, y: 0 },
-      data: { node, selected: node.id === selectedId, group: view.groups.get(node.id) },
+      data: {
+        node,
+        selected: node.id === selectedId,
+        group: view.groups.get(node.id),
+        degree: degrees.get(node.id) ?? 0,
+        dimmed: !inFocus(node.id),
+      },
       draggable: true,
     }));
 
@@ -86,6 +162,9 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
       if (edge.source_id === edge.target_id) loopCounts.set(edge.source_id, loopIndex + 1);
       const hasFailures = (edge.failed_connection_count ?? 0) > 0;
       const stroke = hasFailures ? "var(--warn)" : touchesSelection ? "var(--edge-strong)" : "var(--edge)";
+      // An edge is in focus only when it TOUCHES the selection. An edge between two neighbours is
+      // not part of the selected component's neighbourhood, and lighting it would say it was.
+      const edgeInFocus = selectedId === null || touchesSelection;
       return {
         data: { loopIndex },
         id: edge.id,
@@ -98,6 +177,7 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
           stroke,
           strokeDasharray: hasFailures ? "6 4" : undefined,
           strokeWidth: edgeWidth(edge.connection_count, maxConnections),
+          opacity: edgeInFocus ? undefined : 0.16,
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
@@ -105,10 +185,21 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
           width: 11,
           height: 11,
         },
-        label: `${edge.protocol}:${edge.destination_port} · ${outcomeLabel(edge)}`,
+        // The full reading is ~350px of text and every edge carries one, so showing them all at
+        // once buries the graph under its own labels. The port alone identifies the link and
+        // fits; the counts arrive when a component is selected and its neighbourhood is the only
+        // thing labelled. Out of focus entirely, the label goes rather than fading — React Flow
+        // draws it in its own layer, so a faded edge would keep a fully legible label.
+        label: !edgeInFocus
+          ? undefined
+          : selectedId === null
+            ? `${edge.protocol}:${edge.destination_port}`
+            : `${edge.protocol}:${edge.destination_port} · ${outcomeLabel(edge)}`,
         labelStyle: {
           fill: "var(--text-dim)",
-          fontSize: 10,
+          // 12px, matching --step--1. A literal number, not the token: React Flow writes this
+          // into an SVG presentation attribute where a var() reference does not resolve.
+          fontSize: 12,
           fontFamily: "var(--mono)",
         },
         labelBgStyle: { fill: "var(--ink)", fillOpacity: 0.9 },
@@ -138,7 +229,7 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
       {activeFocus && <><span>Direct neighbors of {focusNode?.label}</span><button type="button" onClick={() => { setFocusedId(null); cache.current = undefined; }}>Exit focus</button></>}
       {grouped && !activeFocus && expanded.size > 0 && <button type="button" onClick={() => { setExpanded(new Set()); cache.current = undefined; }}>Collapse all</button>}
       {grouped && !activeFocus && [...expanded].filter(ns => graph.nodes.some(n => n.namespace === ns)).sort().map(ns => <button type="button" key={ns} onClick={() => { setExpanded(current => { const next = new Set(current); next.delete(ns); return next; }); cache.current = undefined; }}>Collapse {ns}</button>)}
-      <span>{view.nodes.length} nodes · {view.edges.length} relationships before display limit</span>
+      <span>{view.nodes.length} components · {view.edges.length} links before display limit</span>
     </div>
     <ReactFlow
       key={viewKey}
@@ -155,13 +246,17 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
       }}
       onPaneClick={() => onSelect(null)}
       fitView
-      fitViewOptions={{ padding: 0.18, maxZoom: 1.2 }}
+      fitViewOptions={FIT_OPTIONS}
       minZoom={0.2}
       maxZoom={2}
       proOptions={{ hideAttribution: false }}
     >
-      <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#22303f" />
+      {/* Ruled like a blueprint rather than dotted. Literal hex, not a token: React Flow writes
+          this into an SVG pattern attribute, where a var() reference does not resolve. Mirrors
+          --line in tokens.css — change both together. */}
+      <Background variant={BackgroundVariant.Lines} gap={40} size={1} color="#dbe3ea" />
       <Controls showInteractive={false} />
+      <FitToPane />
     </ReactFlow>
     </>
   );

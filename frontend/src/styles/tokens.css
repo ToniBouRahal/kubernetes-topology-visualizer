@@ -1,10 +1,14 @@
 /*
  * Design tokens.
  *
- * Direction: a measurement instrument, not a business dashboard. This tool reports what the
- * kernel actually observed, so the interface is built to read like an instrument panel —
- * measured values in monospace, labels in sans, and a cool blue-slate ground rather than the
- * pure black of a terminal or the white of a document.
+ * Direction: a monitoring desk, not a business dashboard. This tool reports what the kernel
+ * actually observed, so the interface is built to read like an instrument panel — measured
+ * values in monospace, labels in tracked-out sans, and a cool light slate ground ruled like
+ * a blueprint.
+ *
+ * The ground is LIGHT (ADR-010 D-10.7). The demo is fixed at 1280x720 on a projector
+ * (ADR-001 §6), where a near-black ground with one luminous accent loses most of its contrast
+ * range and the namespace hues stop being separable from each other.
  *
  * NO WEB FONTS. The kind demo may run without internet, and a font that fails to load would
  * change every measurement's width mid-demonstration. System stacks only; the typographic
@@ -13,50 +17,61 @@
 
 :root {
   /* ── Ground ──────────────────────────────────────────────────────────────────────────── */
-  --ink: #0f1620;          /* canvas: deep blue-black, deliberately not #000 */
-  --panel: #16202c;        /* raised surfaces */
-  --panel-high: #1d2937;   /* controls, hover */
-  --line: #2a3646;         /* structure */
-  --line-strong: #3a4a5e;
+  --ink: #e8edf2;          /* canvas: cool light slate, deliberately not #fff */
+  --panel: #f5f8fa;        /* raised surfaces */
+  --panel-high: #ffffff;   /* controls, hover */
+  --line: #c9d4de;         /* structure */
+  --line-strong: #a9b8c6;
 
   /* ── Text ────────────────────────────────────────────────────────────────────────────── *
-   * Every value here clears WCAG AA (4.5:1 for normal text) against ALL THREE surfaces it can
-   * land on — --ink, --panel, and --panel-high. The lightest surface, --panel-high, is the
-   * binding constraint, so that is what these were solved against.
-   *
-   * --text-faint was #6b7f96, which measured 4.41 / 3.99 / 3.58 across those surfaces and so
-   * failed AA everywhere it was used: labels, panel hints, the window strip, and the namespace
-   * line on every node. Raising lightness while holding hue and saturation fixes all of them at
-   * once and keeps --text-faint clearly dimmer than --text-dim, so the visual hierarchy is
-   * unchanged. Measured in docs/evaluation/phase-4.md.
+   * Every value clears WCAG AA (4.5:1) against ALL THREE surfaces it can land on. On a light
+   * ground the binding constraint INVERTS: --panel-high is now the lightest surface at pure
+   * white, so it is the hardest for dark text, and that is what these were solved against.
+   * Re-derived wholesale for ADR-010 D-10.7 — every one of these is a new value, so the old
+   * measurements say nothing about them. Asserted in tests/contrast.test.ts (T-10.8).
    *
    *                  --ink   --panel   --panel-high
-   *   --text          15.56    14.09       12.63
-   *   --text-dim       8.18     7.41        6.64
-   *   --text-faint     5.69     5.15        4.61   <- was 4.41 / 3.99 / 3.58
+   *   --text          14.19    15.25       16.48
+   *   --text-dim       7.07     7.60        8.21
+   *   --text-faint     4.77     5.12        5.53
+   *
+   * --text-faint was first solved at #5f7183, which cleared AA on both panels but measured 4.26
+   * on --ink. That was tempting to allow — --ink is the canvas and carries almost no body text —
+   * but "almost" was doing the work: React Flow's attribution and the canvas toolbar both sit on
+   * it. Darkening the token costs nothing and keeps the rule a rule, rather than a rule with an
+   * exception that the next person has to rediscover. It stays dimmer than --text-dim.
    */
-  --text: #e8eef6;
-  --text-dim: #9db0c6;
-  --text-faint: #8092a5;
+  --text: #16202b;
+  --text-dim: #3e5165;
+  --text-faint: #59697a;
 
   /* ── Namespace identity ──────────────────────────────────────────────────────────────── *
-   * Colour encodes NAMESPACE, never kind — kind is carried by shape, so colour is free to do
-   * work that shape cannot. Assigned deterministically by name so a namespace keeps its hue
-   * across reloads. All tested to hold contrast against --ink.                              */
-  --ns-1: #4fb8ac;
-  --ns-2: #d9a441;
-  --ns-3: #9b8ae6;
-  --ns-4: #e0748a;
-  --ns-5: #6ea8dc;
-  --ns-6: #7fc96b;
+   * Colour encodes NAMESPACE and nothing else (ADR-010 D-10.4). Kind is no longer drawn at
+   * all, so colour has no competitor — but colour is never the ONLY carrier either: every node
+   * writes its namespace underneath itself. Assigned deterministically by name so a namespace
+   * keeps its hue across reloads.
+   *
+   * Each hue is now a FILL with the component's name set on it in white (D-10.2), so each is
+   * solved for 4.5:1 against white, not merely for being distinguishable from the ground:
+   *   ns-1 5.63  ns-2 6.40  ns-3 4.87  ns-4 5.22  ns-5 6.10  ns-6 6.03  external 5.50        */
+  --ns-1: #2c6e8e;         /* steel blue */
+  --ns-2: #6b46c1;         /* violet */
+  --ns-3: #b7524a;         /* terracotta */
+  --ns-4: #2f7a52;         /* forest */
+  --ns-5: #a8386b;         /* magenta */
+  --ns-6: #0f6e6e;         /* teal */
+
+  /* Text set on a namespace fill. Not #fff by name: it is a role, and it moves with the ground. */
+  --on-fill: #ffffff;
 
   /* ── Semantic ────────────────────────────────────────────────────────────────────────── */
-  --external: #b3a08a;     /* outside the cluster: warm, desaturated, deliberately not alarming */
-  --edge: #55697f;
-  --edge-strong: #7f97b0;
-  --ok: #4fb8ac;
-  --warn: #d9a441;
-  --danger: #e0748a;
+  --external: #5b6b7a;     /* outside the cluster: neutral slate, deliberately not alarming */
+  --edge: #6b8296;         /* 3.38:1 on the canvas — a graphical object, WCAG 2.2 §1.4.11 */
+  --edge-strong: #3e5165;
+  --focus: #1c6fb8;        /* the keyboard focus ring: one job, so it owns a token */
+  --ok: #1f7a4c;
+  --warn: #a85a10;
+  --danger: #a3332b;
 
   /* ── Type ────────────────────────────────────────────────────────────────────────────── */
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
@@ -105,7 +120,7 @@ body {
 
 /* Visible keyboard focus everywhere. Required, not optional (ADR-006 D-6.7). */
 :focus-visible {
-  outline: 2px solid var(--ns-5);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
@@ -119,13 +134,13 @@ button {
   padding: var(--s-1) var(--s-3);
   cursor: pointer;
 }
-button:hover:not(:disabled) { border-color: var(--line-strong); background: #24313f; }
+button:hover:not(:disabled) { border-color: var(--line-strong); background: var(--ink); }
 button:disabled { opacity: 0.5; cursor: default; }
 
 input, select {
   font: inherit;
   color: var(--text);
-  background: var(--ink);
+  background: var(--panel-high);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   padding: var(--s-1) var(--s-2);

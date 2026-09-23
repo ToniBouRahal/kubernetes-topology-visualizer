@@ -2,6 +2,7 @@
 
 - **Status:** Accepted for implementation
 - **Date:** 2026-08-12
+- **Amended by:** [ADR-010](ADR-010-component-first-graph-encoding.md) — D-6.3 visual encoding, D-6.7 contrast baseline
 - **Parent:** ADR-001 §5.6 · Source of truth §13, §14
 - **Component path:** `frontend/`
 - **Owning phases:** Phase 2 (live graph), Phase 3 (history + compare), Phase 4 (completeness + a11y)
@@ -70,8 +71,10 @@ seconds.
 
 | Concept | Primary cue | Secondary cue |
 |---|---|---|
-| Node kind | shape + icon | colour |
-| Namespace | grouping/border treatment | colour |
+| ~~Node kind~~ | **row removed — ADR-010 D-10.1** — kind is no longer drawn at all | — |
+| Node name | text inside the node (ADR-010 D-10.2) | — |
+| Node degree | node diameter (ADR-010 D-10.3) | — |
+| Namespace | written label on the node (ADR-010 D-10.4) | colour |
 | `EXTERNAL` | distinct shape + explicit label | colour |
 | Unresolved | distinct shape + label | colour |
 | Diff `NEW` | solid stroke + `NEW` text badge | green |
@@ -82,6 +85,12 @@ seconds.
 
 Every state readable without colour. Namespaces must not become deeply nested subgraphs — ADR-001
 §5.6 warns against unreadable nesting; use border/grouping treatment instead.
+
+**Amended by ADR-010.** Kind was the strongest-cued fact in the original table because a Service and
+the workload behind it were once two different nodes; ADR-009 removed that distinction, and ADR-010
+removes the fact from the graph with it. The table's guarantee is unchanged — nothing is carried by
+colour alone — and D-10.4 is what preserves it, by writing the namespace on the node now that kind no
+longer occupies that space.
 
 ### D-6.4 — Traffic intensity
 
@@ -269,6 +278,22 @@ test passes.
 
 **Phase 4 gate** (ADR-001 §7): usable at 1280×720 · all controls keyboard reachable · comparison
 understandable without colour · thickness uses a named metric · details complete · tests in CI.
+
+### Post-Phase-5 — amended by ADR-010 (component-first encoding)
+
+Kind leaves the graph, the name moves inside the node, degree becomes a size channel, and the ground
+goes light. Decisions and rationale in [ADR-010](ADR-010-component-first-graph-encoding.md); the
+boxes are repeated here and in `IMPLEMENTATION-PLAN.md`, tick all three.
+
+- [x] **P6-F1** `tokens.css` re-based on the light cool-slate palette — D-10.7
+- [x] **P6-F2** `encoding.ts`: kind encoding removed, namespace hue kept — D-10.1, D-10.4
+- [x] **P6-F3** `TopologyNode`: circle, name inside, degree-scaled diameter, namespace label — D-10.2, D-10.3, D-10.4
+- [x] **P6-F4** Degree computed per window and threaded to the node — D-10.3
+- [x] **P6-F5** Curved edges keep a destination arrowhead — D-10.5
+- [x] **P6-F6** Neighbour focus on selection, for nodes and edges — D-10.6
+- [x] **P6-F7** `DetailsPanel` rows state source → destination, port, successful, failed, setup time — D-10.1
+- [x] **P6-F8** `NodeList` drops the kind column, keeps namespace — D-10.1
+- [x] **P6-F9** `contrast.test.ts` re-baselined; T-10.1 – T-10.8 — D-10.7
 
 ### Standing invariants — re-verify at every phase gate
 

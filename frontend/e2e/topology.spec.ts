@@ -44,7 +44,7 @@ test.describe("runtime topology, end to end", () => {
     // The observation strip reports the counts, so waiting on it waits on real data.
     const strip = page.getByLabel("Observation window");
     await expect(strip).toBeVisible();
-    await expect(strip).toContainText(/[1-9]\d* edges/, { timeout: 30_000 });
+    await expect(strip).toContainText(/[1-9]\d* links/, { timeout: 30_000 });
 
     const elapsed = (Date.now() - started) / 1000;
     // eslint-disable-next-line no-console
@@ -55,7 +55,7 @@ test.describe("runtime topology, end to end", () => {
   /** T-8.1: the specific edges the demo is built to produce, at SERVICE level. */
   test("the expected demo edges are rendered", async ({ page }) => {
     await page.goto(BASE);
-    await expect(page.getByLabel("Observation window")).toContainText(/[1-9]\d* edges/, {
+    await expect(page.getByLabel("Observation window")).toContainText(/[1-9]\d* links/, {
       timeout: 30_000,
     });
 
@@ -83,7 +83,7 @@ test.describe("runtime topology, end to end", () => {
    */
   test("replicas collapse to one node per workload", async ({ page }) => {
     await page.goto(BASE);
-    await expect(page.getByLabel("Observation window")).toContainText(/[1-9]\d* edges/, {
+    await expect(page.getByLabel("Observation window")).toContainText(/[1-9]\d* links/, {
       timeout: 30_000,
     });
 
@@ -92,20 +92,26 @@ test.describe("runtime topology, end to end", () => {
   });
 
   /**
-   * Kind is spelled out. Every node is now drawn with the same outline, so the written kind is the
-   * ONLY cue that carries it — which makes this assertion load-bearing rather than a nicety
-   * (ADR-006 D-6.3).
+   * Kind is NOT drawn — ADR-010 D-10.1, which replaced the assertion that used to live here
+   * ("nodes state their kind in words"). What the node states instead is its own name and its
+   * namespace, and this checks both halves: the kind is absent, and the namespace is present in
+   * words rather than in colour alone (D-10.4).
    */
-  test("nodes state their kind in words", async ({ page }) => {
+  test("nodes name themselves and their namespace, and never their kind — T-10.1, T-10.4", async ({ page }) => {
     await page.goto(BASE);
-    await expect(page.getByLabel("Observation window")).toContainText(/[1-9]\d* edges/, {
+    await expect(page.getByLabel("Observation window")).toContainText(/[1-9]\d* links/, {
       timeout: 30_000,
     });
 
-    // Deployment (frontend, backend) and StatefulSet (redis). A `Service` node would mean a
-    // destination whose workload could not be determined — ADR-009 D-9.2 — not the normal case.
-    await expect(page.locator(".topology-node__kind", { hasText: "Deployment" }).first()).toBeVisible();
-    await expect(page.locator(".topology-node__kind", { hasText: "StatefulSet" }).first()).toBeVisible();
+    // The demo runs Deployments (frontend, backend) and a StatefulSet (redis). None of those words
+    // may reach the canvas.
+    const canvas = page.locator(".react-flow");
+    for (const kind of ["Deployment", "StatefulSet", "DaemonSet", "Job"]) {
+      await expect(canvas.getByText(kind, { exact: false })).toHaveCount(0);
+    }
+
+    // The namespace band is what replaced it.
+    await expect(page.locator(".topology-node__ns", { hasText: "demo" }).first()).toBeVisible();
   });
 
   /**
@@ -118,7 +124,7 @@ test.describe("runtime topology, end to end", () => {
    */
   test("frontend -> backend -> redis is one connected chain", async ({ page }) => {
     await page.goto(BASE);
-    await expect(page.getByLabel("Observation window")).toContainText(/[1-9]\d* edges/, {
+    await expect(page.getByLabel("Observation window")).toContainText(/[1-9]\d* links/, {
       timeout: 30_000,
     });
 
@@ -143,7 +149,7 @@ test.describe("runtime topology, end to end", () => {
   /** Selecting a node opens its dependencies — T-6.8. */
   test("selecting a node shows its dependencies", async ({ page }) => {
     await page.goto(BASE);
-    await expect(page.getByLabel("Observation window")).toContainText(/[1-9]\d* edges/, {
+    await expect(page.getByLabel("Observation window")).toContainText(/[1-9]\d* links/, {
       timeout: 30_000,
     });
 
@@ -187,5 +193,52 @@ test.describe("runtime topology, end to end", () => {
     // Both panels and the canvas must all be present at this width.
     await expect(page.getByLabel("Filters")).toBeVisible();
     await expect(page.getByLabel("Topology graph")).toBeVisible();
+  });
+
+  /**
+   * The graph stays inside the pane after the window is resized.
+   *
+   * React Flow's `fitView` prop is mount-only: it gets the first paint right and then never runs
+   * again, so narrowing the window left components outside the visible pane with nothing on
+   * screen to say they were missing. Someone sharing a screen resizes the window; someone
+   * demonstrating the tool projects it at a size the browser was not opened at.
+   *
+   * Asserted geometrically rather than on the viewport transform, because the transform is an
+   * implementation detail and the thing that matters is whether a component can be seen.
+   */
+  test("the whole graph stays visible after the window is resized", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto(BASE);
+    await expect(page.getByLabel("Observation window")).toContainText(/[1-9]\d* links/, {
+      timeout: 30_000,
+    });
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+
+    const offPane = async () =>
+      page.evaluate(() => {
+        const pane = document.querySelector(".react-flow")?.getBoundingClientRect();
+        if (!pane) return ["no pane"];
+        return [...document.querySelectorAll(".react-flow__node")]
+          .filter((node) => {
+            const box = node.getBoundingClientRect();
+            // A 1px tolerance: fractional zoom leaves sub-pixel overhang that is not a defect.
+            return (
+              box.left < pane.left - 1 ||
+              box.right > pane.right + 1 ||
+              box.top < pane.top - 1 ||
+              box.bottom > pane.bottom + 1
+            );
+          })
+          .map((node) => node.querySelector(".topology-node__name")?.textContent ?? "?");
+      });
+
+    expect(await offPane(), "every component must be inside the pane on first paint").toEqual([]);
+
+    await page.setViewportSize({ width: 1000, height: 640 });
+    // The re-fit is debounced by 150 ms, plus the animation.
+    await page.waitForTimeout(1_000);
+    expect(await offPane(), "every component must still be inside the pane after a resize").toEqual(
+      [],
+    );
   });
 });

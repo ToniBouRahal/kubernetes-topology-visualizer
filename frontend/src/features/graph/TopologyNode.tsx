@@ -2,66 +2,75 @@ import { Handle, Position } from "@xyflow/react";
 import { memo } from "react";
 
 import type { GraphNode } from "../../api/types";
-import { NODE_HEIGHT, NODE_WIDTH } from "./layout";
-import { encodingFor, namespaceHue, shapePath } from "./encoding";
+import { NODE_LABEL_BAND, nodeDiameter } from "./layout";
+import { isExternal, namespaceHue, namespaceLabel } from "./encoding";
 
 export interface TopologyNodeData extends Record<string, unknown> {
   node: GraphNode;
   selected?: boolean;
   group?: { namespace: string; workloads: number };
+  /** Distinct components this one talks to. Drives the diameter — ADR-010 D-10.3. */
+  degree?: number;
+  /** True when something is selected and this node is neither it nor one of its neighbours. */
+  dimmed?: boolean;
 }
 
 /**
- * One graph node.
+ * One graph node: a circle with its own name inside it.
  *
- * Every node is the same outline; the kind is written on the node and the colour carries the
- * namespace. That keeps the node fully readable in greyscale — the kind is still there in words,
- * and only the namespace grouping is lost. Rendering the outline as an SVG stroke keeps it
- * legible at low zoom, where a fill would be too small to read.
+ * The name is the thing a reader searches for, points at, and says out loud, so it gets the node
+ * itself rather than a caption beside one (ADR-010 D-10.2). Kind is not drawn at all (D-10.1).
+ * Namespace is written in the band beneath, which is what stops colour being its only carrier
+ * (D-10.4) and keeps the node readable in greyscale.
+ *
+ * Selection inverts the fill rather than adding a colour: the graph's whole hue budget belongs to
+ * namespace, and a highlight colour would have to be stolen from it.
  */
 function TopologyNodeComponent({ data }: { data: TopologyNodeData }) {
-  const { node, selected, group } = data;
-  const encoding = encodingFor(node.kind);
-  const hue = namespaceHue(node.namespace);
-  const isExternal = encoding.dashed === true;
+  const { node, selected, group, degree = 0, dimmed } = data;
+  const hue = group ? namespaceHue(group.namespace) : namespaceHue(node.namespace);
+  const external = isExternal(node.kind);
+  const diameter = nodeDiameter(degree);
+
+  const label = group ? group.namespace : node.label;
+  const band = group ? `${group.workloads} workloads · expand` : namespaceLabel(node);
+
+  // The circle grows with degree, not with the length of the name, so a long name steps the type
+  // down instead of fragmenting across lines. The thresholds are what fits the MINIMUM diameter —
+  // a name that fits the smallest circle fits every larger one.
+  const fit = label.length > 13 ? " topology-node__name--longer" : label.length > 7 ? " topology-node__name--long" : "";
 
   return (
     <div
-      className="topology-node"
-      style={{ width: NODE_WIDTH, height: NODE_HEIGHT }}
-      // The accessible name states kind and namespace in words, because a screen reader cannot
-      // see either the shape or the colour.
-      aria-label={`${group ? "Namespace" : encoding.label} ${node.name}${node.namespace ? ` in namespace ${node.namespace}` : ""}`}
+      className={`topology-node${selected ? " topology-node--selected" : ""}${dimmed ? " topology-node--dimmed" : ""}`}
+      style={{ width: diameter, height: diameter + NODE_LABEL_BAND }}
+      // The accessible name carries what the circle carries, in words: a screen reader sees
+      // neither the fill nor the diameter. Degree is stated because it is now an encoding.
+      aria-label={
+        group
+          ? `Namespace ${group.namespace}, ${group.workloads} workloads, talks to ${degree} components`
+          : `${node.name} in ${namespaceLabel(node)}, talks to ${degree} components`
+      }
     >
       <Handle type="target" position={Position.Left} className="topology-handle" />
 
-      <svg
-        width={NODE_WIDTH}
-        height={NODE_HEIGHT}
-        viewBox={`0 0 ${NODE_WIDTH} ${NODE_HEIGHT}`}
-        className="topology-node__shape"
-        aria-hidden="true"
+      <div
+        className={`topology-node__disc${external ? " topology-node__disc--external" : ""}`}
+        style={{
+          width: diameter,
+          height: diameter,
+          background: selected ? "var(--panel-high)" : hue,
+          borderColor: hue,
+          color: selected ? hue : "var(--on-fill)",
+        }}
       >
-        <path
-          d={shapePath(encoding.shape, NODE_WIDTH, NODE_HEIGHT)}
-          fill="var(--panel)"
-          stroke={hue}
-          strokeWidth={selected ? 2.5 : 1.5}
-          strokeDasharray={isExternal ? "5 4" : undefined}
-        />
-      </svg>
+        <span className={`topology-node__name${fit}`} title={label}>
+          {label}
+        </span>
+      </div>
 
-      <div className="topology-node__content">
-        <div className="topology-node__name" title={node.label}>
-          {node.label}
-        </div>
-        <div className="topology-node__meta">
-          {/* The kind is always spelled out — it is now the only cue that carries it. */}
-          <span className="topology-node__kind" style={{ color: hue }}>
-            {group ? "Namespace" : encoding.label}
-          </span>
-          {group ? <span className="topology-node__ns mono">{group.workloads} workloads · expand</span> : node.namespace && <span className="topology-node__ns mono">{node.namespace}</span>}
-        </div>
+      <div className="topology-node__ns mono" title={band}>
+        {band}
       </div>
 
       <Handle type="source" position={Position.Right} className="topology-handle" />

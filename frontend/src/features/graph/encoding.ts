@@ -3,16 +3,19 @@ import type { NodeKind } from "../../api/types";
 /**
  * Visual encoding rules.
  *
- * Every node is drawn with ONE shape. Kind was carried by shape until the shape vocabulary was
- * removed deliberately: seven outlines had to be learned from a legend before the picture could
- * be read, and the kind is already written on every node in words (see TopologyNode), which is
- * the cue a screen reader and a greyscale print both get. ADR-006 D-6.3 asks that colour never be
- * the only carrier of a fact — the written kind satisfies that, so colour stays free for
- * NAMESPACE.
+ * Kind is not drawn (ADR-010 D-10.1). It was the strongest-cued fact in ADR-006 D-6.3 because a
+ * Service and the workload behind it were once two different nodes; ADR-009 collapsed that
+ * distinction, so kind became the Kubernetes object that happens to run a component rather than
+ * anything the reader needs to answer "what depends on what". `NodeKind` is still on the wire and
+ * in the database — this file decides what the CANVAS shows, not what the system records.
  *
- * The external node keeps a dashed outline. That is a stroke, not a shape: it marks a boundary —
- * everything outside the cluster collapses into one node and no remote address is ever stored —
- * and that claim is worth a visual mark of its own.
+ * What colour carries is NAMESPACE, and only namespace. It is never the sole carrier: every node
+ * writes its namespace underneath itself (D-10.4), which is what keeps D-6.3's guarantee alive now
+ * that kind no longer occupies that line of text.
+ *
+ * `External` survives as the one kind-derived fact, because it is not a kind — it is the cluster
+ * boundary. Everything outside collapses into one node and no remote address is ever stored, and
+ * that claim earns a mark of its own.
  */
 
 export const NAMESPACE_HUES = [
@@ -39,38 +42,18 @@ export function namespaceHue(namespace: string | null | undefined): string {
   return NAMESPACE_HUES[hash % NAMESPACE_HUES.length]!;
 }
 
-/** One shape, drawn for every node. Kept as a named type so the call sites stay explicit. */
-export type ShapeName = "rounded";
-
-interface KindEncoding {
-  shape: ShapeName;
-  /** Spoken/echoed on the node and in the accessible name — never colour alone. */
-  label: string;
-  /** Dashed outline. Only the external node: it marks the cluster boundary, not a kind. */
-  dashed?: boolean;
-}
-
-export const KIND_ENCODING: Record<string, KindEncoding> = {
-  Service: { shape: "rounded", label: "Service" },
-  Deployment: { shape: "rounded", label: "Deployment" },
-  StatefulSet: { shape: "rounded", label: "StatefulSet" },
-  DaemonSet: { shape: "rounded", label: "DaemonSet" },
-  Job: { shape: "rounded", label: "Job" },
-  Pod: { shape: "rounded", label: "Pod" },
-  External: { shape: "rounded", label: "External", dashed: true },
-};
-
-export function encodingFor(kind: NodeKind | string): KindEncoding {
-  return KIND_ENCODING[kind] ?? KIND_ENCODING.Pod!;
+/** The cluster boundary, drawn as a dashed outline. Not a kind cue — see the file comment. */
+export function isExternal(kind: NodeKind | string): boolean {
+  return kind === "External";
 }
 
 /**
- * SVG path for a node's outline, drawn to fill w x h.
+ * What a node writes under itself where its namespace goes.
  *
- * A path rather than clip-path or a CSS border radius, so the outline is a real stroke: it has to
- * stay legible at low zoom, when the fill is too small to read.
+ * The EXTERNAL node has no namespace because it is not in the cluster, and an empty line there
+ * would read as missing data rather than as the boundary it actually is.
  */
-export function shapePath(_shape: ShapeName, w: number, h: number): string {
-  const r = 7;
-  return `M ${r} 0 H ${w - r} A ${r} ${r} 0 0 1 ${w} ${r} V ${h - r} A ${r} ${r} 0 0 1 ${w - r} ${h} H ${r} A ${r} ${r} 0 0 1 0 ${h - r} V ${r} A ${r} ${r} 0 0 1 ${r} 0 Z`;
+export function namespaceLabel(node: { namespace?: string | null; kind: NodeKind | string }): string {
+  if (isExternal(node.kind)) return "outside cluster";
+  return node.namespace ?? "no namespace";
 }
