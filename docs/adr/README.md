@@ -18,6 +18,10 @@ adding a component. Both were written after Phase 5, under the procedure in §5 
 first, then the code. `ADR-009` changed which identity an observation is assigned; `ADR-010` changed
 what the graph draws once it has one.
 
+`ADR-011` is an **optional extension** rather than an amendment: it makes the metrics both
+components already expose discoverable by an existing Prometheus and Grafana, under ADR-001 §4.2's
+condition that neither ever becomes a dependency. Off by default; the default render is unchanged.
+
 | ADR | Component | Repo path | ADR-001 source | Owning phases | Tracker |
 |---|---|---|---|---|---|
 | [ADR-002](ADR-002-ebpf-node-agent.md) | eBPF node agent (Go) | `agent/` | §5.1, §5.2 | 1, 2, 4 | §9 |
@@ -29,6 +33,7 @@ what the graph draws once it has one.
 | [ADR-008](ADR-008-testing-ci.md) | Testing & CI | `.github/`, `*/tests/`, `Makefile` | §8, §7 | 0–5 | §8 |
 | [ADR-009](ADR-009-destination-workload-resolution.md) | Destination → workload resolution | `agent/internal/resolver/` | §5.2 | post-5 | §6 |
 | [ADR-010](ADR-010-component-first-graph-encoding.md) | Component-first graph encoding | `frontend/src/features/graph/`, `frontend/src/styles/` | §5.6 | post-5 | §6 |
+| [ADR-011](ADR-011-optional-prometheus-grafana.md) | Optional Prometheus scrape + Grafana dashboard | `charts/topology-visualizer/templates/monitoring.yaml`, `charts/topology-visualizer/dashboards/` | §4.2, §5.1, §13 | post-5 | §6 |
 
 **Progress tracking:** [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) is the master checklist —
 every task carries an ID like `P1-A2` (phase 1, agent, task 2). Each component ADR repeats its own

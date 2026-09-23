@@ -257,6 +257,22 @@ selection focuses a neighbourhood, and the ground goes light. Rationale and the 
 - [x] **P6-F8** `NodeList` drops the kind column, keeps namespace — D-10.1
 - [x] **P6-F9** `contrast.test.ts` re-baselined; T-10.1 – T-10.8 — D-10.7
 
+### ADR-011 — optional Prometheus scrape and Grafana dashboard (chart)
+
+Not an amendment but an opt-in extension: the metrics both components already expose become
+discoverable by an existing Prometheus Operator and Grafana sidecar. Off by default, the default
+render unchanged, no new dependency (ADR-001 §4.2). The dashboard reads the pipeline's health, not
+the topology. Rationale and rejected alternatives:
+[ADR-011](adr/ADR-011-optional-prometheus-grafana.md).
+
+- [x] **P6-K1** `monitoring.*` values block and schema — D-11.1
+- [x] **P6-K2** `templates/monitoring.yaml`: `PodMonitor` for the agent, `ServiceMonitor` for the backend — D-11.2
+- [x] **P6-K3** `dashboards/topology-visualizer.json` and its sidecar ConfigMap — D-11.3
+- [x] **P6-K4** Backend NetworkPolicy scrape ingress, opt-in — D-11.5
+- [x] **P6-K5** `verify-chart.sh` T-11.1 – T-11.5, including the check that every dashboard metric exists in source — D-11.4
+- [x] **P6-K6** `docs/operator-guide.md` section; ADR-007, ADR index updated
+
+
 ---
 
 ## Definition of Done cross-check

@@ -89,6 +89,30 @@ curl -s localhost:9090/metrics
 The backend exposes `/health/live` and `/health/ready`. Readiness reflects migrations *and* storage,
 so it drops to 503 during a database outage and recovers without a restart.
 
+### Prometheus and Grafana (optional)
+
+The port-forward above is the zero-dependency way to read the metrics, and it stays the default.
+If the cluster already runs the Prometheus Operator and a Grafana with the dashboard sidecar — the
+kube-prometheus-stack shape — the chart can hand them the endpoints instead
+([ADR-011](adr/ADR-011-optional-prometheus-grafana.md)):
+
+```bash
+helm upgrade --install topology charts/topology-visualizer -n topology \
+  --set monitoring.enabled=true \
+  --set monitoring.monitorLabels.release=kube-prometheus-stack   # whatever your Prometheus selects on
+```
+
+That renders a `PodMonitor` for the agent (one target per node), a `ServiceMonitor` for the
+backend, and a ConfigMap carrying the **Topology Visualizer — pipeline health** dashboard, which
+the sidecar imports within its poll interval. With `networkPolicy.enabled`, the backend policy also
+admits scrapes from `monitoring.prometheusNamespace` (default `monitoring`); without that rule an
+enforcing CNI would show the backend as `up == 0`.
+
+The dashboard is the table above over time and per node — whether the graph can be trusted right
+now — not the topology. The graph stays the only place the topology is drawn. Nothing installs
+Prometheus or Grafana: if the CRDs are absent, the install fails with `no matches for kind
+"PodMonitor"`, which is the intended message rather than a scrape that silently never happens.
+
 ### Capacity
 
 Storage is proportional to **distinct edges × buckets retained**, not to traffic volume: a busy edge

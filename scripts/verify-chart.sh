@@ -196,6 +196,113 @@ else
   bad "expected at least 2 NetworkPolicies, found $NP_COUNT"
 fi
 
+echo "== ADR-011: optional monitoring =="
+# T-11.1 — the default render must not change. Monitoring is opt-in (ADR-001 §4.2: never a
+# mandatory dependency), so with it off there is no monitor, no dashboard and no scrape ingress.
+for k in PodMonitor ServiceMonitor; do
+  if printf '%s' "$RENDERED" | grep -q "^kind: $k"; then
+    bad "$k rendered with monitoring off"
+  else
+    ok "no $k by default"
+  fi
+done
+if printf '%s' "$RENDERED" | grep -q 'grafana-dashboard'; then
+  bad "dashboard ConfigMap rendered with monitoring off"
+else
+  ok "no dashboard ConfigMap by default"
+fi
+if printf '%s' "$SEC_RENDERED" | awk '/^kind: NetworkPolicy$/,/^---$/' | grep -q 'namespaceSelector'; then
+  bad "backend NetworkPolicy admits another namespace with monitoring off"
+else
+  ok "backend NetworkPolicy has no scrape ingress by default"
+fi
+
+# T-11.2 — enabled: one PodMonitor for the agent, one ServiceMonitor for the backend, both carrying
+# the operator's selector label, plus a sidecar-labelled ConfigMap whose payload is real JSON.
+MON_RENDERED="$(render --set monitoring.enabled=true --set monitoring.monitorLabels.release=kps)"
+for k in PodMonitor ServiceMonitor; do
+  n=$(printf '%s' "$MON_RENDERED" | grep -c "^kind: $k" || true)
+  if [[ "$n" -eq 1 ]]; then ok "exactly one $k when enabled"; else bad "expected 1 $k, found $n"; fi
+done
+PM="$(printf '%s' "$MON_RENDERED" | awk '/^kind: PodMonitor$/,/^---$/')"
+SM="$(printf '%s' "$MON_RENDERED" | awk '/^kind: ServiceMonitor$/,/^---$/')"
+if printf '%s' "$PM" | grep -q 'port: metrics'; then
+  ok "PodMonitor scrapes the agent's metrics port"
+else
+  bad "PodMonitor does not target port 'metrics'"
+fi
+if printf '%s' "$SM" | grep -q 'port: http' && printf '%s' "$SM" | grep -q 'path: /metrics'; then
+  ok "ServiceMonitor scrapes the backend's http port at /metrics"
+else
+  bad "ServiceMonitor does not target http:/metrics"
+fi
+if [[ $(printf '%s\n%s' "$PM" "$SM" | grep -c 'release: kps') -eq 2 ]]; then
+  ok "both monitors carry monitorLabels"
+else
+  bad "monitorLabels missing from a monitor — the operator would never select it"
+fi
+DASH_OUT="$(printf '%s' "$MON_RENDERED" | python3 -c '
+import json, sys, yaml
+for doc in yaml.safe_load_all(sys.stdin):
+    if not doc or doc.get("kind") != "ConfigMap":
+        continue
+    data = doc.get("data") or {}
+    if "topology-visualizer.json" not in data:
+        continue
+    labels = doc["metadata"].get("labels", {})
+    if labels.get("grafana_dashboard") != "1":
+        print("FAIL dashboard ConfigMap lacks the sidecar label"); sys.exit(0)
+    dash = json.loads(data["topology-visualizer.json"])
+    panels = len(dash["panels"])
+    print(f"OK {panels} panels")
+    sys.exit(0)
+print("FAIL no dashboard ConfigMap rendered")
+' 2>&1)"
+if [[ "$DASH_OUT" == OK* ]]; then
+  ok "dashboard ConfigMap is sidecar-labelled and its payload parses as JSON (${DASH_OUT#OK })"
+else
+  bad "$DASH_OUT"
+fi
+
+# T-11.3 — D-11.4: every metric the dashboard reads must be one the code emits. A renamed counter
+# would otherwise leave a panel that is empty for the same reason a healthy one reads zero.
+missing=0
+for name in $(grep -oE 'topology_(agent|backend)_[a-z_]+' "$CHART/dashboards/topology-visualizer.json" | sort -u); do
+  if ! grep -q "$name" "$REPO_ROOT/agent/cmd/agent/main.go" "$REPO_ROOT/backend/app/api/metrics.py"; then
+    bad "dashboard references $name, which nothing emits"
+    missing=$((missing + 1))
+  fi
+done
+[[ "$missing" -eq 0 ]] && ok "every dashboard metric exists in agent or backend source"
+
+# T-11.4 — with both on, the backend policy admits the Prometheus namespace on the backend port and
+# nothing else changes: the agent DaemonSet must render byte-identical to the monitoring-off render.
+NPM_RENDERED="$(render --set monitoring.enabled=true --set networkPolicy.enabled=true \
+                       --set monitoring.prometheusNamespace=observability)"
+NPM_BACKEND="$(printf '%s' "$NPM_RENDERED" | awk '/^kind: NetworkPolicy$/,/^---$/')"
+if printf '%s' "$NPM_BACKEND" | grep -q 'kubernetes.io/metadata.name: "observability"'; then
+  ok "backend NetworkPolicy admits scrapes from monitoring.prometheusNamespace"
+else
+  bad "backend NetworkPolicy has no ingress from the Prometheus namespace"
+fi
+if [[ $(printf '%s' "$NPM_BACKEND" | grep -c "port: $(printf '%s' "$NPM_BACKEND" | grep -m1 'port:' | awk '{print $2}')") -eq 2 ]] && \
+   ! printf '%s' "$NPM_BACKEND" | grep -qE 'port: (9090|8081)'; then
+  ok "scrape ingress is on the backend port only"
+else
+  bad "scrape ingress opens a port other than the backend's"
+fi
+DS_OFF="$(printf '%s' "$RENDERED" | awk '/^kind: DaemonSet$/,/^---$/')"
+DS_ON="$(printf '%s' "$NPM_RENDERED" | awk '/^kind: DaemonSet$/,/^---$/')"
+if [[ "$DS_OFF" == "$DS_ON" ]]; then
+  ok "agent DaemonSet is unchanged by monitoring (no new listener, no new capability)"
+else
+  bad "enabling monitoring changed the agent DaemonSet"
+fi
+
+# T-11.5 — schema
+reject "monitoring scrape interval that is not a duration" --set monitoring.enabled=true --set monitoring.scrapeInterval=fast
+reject "empty Prometheus namespace"                        --set monitoring.enabled=true --set monitoring.prometheusNamespace=""
+
 echo "== T-7.3: values.schema.json rejects malformed values =="
 reject "empty clusterId"                     --set clusterId=""
 reject "clusterId containing ':'"            --set clusterId="bad:id"

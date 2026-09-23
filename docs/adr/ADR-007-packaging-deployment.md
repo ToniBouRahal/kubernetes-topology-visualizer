@@ -2,6 +2,8 @@
 
 - **Status:** Accepted for implementation
 - **Date:** 2026-08-12
+- **Amended by:** [ADR-011](ADR-011-optional-prometheus-grafana.md) — D-7.4 (one opt-in scrape
+  ingress rule), D-7.5 (the `monitoring.*` values block)
 - **Parent:** ADR-001 §5.7 · Source of truth §17, §18, §19
 - **Component path:** `charts/`, `kind/`, `demo/`, `scripts/`, `Makefile`
 - **Owning phases:** Phase 0 (skeleton), Phase 1 (agent DaemonSet), Phase 5 (complete chart, multi-node)
@@ -312,6 +314,20 @@ Mirrors [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md). `[ ]` open · `[~]` in
 **Phase 5 gate** (ADR-001 §7): clean-machine `demo-up` · expected topology and diff from
 `demo-traffic` / `demo-change` · PVC history survives pod recreation · agent reports from every node
 in kind **and** kubeadm · surgical `demo-down` · actionable failure messages.
+
+### Post-Phase-5 — amended by ADR-011 (optional Prometheus scrape and Grafana dashboard)
+
+Both components already served `/metrics`; this makes them discoverable by an existing Prometheus
+Operator and Grafana, off by default and adding no dependency (ADR-001 §4.2). Decisions and
+rationale in [ADR-011](ADR-011-optional-prometheus-grafana.md); the boxes are repeated there and in
+`IMPLEMENTATION-PLAN.md`, tick all three.
+
+- [x] **P6-K1** `monitoring.*` values block and schema — D-11.1
+- [x] **P6-K2** `templates/monitoring.yaml`: `PodMonitor` for the agent, `ServiceMonitor` for the backend — D-11.2
+- [x] **P6-K3** `dashboards/topology-visualizer.json` and its sidecar ConfigMap — D-11.3
+- [x] **P6-K4** Backend NetworkPolicy scrape ingress, opt-in — D-11.5, amends D-7.4
+- [x] **P6-K5** `verify-chart.sh` T-11.1 – T-11.5 — D-11.4
+- [x] **P6-K6** `docs/operator-guide.md` section; ADR index and plan updated
 
 ### Standing invariants — re-verify at every phase gate
 

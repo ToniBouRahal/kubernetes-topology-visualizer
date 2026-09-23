@@ -146,6 +146,42 @@
     "networkPolicy": {
       "type": "object",
       "properties": { "enabled": { "type": "boolean" } }
+    },
+
+    "monitoring": {
+      "type": "object",
+      "description": "Optional Prometheus Operator monitors and a Grafana sidecar dashboard (ADR-011). Off by default; never a dependency (ADR-001 §4.2).",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "scrapeInterval": {
+          "type": "string",
+          "pattern": "^[0-9]+(ms|s|m|h)$",
+          "description": "A Prometheus duration. The operator rejects anything else at reconcile time, which is later and quieter than here."
+        },
+        "monitorLabels": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "prometheusNamespace": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Used by the backend NetworkPolicy scrape ingress. Empty would render a selector that matches nothing and a scrape that silently fails."
+        },
+        "prometheusPodSelector": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "dashboard": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "sidecarLabel": { "type": "string", "minLength": 1 },
+            "sidecarLabelValue": { "type": "string" },
+            "namespace": { "type": "string" },
+            "folder": { "type": "string" }
+          }
+        }
+      }
     }
   },
 

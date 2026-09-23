@@ -169,6 +169,40 @@ postgresql:
 # Name of an existing Secret holding key `database-url`, used when postgresql.mode=external.
 externalDatabaseUrlSecret: ""
 
+# ── Monitoring (optional) ───────────────────────────────────────────────────────────────────
+# ADR-011. Off by default and adds NO dependency: nothing here installs Prometheus or Grafana.
+# Both components already serve /metrics; when this is enabled the chart emits the declarations an
+# EXISTING Prometheus Operator and Grafana dashboard sidecar (the kube-prometheus-stack shape)
+# discover on their own — a PodMonitor for the agent, a ServiceMonitor for the backend, and one
+# dashboard ConfigMap. If the CRDs are absent the install fails with an explicit "no matches for
+# kind PodMonitor", which is the intended message rather than a scrape that silently never happens.
+monitoring:
+  enabled: false
+  scrapeInterval: 30s
+
+  # Labels the Prometheus Operator's monitor selector expects. kube-prometheus-stack selects on
+  # `release: <its release name>` unless told otherwise; a monitor that renders but is never
+  # selected fails exactly as silently as no monitor at all.
+  monitorLabels: {}
+
+  # Where Prometheus scrapes from. Used only when networkPolicy.enabled is also on: the backend
+  # policy admits scrapes from this namespace and nowhere else (D-11.5). Optionally narrowed to
+  # specific pods, e.g. {app.kubernetes.io/name: prometheus}; empty admits the whole namespace.
+  prometheusNamespace: monitoring
+  prometheusPodSelector: {}
+
+  dashboard:
+    enabled: true
+    # The sidecar's discovery label; these are the kube-prometheus-stack defaults.
+    sidecarLabel: grafana_dashboard
+    sidecarLabelValue: "1"
+    # Where the ConfigMap lands. Empty is the release namespace, which the sidecar finds when it
+    # searches all namespaces (the kube-prometheus-stack default). Set to Grafana's own namespace
+    # if yours searches only that one.
+    namespace: ""
+    # Grafana folder to file the dashboard under; empty leaves it at the top level.
+    folder: ""
+
 # ── Network policy ──────────────────────────────────────────────────────────────────────────
 # Shipped for correctness on real clusters. kind's default CNI does NOT enforce these —
 # stated plainly in docs/limitations.md rather than implying protection that is not there.

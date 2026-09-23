@@ -27,6 +27,24 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.backend.service.port }}
+{{- if .Values.monitoring.enabled }}
+    # ADR-011 D-11.5. Prometheus lives in another namespace, so with the rule above alone, enabling
+    # monitoring under an enforcing CNI produces a target that reads `up == 0` and nothing else.
+    # Admitted from ONE namespace (optionally narrowed to specific pods), on the backend port only.
+    # The agent carries no NetworkPolicy and needs no rule.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.monitoring.prometheusNamespace | quote }}
+          {{- with .Values.monitoring.prometheusPodSelector }}
+          podSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+          {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.service.port }}
+{{- end }}
 {{- if .Values.postgresql.enabled }}
 ---
 # The other half of D-7.4: the database accepts connections only from the backend.

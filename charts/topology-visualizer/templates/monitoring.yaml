@@ -1,0 +1,86 @@
+{{- if .Values.monitoring.enabled }}
+# Optional monitoring (ADR-011). Nothing in this file renders unless monitoring.enabled is set,
+# and nothing in it installs Prometheus or Grafana: these are the declarations an EXISTING
+# Prometheus Operator and Grafana dashboard sidecar discover on their own. ADR-001 §4.2 keeps both
+# optional, and D-11.1 keeps the default render byte-identical to a chart without this file.
+#
+# If the CRDs are absent the install fails with `no matches for kind "PodMonitor"`. That is the
+# intended message — an actionable failure rather than a scrape that silently never happens.
+{{- if .Values.agent.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "topology.fullname" . }}-agent
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: agent
+    {{- with .Values.monitoring.monitorLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  # A PodMonitor, not a Service plus ServiceMonitor: the agent is a DaemonSet with no Service, and
+  # per-pod is the right unit anyway. A ring-buffer overflow is one node's problem, and the
+  # foreign-node counter only means anything per node (D-11.2). A headless Service added purely to
+  # be scraped would also put a Service in the topology that carries no dependency.
+  selector:
+    matchLabels:
+      {{- include "topology.agent.selectorLabels" . | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace | quote }}
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ .Values.monitoring.scrapeInterval }}
+{{- end }}
+{{- if .Values.backend.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "topology.fullname" . }}-backend
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+    {{- with .Values.monitoring.monitorLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "topology.backend.selectorLabels" . | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace | quote }}
+  endpoints:
+    # The same port the API and the health probes use; /metrics is excluded from the OpenAPI
+    # document but served on it (ADR-003 D-3.8). No new listener, no new capability.
+    - port: http
+      path: /metrics
+      interval: {{ .Values.monitoring.scrapeInterval }}
+{{- end }}
+{{- if .Values.monitoring.dashboard.enabled }}
+---
+# The Grafana sidecar imports any ConfigMap carrying its discovery label (D-11.3). The JSON lives in
+# dashboards/ as a plain file so it can be opened, edited and validated as a dashboard rather than
+# as a template — and so T-11.3 can check its metric names against the source that emits them.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "topology.fullname" . }}-grafana-dashboard
+  {{- with .Values.monitoring.dashboard.namespace }}
+  namespace: {{ . | quote }}
+  {{- end }}
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dashboard
+    {{ .Values.monitoring.dashboard.sidecarLabel }}: {{ .Values.monitoring.dashboard.sidecarLabelValue | quote }}
+  {{- with .Values.monitoring.dashboard.folder }}
+  annotations:
+    grafana_folder: {{ . | quote }}
+  {{- end }}
+data:
+  topology-visualizer.json: |-
+    {{- .Files.Get "dashboards/topology-visualizer.json" | nindent 4 }}
+{{- end }}
+{{- end }}
