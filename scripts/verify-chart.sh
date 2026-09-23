@@ -10,6 +10,9 @@ CHART="$REPO_ROOT/charts/topology-visualizer"
 VALUES="$CHART/ci/kind-values.yaml"
 RELEASE="topology"
 
+# Declared dependencies must be present even to render with their condition off (ADR-013 D-13.5).
+bash "$REPO_ROOT/scripts/chart-deps.sh" "$CHART"
+
 pass=0
 fail=0
 
@@ -336,6 +339,96 @@ else
 fi
 reject "Grafana url without an http(s) scheme" --set frontend.grafana.url='grafana.example.com'
 reject "Grafana url with a javascript: scheme" --set frontend.grafana.url='javascript:alert(1)'
+
+echo "== ADR-013: bundled observability =="
+# T-13.1 — off by default, and off means nothing: no subchart resources, no scrape annotations.
+if printf '%s' "$RENDERED" | grep -qiE 'app.kubernetes.io/name: (prometheus|grafana|kube-state-metrics)'; then
+  bad "subchart resources rendered with observability off"
+else
+  ok "no Prometheus, Grafana or kube-state-metrics by default"
+fi
+if printf '%s' "$RENDERED" | grep -q 'prometheus.io/scrape'; then
+  bad "scrape annotations rendered with observability off"
+else
+  ok "no scrape annotations by default"
+fi
+
+# T-13.2 — on: a Prometheus server, kube-state-metrics and Grafana, and NOT the three components
+# the bundle declines (alertmanager, pushgateway, node-exporter).
+OBS_RENDERED="$(render --set observability.enabled=true --set networkPolicy.enabled=true)"
+for want in 'app.kubernetes.io/name: prometheus' 'app.kubernetes.io/name: kube-state-metrics' 'app.kubernetes.io/name: grafana'; do
+  if printf '%s' "$OBS_RENDERED" | grep -q "$want"; then ok "bundle renders ${want#*: }"; else bad "bundle is missing ${want#*: }"; fi
+done
+for absent in alertmanager pushgateway node-exporter; do
+  if printf '%s' "$OBS_RENDERED" | grep -qi "app.kubernetes.io/name: .*$absent"; then
+    bad "bundle renders $absent, which it declines (D-13.1)"
+  else
+    ok "bundle does not render $absent"
+  fi
+done
+
+# T-13.3 — scrape annotations on the agent pods and the backend Service; the agent's annotated
+# port must be the DaemonSet's own metrics containerPort, or the two paths silently diverge.
+OBS_DS="$(printf '%s' "$OBS_RENDERED" | awk '/^kind: DaemonSet$/,/^---$/')"
+annotated=$(printf '%s' "$OBS_DS" | grep -m1 'prometheus.io/port' | grep -oE '[0-9]+')
+declared=$(printf '%s' "$OBS_DS" | grep -A1 'name: metrics' | grep -oE 'containerPort: [0-9]+' | grep -oE '[0-9]+')
+if [[ -n "$annotated" && "$annotated" == "$declared" ]]; then
+  ok "agent pods are annotated for scraping on their metrics port ($annotated)"
+else
+  bad "agent scrape annotation port '$annotated' != metrics containerPort '$declared'"
+fi
+BACKEND_SVC_SCRAPE="$(printf '%s' "$OBS_RENDERED" | python3 -c '
+import sys, yaml
+for doc in yaml.safe_load_all(sys.stdin):
+    if not doc or doc.get("kind") != "Service":
+        continue
+    meta = doc["metadata"]
+    if meta.get("labels", {}).get("app.kubernetes.io/component") == "backend":
+        a = meta.get("annotations") or {}
+        print("OK" if a.get("prometheus.io/scrape") == "true" and a.get("prometheus.io/path") == "/metrics" else "MISSING")
+        sys.exit(0)
+print("NO-SERVICE")')"
+if [[ "$BACKEND_SVC_SCRAPE" == OK ]]; then
+  ok "backend Service is annotated for scraping"
+else
+  bad "backend Service lacks scrape annotations ($BACKEND_SVC_SCRAPE)"
+fi
+
+# T-13.4 — Grafana reaches the release's Prometheus, and its sidecar looks for ADR-011's label.
+if printf '%s' "$OBS_RENDERED" | grep -q "url: http://$RELEASE-prometheus-server"; then
+  ok "Grafana datasource points at $RELEASE-prometheus-server"
+else
+  bad "Grafana datasource does not point at the release's Prometheus"
+fi
+if printf '%s' "$OBS_RENDERED" | grep -qE 'value: "?grafana_dashboard"?' ; then
+  ok "Grafana sidecar watches the grafana_dashboard label"
+else
+  bad "Grafana sidecar is not configured for the grafana_dashboard label"
+fi
+
+# T-13.5 — both dashboards ship, and the workload one is what the panel's default UID names.
+DASH_UIDS="$(printf '%s' "$OBS_RENDERED" | python3 -c '
+import json, sys, yaml
+for doc in yaml.safe_load_all(sys.stdin):
+    if doc and doc.get("kind") == "ConfigMap" and "topology-workload.json" in (doc.get("data") or {}):
+        d = doc["data"]
+        print(json.loads(d["topology-visualizer.json"])["uid"], json.loads(d["topology-workload.json"])["uid"]); sys.exit(0)
+print("MISSING")')"
+DEFAULT_UID="$(config_json "$OBS_RENDERED" | python3 -c 'import json,sys; print(json.load(sys.stdin)["workloadDashboardUid"])')"
+if [[ "$DASH_UIDS" == *"$DEFAULT_UID"* && "$DASH_UIDS" != MISSING ]]; then
+  ok "both dashboards render and the workload uid matches the panel default ($DEFAULT_UID)"
+else
+  bad "dashboards '$DASH_UIDS' do not include the panel's default uid '$DEFAULT_UID'"
+fi
+
+# T-13.6 — the bundled Prometheus is in-namespace, so the policy admits it by its own labels; and
+# the two scrape paths cannot be enabled together.
+if printf '%s' "$OBS_RENDERED" | awk '/^kind: NetworkPolicy$/,/^---$/' | grep -q 'app.kubernetes.io/component: server'; then
+  ok "backend NetworkPolicy admits the bundled Prometheus server"
+else
+  bad "backend NetworkPolicy does not admit the bundled Prometheus"
+fi
+reject "observability.enabled together with monitoring.enabled" --set observability.enabled=true --set monitoring.enabled=true
 
 echo "== T-7.3: values.schema.json rejects malformed values =="
 reject "empty clusterId"                     --set clusterId=""

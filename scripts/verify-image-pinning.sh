@@ -55,12 +55,34 @@ else
   bad "postgresql image has no digest in values.yaml"
 fi
 
+bash scripts/chart-deps.sh charts/topology-visualizer
 RENDERED="$(helm template pin charts/topology-visualizer \
   --set clusterId=c1 --set postgresql.enabled=true --set postgresql.auth.password=x 2>/dev/null)"
 if printf '%s' "$RENDERED" | grep -E 'image: "postgres' | grep -q '@sha256:'; then
   ok "the rendered database image resolves to a digest"
 else
   bad "the rendered database image has no digest"
+fi
+
+echo "== bundled observability images (ADR-013 D-13.6, T-13.7) =="
+# Everything the optional bundle would pull, checked the same way. The project's own images carry
+# a :dev tag and are side-loaded, so they are the only ones excused.
+OBS_RENDERED="$(helm template pin charts/topology-visualizer --set clusterId=c1 \
+  --set observability.enabled=true 2>/dev/null)"
+count=0
+while IFS= read -r ref; do
+  [[ "$ref" == topology-* ]] && continue
+  count=$((count + 1))
+  if [[ "$ref" == *"@sha256:"* ]]; then
+    ok "bundle: ${ref%%@*} pinned"
+  else
+    bad "bundle: '$ref' is pinned only by tag"
+  fi
+done < <(printf '%s' "$OBS_RENDERED" | grep -oE '^\s+(- )?image: "?[^" ]+' | sed -E 's/.*image: "?//' | sort -u)
+if [[ "$count" -ge 5 ]]; then
+  ok "bundle renders $count third-party images (expected Prometheus, reloader, kube-state-metrics, Grafana, sidecar)"
+else
+  bad "bundle renders only $count third-party images; expected at least 5"
 fi
 
 echo

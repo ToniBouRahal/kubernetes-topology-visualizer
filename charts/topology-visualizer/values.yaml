@@ -111,9 +111,12 @@ frontend:
   grafana:
     url: ""
     # The "Metrics" button opens this dashboard with var-namespace, var-type and var-workload.
-    # The default is kube-prometheus-stack's "Kubernetes / Compute Resources / Workload"; any
-    # dashboard using those three variable names works.
-    workloadDashboardUid: a164a7f0339f99e89cea5cb47e9be617
+    # The default is the workload dashboard THIS chart ships (dashboards/topology-workload.json,
+    # ADR-013 D-13.3), which reaches any Grafana through the same sidecar ConfigMap as the
+    # pipeline dashboard. On kube-prometheus-stack its "Kubernetes / Compute Resources / Workload"
+    # (a164a7f0339f99e89cea5cb47e9be617) is a richer alternative; any dashboard using those three
+    # variable names works.
+    workloadDashboardUid: topology-workload
     # The "Logs" button opens Explore on this Loki datasource. Empty means no Logs button.
     lokiDatasourceUid: ""
 
@@ -212,8 +215,119 @@ monitoring:
     # searches all namespaces (the kube-prometheus-stack default). Set to Grafana's own namespace
     # if yours searches only that one.
     namespace: ""
-    # Grafana folder to file the dashboard under; empty leaves it at the top level.
+    # Grafana folder to file the dashboards under; empty leaves them at the top level.
     folder: ""
+
+# ── Bundled observability (optional) ────────────────────────────────────────────────────────
+# ADR-013. ONE flag installs Prometheus (+ kube-state-metrics) and Grafana alongside the release,
+# for a cluster that has neither — the kind demo above all. Off by default: ADR-001 §4.2 keeps
+# Prometheus optional, and the default render is unchanged.
+#
+# This is the counterpart of `monitoring` above, not a companion: `monitoring` hands the metrics
+# to an EXISTING Prometheus Operator through CRDs, this one brings a plain Prometheus that
+# discovers targets by annotation. The schema refuses both at once — a PodMonitor on a cluster
+# without the CRD fails the install.
+#
+# What it does NOT decide is how your browser reaches Grafana; set frontend.grafana.url for the
+# panel's buttons (`make demo-observability` sets it to the port-forward).
+observability:
+  enabled: false
+
+# Values passed to the two subcharts when observability.enabled. Every image is pinned by digest
+# (ADR-007 D-7.4, verified by `make verify-pinning`): bump the tag AND the digest together.
+prometheus:
+  # No consumer for either, and node-exporter would be a second host-mounted DaemonSet for a
+  # feature that does not need one.
+  alertmanager:
+    enabled: false
+  prometheus-pushgateway:
+    enabled: false
+  prometheus-node-exporter:
+    enabled: false
+  kube-state-metrics:
+    enabled: true
+    image:
+      tag: v2.20.0
+      # This chart appends the value verbatim after "@", so the prefix is part of the value —
+      # unlike grafana's `sha`, which adds it. verify-pinning catches either being wrong.
+      sha: "sha256:42cfe3723a5f058171c627537fb57a3ea0f26e4380fa18555a95cb1a1b4cfc5b"
+    resources:
+      requests:
+        cpu: 20m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
+  configmapReload:
+    prometheus:
+      image:
+        tag: v0.94.0
+        digest: "sha256:142a1f11df8dd165f00375b0b1826aecb9c9adeb05c39855893138d7c7575ff7"
+  server:
+    image:
+      tag: v3.14.0
+      digest: "sha256:5ce7540c3c00ef4ab0c9d2c995c6a5b9c421f44b4a115d97a2c7af3b1c21cbb0"
+    # Two days: a demo Prometheus, not the topology history (that is PostgreSQL, retentionHours).
+    retention: 2d
+    persistentVolume:
+      enabled: false
+    global:
+      scrape_interval: 30s
+      evaluation_interval: 30s
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 768Mi
+
+grafana:
+  image:
+    tag: "12.3.1"
+    sha: "2175aaa91c96733d86d31cf270d5310b278654b03f5718c59de12a865380a31f"
+  # The chart's helm-test pod and the root-running chown init container: neither is wanted.
+  testFramework:
+    enabled: false
+  initChownData:
+    enabled: false
+  # Every dashboard is re-provisioned from the ConfigMap, so a Grafana that forgets is correct.
+  persistence:
+    enabled: false
+  sidecar:
+    image:
+      tag: 2.5.0
+      sha: "a6b3f707f883108376514489a94d6629109a327b2978e1d826cd104c4ca436df"
+    dashboards:
+      enabled: true
+      # The same label and annotation ADR-011's ConfigMap carries (monitoring.dashboard.*).
+      label: grafana_dashboard
+      labelValue: "1"
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          uid: prometheus
+          access: proxy
+          isDefault: true
+          # The Prometheus subchart names its Service <release>-prometheus-server; the Grafana
+          # chart runs `tpl` over this block, so the release name is resolved, not guessed.
+          url: "http://{{ .Release.Name }}-prometheus-server"
+  grafana.ini:
+    analytics:
+      check_for_updates: false
+      reporting_enabled: false
+    news:
+      news_feed_enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 384Mi
 
 # ── Network policy ──────────────────────────────────────────────────────────────────────────
 # Shipped for correctness on real clusters. kind's default CNI does NOT enforce these —

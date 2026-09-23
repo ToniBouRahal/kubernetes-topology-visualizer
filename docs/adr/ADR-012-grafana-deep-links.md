@@ -7,6 +7,8 @@
 - **Amends:** ADR-006 D-6.6 (what the details panel shows), ADR-007 D-7.5 (configuration surface
   — the `frontend.grafana.*` block and how it reaches the browser)
 - **Related:** ADR-011 (the chart's optional monitoring; independent of this — either works alone)
+- **Amended by:** [ADR-013](ADR-013-bundled-observability.md) — D-12.3's default metrics dashboard
+  is now `topology-workload`, one this chart ships, so the link works on a bundled Grafana too
 - **Component path:** `frontend/src/config.ts`, `frontend/src/features/details/`,
   `charts/topology-visualizer/templates/frontend-*.yaml`
 - **Owning phase:** Post-Phase-5 extension
@@ -55,9 +57,11 @@ a pod name pattern. Both derive from the node's fields, never its id.
 | `Service` (ADR-009 D-9.2 fallback) | — | — | zero or several workloads behind it; picking one would invent a fact |
 | `External`, unresolved | — | — | not in the cluster |
 
-The metrics link targets a dashboard by UID with those three variables. The default UID is
+The metrics link targets a dashboard by UID with those three variables. The default UID was
 kube-prometheus-stack's *Kubernetes / Compute Resources / Workload*, which takes exactly them;
-`frontend.grafana.workloadDashboardUid` points it at any dashboard using the same variable names.
+**ADR-013 D-13.3 changed the default to `topology-workload`**, a dashboard this chart ships with the
+same variables, so the link also works on a Grafana that never had the kube-prometheus-stack set.
+`frontend.grafana.workloadDashboardUid` points it at any dashboard using those variable names.
 The logs link opens Grafana Explore on `frontend.grafana.lokiDatasourceUid`; no UID, no button.
 
 **D-12.4 — Links carry the selected window.** Both URLs pass the `NodeDetail.window` as `from`/`to`

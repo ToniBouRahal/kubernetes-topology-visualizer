@@ -20,6 +20,14 @@ spec:
         # running pod keeps serving the old one indefinitely. That is how a retention change from
         # 24 to 1440 hours was observed to take effect nowhere at all.
         checksum/config: {{ include (print $.Template.BasePath "/configmaps.yaml") . | sha256sum }}
+        {{- if .Values.observability.enabled }}
+        # The bundled Prometheus has no operator and discovers targets by annotation (ADR-013
+        # D-13.2). Absent otherwise, so the default render is unchanged. T-13.3 asserts this port
+        # is the same one the `metrics` containerPort below declares.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.agent.metricsPort | quote }}
+        prometheus.io/path: /metrics
+        {{- end }}
       labels:
         {{- include "topology.agent.selectorLabels" . | nindent 8 }}
     spec:

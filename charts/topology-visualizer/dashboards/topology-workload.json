@@ -1,0 +1,280 @@
+{
+  "__comment": "ADR-013 D-13.3. What the details panel's Metrics button opens: the CLUSTER's view of one workload, from cAdvisor and kube-state-metrics — not anything the topology tool collected. Takes var-namespace, var-type, var-workload like kube-prometheus-stack's workload dashboard, so the same link works against either. Pods are matched by name prefix (limitations.md §4.5).",
+  "title": "Topology Visualizer — workload",
+  "uid": "topology-workload",
+  "tags": ["topology-visualizer", "workload"],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Data source",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0,
+        "refresh": 1
+      },
+      {
+        "name": "namespace",
+        "label": "Namespace",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(kube_pod_info, namespace)",
+        "query": { "query": "label_values(kube_pod_info, namespace)", "refId": "namespace" },
+        "refresh": 2,
+        "sort": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {}
+      },
+      {
+        "name": "type",
+        "label": "Type",
+        "type": "custom",
+        "query": "deployment,statefulset,daemonset,job",
+        "current": { "text": "deployment", "value": "deployment" },
+        "options": [
+          { "text": "deployment", "value": "deployment", "selected": true },
+          { "text": "statefulset", "value": "statefulset", "selected": false },
+          { "text": "daemonset", "value": "daemonset", "selected": false },
+          { "text": "job", "value": "job", "selected": false }
+        ],
+        "hide": 0
+      },
+      {
+        "name": "workload",
+        "label": "Workload",
+        "type": "textbox",
+        "query": "",
+        "current": { "text": "", "value": "" },
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**The cluster's view of `$workload` in `$namespace`** — CPU, memory, network and restarts from cAdvisor and kube-state-metrics. Nothing here was collected by the topology tool; it shows what the workload *talked to*, this shows what it *was doing*. Pods are matched by name prefix (`$workload-…`), so a sibling with a longer name is included too."
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Pods ready",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 3 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(kube_pod_status_ready{namespace=\"$namespace\", pod=~\"$workload-.*\", condition=\"true\"})",
+          "legendFormat": "ready",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Container restarts",
+      "description": "Over the selected range. A restart in the middle of the window is one reason an edge's counts look wrong.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 3 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"$namespace\", pod=~\"$workload-.*\"}[$__range]))",
+          "legendFormat": "restarts",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Memory working set, all pods",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 3 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-.*\", container!=\"\", container!=\"POD\"})",
+          "legendFormat": "working set",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "decimals": 1,
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "none",
+        "graphMode": "area",
+        "textMode": "value",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "CPU, by pod",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-.*\", container!=\"\", container!=\"POD\"}[$__rate_interval]))",
+          "legendFormat": "{{pod}}",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 3,
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 1, "fillOpacity": 8, "showPoints": "never", "spanNulls": false, "axisLabel": "cores" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Memory working set, by pod",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-.*\", container!=\"\", container!=\"POD\"})",
+          "legendFormat": "{{pod}}",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 1, "fillOpacity": 8, "showPoints": "never", "spanNulls": false }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Network, by pod",
+      "description": "Bytes, not connections: this is the kernel's byte counter for the pod's interface, which the topology tool deliberately does not show per edge (PRODUCT.md).",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 15 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum by (pod) (rate(container_network_receive_bytes_total{namespace=\"$namespace\", pod=~\"$workload-.*\"}[$__rate_interval]))",
+          "legendFormat": "{{pod}} in",
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "- sum by (pod) (rate(container_network_transmit_bytes_total{namespace=\"$namespace\", pod=~\"$workload-.*\"}[$__rate_interval]))",
+          "legendFormat": "{{pod}} out",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 1, "fillOpacity": 8, "showPoints": "never", "spanNulls": false, "axisLabel": "in ▲ / out ▼" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    }
+  ]
+}

@@ -270,6 +270,10 @@ verify-db-image: ## Prove the database image PULLS rather than relying on a side
 	$(KUBECTL) delete pod db-image-pull-check -n $(NAMESPACE) --now >/dev/null 2>&1; \
 	echo "  PASS: the database image pulls from the registry"
 
+.PHONY: chart-deps
+chart-deps: ## Fetch the chart's optional subcharts once (needed even to render with them off)
+	@bash scripts/chart-deps.sh $(CHART)
+
 .PHONY: lint-helm
 lint-helm: ## helm lint + render + RBAC/schema assertions (T-7.1 – T-7.4)
 	@if [ -f $(CHART)/Chart.yaml ]; then \
@@ -279,7 +283,7 @@ lint-helm: ## helm lint + render + RBAC/schema assertions (T-7.1 – T-7.4)
 	fi
 
 .PHONY: chart-template
-chart-template: ## Render the chart with kind values
+chart-template: chart-deps ## Render the chart with kind values
 	helm template $(RELEASE) $(CHART) -f $(KIND_VALUES)
 
 .PHONY: preflight
@@ -353,6 +357,7 @@ demo-up: ## Cluster + images + install + demo workloads, ready to observe
 	  $(MAKE) kind-up; \
 	fi
 	$(MAKE) images
+	$(MAKE) chart-deps
 	@# A password is required by values.schema.json when the in-cluster database is enabled. It is
 	@# generated per install and never committed; the chart puts it in a Secret (ADR-005 D-5.7).
 	@set -e; \
@@ -400,6 +405,22 @@ demo-change: ## Apply the controlled topology change (a new dependency appears)
 demo-verify: ## Assert the expected edges through the API (T-7.10, T-7.11)
 	@KIND_CONTEXT=$(KIND_CONTEXT) NAMESPACE=$(NAMESPACE) RELEASE=$(RELEASE) \
 	  bash scripts/demo-verify.sh
+
+.PHONY: demo-observability
+demo-observability: chart-deps ## Add the bundled Prometheus + Grafana to a running demo (ADR-013)
+	@# `helm upgrade --reuse-values` keeps the generated database password and everything else
+	@# demo-up set; only the two flags change. The Grafana URL is the port-forward printed below —
+	@# the chart cannot know how a browser reaches Grafana, so the demo says so explicitly.
+	$(HELM_K) upgrade $(RELEASE) $(CHART) --namespace $(NAMESPACE) --reuse-values \
+	  --set observability.enabled=true \
+	  --set frontend.grafana.url=http://localhost:3000 \
+	  --wait --timeout 6m
+	@echo
+	@echo "Grafana admin password:"
+	@echo "    $(KUBECTL) -n $(NAMESPACE) get secret $(RELEASE)-grafana -o jsonpath='{.data.admin-password}' | base64 -d; echo"
+	@echo "Open it (the UI's Metrics buttons point here):"
+	@echo "    $(KUBECTL) -n $(NAMESPACE) port-forward svc/$(RELEASE)-grafana 3000:80"
+	@echo "Dashboards: 'Topology Visualizer — pipeline health' and '— workload' appear within a minute."
 
 .PHONY: demo-down
 demo-down: ## Remove ONLY what this project created

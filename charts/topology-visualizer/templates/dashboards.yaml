@@ -1,0 +1,33 @@
+{{- if and .Values.monitoring.dashboard.enabled (or .Values.monitoring.enabled .Values.observability.enabled) }}
+# The Grafana sidecar imports any ConfigMap carrying its discovery label (ADR-011 D-11.3). Served
+# to an existing Grafana (monitoring.*) and to the bundled one (observability.*, ADR-013) alike,
+# which is why this file is guarded by either flag rather than living in monitoring.yaml.
+#
+# The JSON lives in dashboards/ as plain files so each can be opened, edited and validated as a
+# dashboard rather than as a template — and so T-11.3 can check the pipeline dashboard's metric
+# names against the source that emits them.
+#
+#   topology-visualizer.json  the pipeline's own health (ADR-011): can the graph be trusted?
+#   topology-workload.json    the cluster's view of one workload (ADR-013 D-13.3): what the
+#                             details panel's "Metrics" button opens.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "topology.fullname" . }}-grafana-dashboard
+  {{- with .Values.monitoring.dashboard.namespace }}
+  namespace: {{ . | quote }}
+  {{- end }}
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dashboard
+    {{ .Values.monitoring.dashboard.sidecarLabel }}: {{ .Values.monitoring.dashboard.sidecarLabelValue | quote }}
+  {{- with .Values.monitoring.dashboard.folder }}
+  annotations:
+    grafana_folder: {{ . | quote }}
+  {{- end }}
+data:
+  topology-visualizer.json: |-
+    {{- .Files.Get "dashboards/topology-visualizer.json" | nindent 4 }}
+  topology-workload.json: |-
+    {{- .Files.Get "dashboards/topology-workload.json" | nindent 4 }}
+{{- end }}

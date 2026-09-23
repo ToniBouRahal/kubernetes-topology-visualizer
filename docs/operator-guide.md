@@ -128,8 +128,10 @@ helm upgrade --install topology charts/topology-visualizer -n topology \
 ```
 
 *Metrics* opens `frontend.grafana.workloadDashboardUid` with `var-namespace`, `var-type` and
-`var-workload`. The default UID is kube-prometheus-stack's *Kubernetes / Compute Resources /
-Workload*; on any other Grafana, set it to a dashboard that uses those three variable names.
+`var-workload`. The default is `topology-workload`, a dashboard this chart ships through the same
+sidecar ConfigMap as the pipeline one (CPU, memory, network and restarts per pod, from cAdvisor and
+kube-state-metrics). On kube-prometheus-stack, `a164a7f0339f99e89cea5cb47e9be617` — its *Kubernetes
+/ Compute Resources / Workload* — is a richer alternative that takes the same three variables.
 *Logs* opens Explore on the Loki datasource with `{namespace="…", pod=~"<workload>-.*"}` — a
 prefix match, so a workload named `backend` also matches `backend-worker` pods
 (`limitations.md`). Standalone pods get an exact-match logs link and no metrics link; `Service`
@@ -137,6 +139,37 @@ and `EXTERNAL` nodes get neither, because there is no single workload behind the
 
 The values reach the browser as `/config.json` from a ConfigMap; a change is a `helm upgrade`,
 which rolls the frontend, not an image rebuild.
+
+### No Prometheus or Grafana yet? Bundle them (optional)
+
+For a cluster that has neither — the kind demo, or a first try on a real one — one flag installs a
+plain Prometheus (with kube-state-metrics) and Grafana beside the release, every image pinned by
+digest ([ADR-013](adr/ADR-013-bundled-observability.md)):
+
+```bash
+make demo-observability          # on the kind demo: upgrade + print the password and port-forward
+# or, by hand, on any cluster:
+helm upgrade --install topology charts/topology-visualizer -n topology --reuse-values \
+  --set observability.enabled=true \
+  --set frontend.grafana.url=http://localhost:3000     # however YOUR browser reaches Grafana
+```
+
+Then:
+
+```bash
+kubectl -n topology get secret topology-grafana -o jsonpath='{.data.admin-password}' | base64 -d; echo
+kubectl -n topology port-forward svc/topology-grafana 3000:80
+```
+
+Log in as `admin`; both dashboards appear within a minute, and the UI's *Metrics* buttons open the
+workload one. What this bundle deliberately is not: alertmanager, node-exporter, Loki (so no *Logs*
+button), persistence (dashboards are re-provisioned from the ConfigMap on every start), or a
+production monitoring stack — its Prometheus keeps two days. It scrapes by annotation, so it is the
+alternative to `monitoring.*`, not a companion: the chart refuses both flags at once.
+
+The one cost that is not optional: the chart now declares these two dependencies, and Helm will not
+render or install it until they are fetched — `make chart-deps` (run automatically by `demo-up`,
+`lint-helm` and CI) does it once, ~200 KB from the two chart repositories.
 
 ### Capacity
 

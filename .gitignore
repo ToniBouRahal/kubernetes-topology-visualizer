@@ -36,9 +36,10 @@ node_modules/
 *.tsbuildinfo
 
 # ── Helm ──
+# The fetched dependency archives stay out; Chart.lock is COMMITTED — it is the record of exactly
+# what scripts/chart-deps.sh reproduces (ADR-013 D-13.5).
 /charts/**/charts/
 /charts/**/*.tgz
-/charts/**/Chart.lock
 
 # ── Local environment ──
 .env

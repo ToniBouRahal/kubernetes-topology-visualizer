@@ -23,7 +23,9 @@ components already expose discoverable by an existing Prometheus and Grafana, un
 condition that neither ever becomes a dependency. Off by default; the default render is unchanged.
 `ADR-012` is its counterpart in the other direction: the details panel links *out* to the cluster's
 Grafana for the selected workload — the §13 "detail-panel integration", taken into scope as
-navigation only, off until the chart is given a Grafana URL.
+navigation only, off until the chart is given a Grafana URL. `ADR-013` closes the loop for a
+cluster that has no Grafana at all: one chart flag bundles a plain Prometheus and Grafana, still
+off by default, so the kind demo can show both of the above working.
 
 | ADR | Component | Repo path | ADR-001 source | Owning phases | Tracker |
 |---|---|---|---|---|---|
@@ -38,6 +40,7 @@ navigation only, off until the chart is given a Grafana URL.
 | [ADR-010](ADR-010-component-first-graph-encoding.md) | Component-first graph encoding | `frontend/src/features/graph/`, `frontend/src/styles/` | §5.6 | post-5 | §6 |
 | [ADR-011](ADR-011-optional-prometheus-grafana.md) | Optional Prometheus scrape + Grafana dashboard | `charts/topology-visualizer/templates/monitoring.yaml`, `charts/topology-visualizer/dashboards/` | §4.2, §5.1, §13 | post-5 | §6 |
 | [ADR-012](ADR-012-grafana-deep-links.md) | Grafana deep links from the details panel | `frontend/src/config.ts`, `frontend/src/features/details/`, `charts/…/templates/frontend-*.yaml` | §13, §5.6 | post-5 | §6 |
+| [ADR-013](ADR-013-bundled-observability.md) | Bundled Prometheus + Grafana, optional | `charts/…/Chart.yaml`, `charts/…/dashboards/`, `scripts/chart-deps.sh` | §4.2, §5.7 | post-5 | §6 |
 
 **Progress tracking:** [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) is the master checklist —
 every task carries an ID like `P1-A2` (phase 1, agent, task 2). Each component ADR repeats its own

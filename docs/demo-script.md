@@ -142,6 +142,25 @@ Measured, documented in `limitations.md` §4.1, not fixed.
 
 Being able to say all four of these, with numbers, is the point of the evaluation work.
 
+## Optional · The pipeline's own health, and where a workload leads (2 min)
+
+Only if time allows; nothing above depends on it. Adds a bundled Prometheus and Grafana to the
+running demo (ADR-013) — about a minute to come up.
+
+```bash
+make demo-observability      # prints the Grafana password and the port-forward
+kubectl --context kind-topology -n topology port-forward svc/topology-grafana 3000:80
+```
+
+Two things to show. First, *Topology Visualizer — pipeline health* in Grafana: kernel samples lost
+is **0**, the observation funnel shows what was filtered and why, batches are accepted and never
+dropped — the graph is trustworthy, and here is the evidence rather than the assertion. Second,
+back in the UI, click `backend` and press **Metrics ↗**: the *workload* dashboard opens on the same
+window, showing its CPU and memory while it was making the connections the panel counts. Say the
+line the panel says: these numbers are the cluster's, not this tool's.
+
+If Grafana is slow to appear, skip it — the fallback is the port-forward and `curl` in step 2.
+
 ## 7 · Tear down (1 min)
 
 ```bash

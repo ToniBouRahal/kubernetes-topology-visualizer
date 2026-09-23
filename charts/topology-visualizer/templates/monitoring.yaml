@@ -59,28 +59,6 @@ spec:
       path: /metrics
       interval: {{ .Values.monitoring.scrapeInterval }}
 {{- end }}
-{{- if .Values.monitoring.dashboard.enabled }}
----
-# The Grafana sidecar imports any ConfigMap carrying its discovery label (D-11.3). The JSON lives in
-# dashboards/ as a plain file so it can be opened, edited and validated as a dashboard rather than
-# as a template — and so T-11.3 can check its metric names against the source that emits them.
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: {{ include "topology.fullname" . }}-grafana-dashboard
-  {{- with .Values.monitoring.dashboard.namespace }}
-  namespace: {{ . | quote }}
-  {{- end }}
-  labels:
-    {{- include "topology.labels" . | nindent 4 }}
-    app.kubernetes.io/component: dashboard
-    {{ .Values.monitoring.dashboard.sidecarLabel }}: {{ .Values.monitoring.dashboard.sidecarLabelValue | quote }}
-  {{- with .Values.monitoring.dashboard.folder }}
-  annotations:
-    grafana_folder: {{ . | quote }}
-  {{- end }}
-data:
-  topology-visualizer.json: |-
-    {{- .Files.Get "dashboards/topology-visualizer.json" | nindent 4 }}
 {{- end }}
-{{- end }}
+{{/* The dashboards ConfigMap lives in dashboards.yaml: it serves this path AND the bundled
+     Grafana of ADR-013, so it is guarded by either flag rather than by this file's. */}}

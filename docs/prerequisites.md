@@ -132,6 +132,21 @@ frontend and Helm targets report that they are not yet scaffolded.
 | `kubeconform` | Validating rendered Helm output in CI (`T-7.2`) |
 | Chrome + Claude Code browser extension | Frontend debugging from Phase 2 (`P2-T5`, `P4-F14`) |
 
+## One network fetch for the chart
+
+Since ADR-013 the chart declares two optional dependencies (the `prometheus` and `grafana` charts,
+off by default). Helm refuses to render or install a chart whose declared dependencies are absent
+from `charts/` — even with their condition false — so a clean checkout needs one fetch before
+`make lint-helm`, `make chart-template` or `make demo-up` can run:
+
+```bash
+make chart-deps     # ~200 KB from prometheus-community.github.io and grafana.github.io; idempotent
+```
+
+The targets above call it themselves; it is listed here because it is the one step that needs the
+network on a machine that otherwise builds everything offline. `Chart.lock` is committed and pins
+exactly what is fetched.
+
 ## Claude Code tooling
 
 Plugins installed for this project (see [`docs/adr/README.md`](adr/README.md) §3):

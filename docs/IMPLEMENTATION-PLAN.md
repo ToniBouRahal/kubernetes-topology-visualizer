@@ -287,6 +287,23 @@ none: [ADR-012](adr/ADR-012-grafana-deep-links.md).
 - [x] **P6-K7** `frontend.grafana.*` values, schema, ConfigMap, mount and checksum — D-12.2, T-12.6
 - [x] **P6-K8** `docs/operator-guide.md` section; `limitations.md` entry; ADR-006, ADR-007, index updated
 
+### ADR-013 — bundled Prometheus + Grafana, optional (chart)
+
+For a cluster with neither — the kind demo first — `observability.enabled` installs a plain
+Prometheus (+ kube-state-metrics) and Grafana beside the release, digest-pinned, scraping by
+annotation, with both dashboards provisioned and the panel's default *Metrics* dashboard now one
+this chart ships. Off by default. The cost that is not opt-in: the chart's two declared
+dependencies must be fetched once (`scripts/chart-deps.sh`) before it can be rendered at all.
+Decisions, costs and what was declined (alertmanager, node-exporter, Loki, an nginx proxy to
+Grafana): [ADR-013](adr/ADR-013-bundled-observability.md).
+
+- [x] **P6-K9** `Chart.yaml` dependencies, committed `Chart.lock`, `scripts/chart-deps.sh`, Make/CI wiring — D-13.5
+- [x] **P6-K10** `observability.*` values and schema; subchart values with five image digests — D-13.1, D-13.6
+- [x] **P6-K11** Scrape annotations on the agent pods and backend Service, opt-in — D-13.2
+- [x] **P6-K12** `dashboards/topology-workload.json`; `templates/dashboards.yaml`; frontend default UID — D-13.3
+- [x] **P6-K13** Grafana datasource + sidecar wiring; NetworkPolicy rule — D-13.4, D-13.7
+- [x] **P6-K14** `make demo-observability`; T-13.1 – T-13.7 in the two verification scripts — 76 + 22 assertions green
+- [x] **P6-K15** Docs: operator guide, prerequisites, limitations, ADR cross-references, index
 
 ---
 

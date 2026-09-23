@@ -285,8 +285,9 @@ is fine; where it is not, the NetworkPolicy is doing the work and must be enforc
 ### 4.5 The Grafana "Logs" link matches pods by name prefix — **by design, stated**
 
 When `frontend.grafana.url` is set (ADR-012), the *Logs* button opens Loki on
-`{namespace="…", pod=~"<workload>-.*"}`. A workload named `backend` therefore also matches the pods
-of a sibling named `backend-worker`. Matching on a pod label would be exact, but which label a log
+`{namespace="…", pod=~"<workload>-.*"}`, and the shipped workload dashboard (ADR-013) selects pods
+the same way. A workload named `backend` therefore also matches the pods of a sibling named
+`backend-worker`. Matching on a pod label would be exact, but which label a log
 shipper attaches is the operator's configuration, not something this tool can know; the prefix
 works with any shipper. Standalone pods are matched exactly. A `Service` node — which ADR-009 only
 emits when the workload behind it is unknown or ambiguous — gets no link at all, because there is

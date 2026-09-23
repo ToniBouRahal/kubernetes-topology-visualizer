@@ -4,7 +4,10 @@
 - **Date:** 2026-08-12
 - **Amended by:** [ADR-011](ADR-011-optional-prometheus-grafana.md) — D-7.4 (one opt-in scrape
   ingress rule), D-7.5 (the `monitoring.*` values block) · [ADR-012](ADR-012-grafana-deep-links.md)
-  — D-7.5 (`frontend.grafana.*`, delivered to the browser as a ConfigMap-mounted `/config.json`)
+  — D-7.5 (`frontend.grafana.*`, delivered to the browser as a ConfigMap-mounted `/config.json`) ·
+  [ADR-013](ADR-013-bundled-observability.md) — D-7.1 (the chart gains two optional dependencies,
+  fetched by `scripts/chart-deps.sh`), D-7.4 (digest pinning extends to subchart images; one more
+  opt-in ingress rule), D-7.5 (`observability.*`)
 - **Parent:** ADR-001 §5.7 · Source of truth §17, §18, §19
 - **Component path:** `charts/`, `kind/`, `demo/`, `scripts/`, `Makefile`
 - **Owning phases:** Phase 0 (skeleton), Phase 1 (agent DaemonSet), Phase 5 (complete chart, multi-node)
@@ -334,6 +337,21 @@ rationale in [ADR-011](ADR-011-optional-prometheus-grafana.md); the boxes are re
 
 - [x] **P6-K7** `frontend.grafana.*` values and schema; `frontend-configmap.yaml` rendered to `/config.json`, mounted with a checksum annotation — D-12.2, T-12.6
 - [x] **P6-K8** `docs/operator-guide.md` section; `limitations.md` entry; ADR-006, index and plan updated
+
+### Post-Phase-5 — amended by ADR-013 (bundled Prometheus + Grafana, optional)
+
+One flag, `observability.enabled`, installs a plain Prometheus (+ kube-state-metrics) and Grafana
+beside the release for a cluster that has neither — the kind demo above all. Off by default; the
+chart now has two declared dependencies that must be fetched even to render with them off.
+Decisions and costs in [ADR-013](ADR-013-bundled-observability.md).
+
+- [x] **P6-K9** `Chart.yaml` dependencies, committed `Chart.lock`, `scripts/chart-deps.sh`; `lint-helm`, `chart-template`, `demo-up` and CI go through it — D-13.5
+- [x] **P6-K10** `observability.*` values and schema; subchart values with five image digests — D-13.1, D-13.6
+- [x] **P6-K11** Scrape annotations on the agent pods and backend Service, opt-in — D-13.2
+- [x] **P6-K12** `dashboards/topology-workload.json`; `templates/dashboards.yaml`; frontend default UID — D-13.3
+- [x] **P6-K13** Grafana datasource + sidecar wiring; NetworkPolicy rule for the in-namespace Prometheus — D-13.4, D-13.7
+- [x] **P6-K14** `make demo-observability`; `verify-chart.sh` T-13.1 – T-13.6; `verify-image-pinning.sh` T-13.7
+- [x] **P6-K15** Docs: operator guide, prerequisites, limitations, ADR-011/012 cross-references, index and plan
 
 ### Standing invariants — re-verify at every phase gate
 

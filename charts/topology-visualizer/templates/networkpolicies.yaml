@@ -45,6 +45,19 @@ spec:
         - protocol: TCP
           port: {{ .Values.backend.service.port }}
 {{- end }}
+{{- if .Values.observability.enabled }}
+    # ADR-013 D-13.7. The bundled Prometheus runs in THIS namespace, so the cross-namespace rule
+    # above would not cover it. Admitted by the Prometheus chart's own server labels, on the
+    # backend port only.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+              app.kubernetes.io/component: server
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.service.port }}
+{{- end }}
 {{- if .Values.postgresql.enabled }}
 ---
 # The other half of D-7.4: the database accepts connections only from the backend.

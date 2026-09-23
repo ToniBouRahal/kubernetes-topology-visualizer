@@ -6,6 +6,9 @@
   exposes Prometheus-format metrics) · §13 (deferred: optional Prometheus panels)
 - **Amends:** ADR-007 D-7.4 (network posture — one opt-in ingress rule), D-7.5 (configuration
   surface — the `monitoring.*` block)
+- **Amended by:** [ADR-013](ADR-013-bundled-observability.md) — §4's rejection of a bundled stack
+  is superseded for a narrower bundle (plain Prometheus + Grafana, no operator); the dashboard
+  ConfigMap moves to `templates/dashboards.yaml` so both paths share it
 - **Component path:** `charts/topology-visualizer/`
 - **Owning phase:** Post-Phase-5 extension
 
@@ -119,6 +122,9 @@ probes already use, on the same containers, with no new listener and no new capa
 `Chart.yaml` is fetched on every `helm dependency update`, drags ~30 CRDs into a demo cluster that
 does not need them, and is mandatory in practice for anyone who has not already got the stack.
 That is the dependency ADR-001 §4.2 forbids. The operator who has Grafana already has it.
+*Superseded in part by ADR-013*, which bundles the plain `prometheus` and `grafana` charts — no
+operator, no CRDs — behind one flag, and accounts for the fetch cost it accepts. The rejection of
+kube-prometheus-stack itself stands.
 
 **`prometheus.io/scrape` pod annotations instead of CRDs.** Those work only against a hand-written
 scrape config that the Prometheus Operator does not ship by default. `PodMonitor` and

@@ -6,6 +6,14 @@ metadata:
   labels:
     {{- include "topology.labels" . | nindent 4 }}
     app.kubernetes.io/component: backend
+  {{- if .Values.observability.enabled }}
+  # Scraped by the bundled Prometheus's service-endpoints job (ADR-013 D-13.2); /metrics is on the
+  # same port as the API. Absent otherwise.
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: {{ .Values.backend.service.port | quote }}
+    prometheus.io/path: /metrics
+  {{- end }}
 spec:
   # ClusterIP only: ingestion is never exposed outside the cluster by default (ADR-001 §6).
   type: {{ .Values.backend.service.type }}

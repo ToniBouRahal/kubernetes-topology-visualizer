@@ -5,3 +5,16 @@ type: application
 version: 1.1.0
 appVersion: "1.0.0"
 keywords: [kubernetes, topology, ebpf, observability]
+
+# Optional, off by default (ADR-013). Both conditions read ONE flag, so `observability.enabled`
+# is the whole switch. Exact versions; Chart.lock is committed; the archives are fetched by
+# scripts/chart-deps.sh and stay out of git.
+dependencies:
+  - name: prometheus
+    version: 29.33.0
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: observability.enabled
+  - name: grafana
+    version: 10.5.15
+    repository: https://grafana.github.io/helm-charts
+    condition: observability.enabled

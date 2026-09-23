@@ -195,8 +195,27 @@
           }
         }
       }
+    },
+
+    "observability": {
+      "type": "object",
+      "description": "Bundled Prometheus + Grafana (ADR-013). Off by default; never a dependency of any accepted feature (ADR-001 §4.2).",
+      "properties": { "enabled": { "type": "boolean" } }
     }
   },
+
+  "allOf": [
+    {
+      "$comment": "monitoring.* emits PodMonitor/ServiceMonitor CRDs for an EXISTING Prometheus Operator; observability.* brings a plain Prometheus with no operator. Together, the CRDs fail the install on the cluster the bundle is for (ADR-013 D-13.2).",
+      "if": {
+        "properties": { "observability": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] } },
+        "required": ["observability"]
+      },
+      "then": {
+        "properties": { "monitoring": { "properties": { "enabled": { "const": false } } } }
+      }
+    }
+  ],
 
   "$defs": {
     "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
