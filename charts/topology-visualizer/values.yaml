@@ -105,6 +105,18 @@ frontend:
     type: ClusterIP   # Default access for kind is port-forwarding (ADR-001 §6)
     port: 8080
 
+  # Deep links from the details panel into the cluster's own Grafana (ADR-012). Navigation only:
+  # nothing is embedded, queried or installed. Rendered into /config.json for the browser; with an
+  # empty url the panel shows no Grafana section at all.
+  grafana:
+    url: ""
+    # The "Metrics" button opens this dashboard with var-namespace, var-type and var-workload.
+    # The default is kube-prometheus-stack's "Kubernetes / Compute Resources / Workload"; any
+    # dashboard using those three variable names works.
+    workloadDashboardUid: a164a7f0339f99e89cea5cb47e9be617
+    # The "Logs" button opens Explore on this Loki datasource. Empty means no Logs button.
+    lokiDatasourceUid: ""
+
   resources:
     requests:
       cpu: 50m

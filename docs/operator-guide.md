@@ -113,6 +113,31 @@ now — not the topology. The graph stays the only place the topology is drawn. 
 Prometheus or Grafana: if the CRDs are absent, the install fails with `no matches for kind
 "PodMonitor"`, which is the intended message rather than a scrape that silently never happens.
 
+### Grafana links from the details panel (optional)
+
+The other direction: selecting a workload in the UI offers **Metrics** and **Logs** buttons that
+open the cluster's own Grafana for that workload, over the window the panel is showing
+([ADR-012](adr/ADR-012-grafana-deep-links.md)). Navigation only — nothing is embedded or queried,
+the tab lands on Grafana's own login if you are not signed in, and the panel says the numbers
+there are the cluster's, not this tool's.
+
+```bash
+helm upgrade --install topology charts/topology-visualizer -n topology \
+  --set frontend.grafana.url=https://grafana.example.com \
+  --set frontend.grafana.lokiDatasourceUid=<uid>          # omit for no Logs button
+```
+
+*Metrics* opens `frontend.grafana.workloadDashboardUid` with `var-namespace`, `var-type` and
+`var-workload`. The default UID is kube-prometheus-stack's *Kubernetes / Compute Resources /
+Workload*; on any other Grafana, set it to a dashboard that uses those three variable names.
+*Logs* opens Explore on the Loki datasource with `{namespace="…", pod=~"<workload>-.*"}` — a
+prefix match, so a workload named `backend` also matches `backend-worker` pods
+(`limitations.md`). Standalone pods get an exact-match logs link and no metrics link; `Service`
+and `EXTERNAL` nodes get neither, because there is no single workload behind them.
+
+The values reach the browser as `/config.json` from a ConfigMap; a change is a `helm upgrade`,
+which rolls the frontend, not an image rebuild.
+
 ### Capacity
 
 Storage is proportional to **distinct edges × buckets retained**, not to traffic volume: a busy edge

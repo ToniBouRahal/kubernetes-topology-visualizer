@@ -1,7 +1,9 @@
 import type { GraphNode, NodeDependency, NodeDetail } from "../../api/types";
+import type { GrafanaConfig } from "../../config";
 import { namespaceHue, namespaceLabel } from "../graph/encoding";
 
 import { outcomeParts } from "../graph/outcomes";
+import { grafanaLinks } from "./grafanaLinks";
 
 /**
  * One observed link, stated as a direction rather than a membership.
@@ -72,11 +74,14 @@ export function DetailsPanel({
   detail,
   loading,
   onClose,
+  grafana = null,
 }: {
   node: GraphNode | null;
   detail: NodeDetail | null;
   loading: boolean;
   onClose: () => void;
+  /** Null when the chart has no Grafana URL — the section is then simply absent (ADR-012 D-12.1). */
+  grafana?: GrafanaConfig | null;
 }) {
   if (!node) {
     return (
@@ -90,6 +95,7 @@ export function DetailsPanel({
   const touching = [...(detail?.incoming ?? []), ...(detail?.outgoing ?? [])];
   const totalSuccessful = touching.reduce((sum, d) => sum + d.connection_count, 0);
   const totalFailed = touching.reduce((sum, d) => sum + (d.failed_connection_count ?? 0), 0);
+  const links = grafanaLinks(node, grafana, detail?.window);
 
   return (
     <aside className="panel panel--right" aria-label={`Details for ${node.label}`}>
@@ -129,6 +135,31 @@ export function DetailsPanel({
         <span className="label">Last seen</span>
         <div className="mono panel__value">{new Date(node.last_seen).toLocaleString()}</div>
       </section>
+
+      {/* Navigation only: a new tab into the cluster's own Grafana. Rendered when there is a
+          link to offer and never as a disabled button (D-12.1). The line beneath names the
+          source, because a button here could otherwise read as this tool's own view (D-12.5). */}
+      {(links.metrics || links.logs) && (
+        <section className="panel__section">
+          <span className="label">In Grafana</span>
+          <div className="panel__links">
+            {links.metrics && (
+              <a href={links.metrics} target="_blank" rel="noopener noreferrer">
+                Metrics ↗
+              </a>
+            )}
+            {links.logs && (
+              <a href={links.logs} target="_blank" rel="noopener noreferrer">
+                Logs ↗
+              </a>
+            )}
+          </div>
+          <p className="panel__hint">
+            The cluster's own metrics and logs for this workload, over the selected window. Not
+            collected by this tool.
+          </p>
+        </section>
+      )}
 
       {loading && <p className="panel__hint">Loading dependencies…</p>}
 

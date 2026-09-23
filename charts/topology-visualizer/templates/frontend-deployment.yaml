@@ -13,6 +13,10 @@ spec:
       {{- include "topology.frontend.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      annotations:
+        # Roll the pods when config.json changes — a subPath mount is read once at start and
+        # never updates in place, so without this a Grafana URL change would apply to nothing.
+        checksum/config: {{ include (print $.Template.BasePath "/frontend-configmap.yaml") . | sha256sum }}
       labels:
         {{- include "topology.frontend.selectorLabels" . | nindent 8 }}
     spec:
@@ -55,7 +59,15 @@ spec:
               mountPath: /var/cache/nginx
             - name: tmp
               mountPath: /tmp
+            # One file over the built bundle, so the image stays the same for any Grafana.
+            - name: ui-config
+              mountPath: /usr/share/nginx/html/config.json
+              subPath: config.json
+              readOnly: true
       volumes:
+        - name: ui-config
+          configMap:
+            name: {{ include "topology.fullname" . }}-frontend
         - name: nginx-conf
           emptyDir: {}
         - name: nginx-cache

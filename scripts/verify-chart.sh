@@ -303,6 +303,40 @@ fi
 reject "monitoring scrape interval that is not a duration" --set monitoring.enabled=true --set monitoring.scrapeInterval=fast
 reject "empty Prometheus namespace"                        --set monitoring.enabled=true --set monitoring.prometheusNamespace=""
 
+echo "== ADR-012: Grafana deep links (T-12.6) =="
+# The browser's config is a ConfigMap the frontend mounts as /config.json. Off by default means
+# the JSON says so explicitly — an empty url — rather than the file being absent.
+config_json() {
+  printf '%s' "$1" | python3 -c '
+import json, sys, yaml
+for doc in yaml.safe_load_all(sys.stdin):
+    if doc and doc.get("kind") == "ConfigMap" and "config.json" in (doc.get("data") or {}):
+        cfg = json.loads(doc["data"]["config.json"])
+        print(json.dumps(cfg["grafana"], sort_keys=True)); sys.exit(0)
+print("MISSING")'
+}
+DEFAULT_CFG="$(config_json "$RENDERED")"
+if [[ "$DEFAULT_CFG" == *'"url": ""'* ]]; then
+  ok "config.json renders with an empty Grafana url by default"
+else
+  bad "default config.json is wrong or missing: $DEFAULT_CFG"
+fi
+GRAFANA_RENDERED="$(render --set frontend.grafana.url='https://grafana.example.com/g' --set frontend.grafana.lokiDatasourceUid=loki-1)"
+SET_CFG="$(config_json "$GRAFANA_RENDERED")"
+if [[ "$SET_CFG" == *'"url": "https://grafana.example.com/g"'* && "$SET_CFG" == *'"lokiDatasourceUid": "loki-1"'* ]]; then
+  ok "frontend.grafana.* values reach config.json"
+else
+  bad "frontend.grafana.* did not reach config.json: $SET_CFG"
+fi
+FE_BLOCK="$(printf '%s' "$RENDERED" | awk '/^kind: Deployment$/,/^---$/' | awk '/name: .*-frontend$/,0')"
+if printf '%s' "$FE_BLOCK" | grep -q 'subPath: config.json' && printf '%s' "$FE_BLOCK" | grep -q 'checksum/config'; then
+  ok "frontend mounts config.json and rolls when it changes"
+else
+  bad "frontend Deployment does not mount config.json with a checksum annotation"
+fi
+reject "Grafana url without an http(s) scheme" --set frontend.grafana.url='grafana.example.com'
+reject "Grafana url with a javascript: scheme" --set frontend.grafana.url='javascript:alert(1)'
+
 echo "== T-7.3: values.schema.json rejects malformed values =="
 reject "empty clusterId"                     --set clusterId=""
 reject "clusterId containing ':'"            --set clusterId="bad:id"

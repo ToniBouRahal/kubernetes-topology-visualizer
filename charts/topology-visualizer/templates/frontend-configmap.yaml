@@ -1,0 +1,17 @@
+{{- if .Values.frontend.enabled }}
+# What the browser reads once at start-up, served by nginx as /config.json (ADR-012 D-12.2).
+#
+# A ConfigMap rather than an environment variable through envsubst: a URL carries characters
+# nginx substitution would need escaping for, and `toJson` is correct by construction. Its own
+# file rather than a key in configmaps.yaml, so the agent's config checksum does not change when
+# only the frontend's does.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "topology.fullname" . }}-frontend
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+data:
+  config.json: {{ dict "grafana" (dict "url" .Values.frontend.grafana.url "workloadDashboardUid" .Values.frontend.grafana.workloadDashboardUid "lokiDatasourceUid" .Values.frontend.grafana.lokiDatasourceUid) | toJson | quote }}
+{{- end }}

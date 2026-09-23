@@ -32,6 +32,13 @@ server {
         add_header Cache-Control "no-store";
     }
 
+    # Runtime configuration, mounted from a ConfigMap (ADR-012 D-12.2). Never cached, so a
+    # `helm upgrade` that changes it is seen after the rollout, not after the browser's heuristic
+    # cache expiry. Absent in a dev build, which the app treats as "not configured".
+    location = /config.json {
+        add_header Cache-Control "no-store";
+    }
+
     # Same-origin API: the browser talks only to this pod, so CORS_ALLOWED_ORIGINS stays a real
     # restriction rather than being widened to make the browser work.
     location /api/ {

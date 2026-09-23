@@ -3,7 +3,8 @@
 - **Status:** Accepted for implementation
 - **Date:** 2026-08-12
 - **Amended by:** [ADR-011](ADR-011-optional-prometheus-grafana.md) — D-7.4 (one opt-in scrape
-  ingress rule), D-7.5 (the `monitoring.*` values block)
+  ingress rule), D-7.5 (the `monitoring.*` values block) · [ADR-012](ADR-012-grafana-deep-links.md)
+  — D-7.5 (`frontend.grafana.*`, delivered to the browser as a ConfigMap-mounted `/config.json`)
 - **Parent:** ADR-001 §5.7 · Source of truth §17, §18, §19
 - **Component path:** `charts/`, `kind/`, `demo/`, `scripts/`, `Makefile`
 - **Owning phases:** Phase 0 (skeleton), Phase 1 (agent DaemonSet), Phase 5 (complete chart, multi-node)
@@ -328,6 +329,11 @@ rationale in [ADR-011](ADR-011-optional-prometheus-grafana.md); the boxes are re
 - [x] **P6-K4** Backend NetworkPolicy scrape ingress, opt-in — D-11.5, amends D-7.4
 - [x] **P6-K5** `verify-chart.sh` T-11.1 – T-11.5 — D-11.4
 - [x] **P6-K6** `docs/operator-guide.md` section; ADR index and plan updated
+
+### Post-Phase-5 — amended by ADR-012 (Grafana deep links)
+
+- [x] **P6-K7** `frontend.grafana.*` values and schema; `frontend-configmap.yaml` rendered to `/config.json`, mounted with a checksum annotation — D-12.2, T-12.6
+- [x] **P6-K8** `docs/operator-guide.md` section; `limitations.md` entry; ADR-006, index and plan updated
 
 ### Standing invariants — re-verify at every phase gate
 

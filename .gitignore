@@ -64,6 +64,10 @@ kubeconfig
 /frontend/test-results/
 /frontend/playwright-report/
 
+# Local stand-in for the ConfigMap-mounted runtime config (ADR-012); the dev server has none by
+# default and the app treats that as "not configured".
+/frontend/public/config.json
+
 # Trivy vulnerability database cache (100MB+, re-downloadable)
 /.trivy-cache/
 

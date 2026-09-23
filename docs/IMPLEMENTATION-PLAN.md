@@ -272,6 +272,21 @@ the topology. Rationale and rejected alternatives:
 - [x] **P6-K5** `verify-chart.sh` T-11.1 – T-11.5, including the check that every dashboard metric exists in source — D-11.4
 - [x] **P6-K6** `docs/operator-guide.md` section; ADR-007, ADR index updated
 
+### ADR-012 — Grafana deep links from the details panel (frontend + chart)
+
+The ADR-001 §13 "detail-panel integration", taken into scope as navigation only: *Metrics* and
+*Logs* buttons into the cluster's own Grafana for the selected workload, carrying the selected
+window. Off until `frontend.grafana.url` is set; the browser reads it from a ConfigMap-mounted
+`/config.json`, so the image is unchanged. Which nodes get which link, and why a Service gets
+none: [ADR-012](adr/ADR-012-grafana-deep-links.md).
+
+- [x] **P6-F10** `config.ts`: fetch and parse `/config.json`, `useUiConfig` — D-12.2, T-12.5
+- [x] **P6-F11** `grafanaLinks.ts`: node + config + window → links — D-12.3, D-12.4, D-12.6, T-12.1 – T-12.3
+- [x] **P6-F12** `DetailsPanel`: Grafana section with source line — D-12.1, D-12.5, T-12.4
+- [x] **P6-F13** nginx `no-store` on `/config.json` — D-12.2
+- [x] **P6-K7** `frontend.grafana.*` values, schema, ConfigMap, mount and checksum — D-12.2, T-12.6
+- [x] **P6-K8** `docs/operator-guide.md` section; `limitations.md` entry; ADR-006, ADR-007, index updated
+
 
 ---
 

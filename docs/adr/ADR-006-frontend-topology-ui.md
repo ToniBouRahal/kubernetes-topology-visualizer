@@ -2,7 +2,7 @@
 
 - **Status:** Accepted for implementation
 - **Date:** 2026-08-12
-- **Amended by:** [ADR-010](ADR-010-component-first-graph-encoding.md) — D-6.3 visual encoding, D-6.7 contrast baseline
+- **Amended by:** [ADR-010](ADR-010-component-first-graph-encoding.md) — D-6.3 visual encoding, D-6.7 contrast baseline · [ADR-012](ADR-012-grafana-deep-links.md) — D-6.6 details panel gains optional Grafana links
 - **Parent:** ADR-001 §5.6 · Source of truth §13, §14
 - **Component path:** `frontend/`
 - **Owning phases:** Phase 2 (live graph), Phase 3 (history + compare), Phase 4 (completeness + a11y)
@@ -294,6 +294,17 @@ boxes are repeated here and in `IMPLEMENTATION-PLAN.md`, tick all three.
 - [x] **P6-F7** `DetailsPanel` rows state source → destination, port, successful, failed, setup time — D-10.1
 - [x] **P6-F8** `NodeList` drops the kind column, keeps namespace — D-10.1
 - [x] **P6-F9** `contrast.test.ts` re-baselined; T-10.1 – T-10.8 — D-10.7
+
+### Post-Phase-5 — amended by ADR-012 (Grafana deep links)
+
+The details panel offers *Metrics* and *Logs* buttons into the cluster's own Grafana for the
+selected workload and window — navigation only, off unless the chart has a Grafana URL, and
+labelled as not this tool's data. Decisions in [ADR-012](ADR-012-grafana-deep-links.md).
+
+- [x] **P6-F10** `config.ts`: fetch and parse `/config.json`, `useUiConfig` — D-12.2, T-12.5
+- [x] **P6-F11** `grafanaLinks.ts`: node + config + window → links — D-12.3, D-12.4, D-12.6, T-12.1 – T-12.3
+- [x] **P6-F12** `DetailsPanel`: Grafana section with source line — D-12.1, D-12.5, T-12.4
+- [x] **P6-F13** nginx `no-store` on `/config.json` — D-12.2
 
 ### Standing invariants — re-verify at every phase gate
 

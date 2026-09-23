@@ -41,6 +41,31 @@ it("never shows a workload kind — T-10.1", () => {
   expect(screen.getByText("web")).toBeTruthy();
 });
 
+it("offers Grafana links only when configured, in a new tab, with the source named — ADR-012 T-12.4", () => {
+  const grafana = {url: "https://g.example.com", workloadDashboardUid: "wl", lokiDatasourceUid: "loki"};
+  render(<DetailsPanel node={node} detail={detail} loading={false} onClose={() => {}} grafana={grafana}/>);
+
+  const metrics = screen.getByRole("link", {name: "Metrics ↗"});
+  expect(metrics.getAttribute("href")).toContain("var-workload=a");
+  expect(metrics.getAttribute("target")).toBe("_blank");
+  expect(metrics.getAttribute("rel")).toBe("noopener noreferrer");
+  expect(screen.getByRole("link", {name: "Logs ↗"})).toBeTruthy();
+  // A button here could read as this tool's own view of the workload; the line says otherwise.
+  expect(screen.getByText(/Not collected by this tool/)).toBeTruthy();
+});
+
+it("shows no Grafana section without a config, and none for a Service even with one", () => {
+  const grafana = {url: "https://g.example.com", workloadDashboardUid: "wl", lokiDatasourceUid: "loki"};
+  const {unmount} = render(<DetailsPanel node={node} detail={detail} loading={false} onClose={() => {}}/>);
+  expect(screen.queryByRole("link")).toBeNull();
+  expect(screen.queryByText("In Grafana")).toBeNull();
+  unmount();
+
+  const service = {...node, kind: "Service"} as GraphNode;
+  render(<DetailsPanel node={service} detail={detail} loading={false} onClose={() => {}} grafana={grafana}/>);
+  expect(screen.queryByRole("link")).toBeNull();
+});
+
 it("distinguishes an unmeasured failure count from zero failures", () => {
   const unmeasured: NodeDetail = {...detail, outgoing: [
     {first_seen: node.first_seen, last_seen: node.last_seen, node_id: "d", label: "d", protocol: "TCP", destination_port: 5432, connection_count: 7},

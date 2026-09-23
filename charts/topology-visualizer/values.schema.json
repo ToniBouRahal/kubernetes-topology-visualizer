@@ -75,7 +75,20 @@
         "image": { "$ref": "#/$defs/image" },
         "service": { "$ref": "#/$defs/service" },
         "resources": { "type": "object" },
-        "securityContext": { "type": "object" }
+        "securityContext": { "type": "object" },
+        "grafana": {
+          "type": "object",
+          "description": "Grafana deep links from the details panel (ADR-012). Off while url is empty.",
+          "properties": {
+            "url": {
+              "type": "string",
+              "pattern": "^(https?://[^\\s\"'<>]+)?$",
+              "description": "Empty, or an http(s) URL. It lands in an href, so a bare hostname or another scheme is refused here rather than rendered."
+            },
+            "workloadDashboardUid": { "type": "string", "pattern": "^[A-Za-z0-9_-]*$" },
+            "lokiDatasourceUid": { "type": "string", "pattern": "^[A-Za-z0-9_-]*$" }
+          }
+        }
       }
     },
 

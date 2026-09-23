@@ -12,6 +12,7 @@ import {
   TruncationBanner,
 } from "./components/States";
 import { WindowStrip } from "./components/WindowStrip";
+import { useUiConfig } from "./config";
 import { DetailsPanel } from "./features/details/DetailsPanel";
 import { FilterPanel } from "./features/filters/FilterPanel";
 import { CompareCanvas } from "./features/graph/CompareCanvas";
@@ -29,6 +30,8 @@ import {
 import { useGraph } from "./features/graph/useGraph";
 
 export default function App() {
+  // Read once; absent or malformed means the optional integrations simply do not appear.
+  const uiConfig = useUiConfig();
   const [mode, setMode] = useState<Mode>("live");
   const [preset, setPreset] = useState<WindowPreset>("5m");
   const [paused, setPaused] = useState(false);
@@ -333,6 +336,7 @@ export default function App() {
           detail={detail}
           loading={detailLoading}
           onClose={() => setSelectedId(null)}
+          grafana={uiConfig.grafana}
         />
       </div>
     </div>

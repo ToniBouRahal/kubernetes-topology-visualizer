@@ -159,6 +159,22 @@
 }
 .panel__clear { margin: var(--s-4); }
 
+/* Grafana deep links (ADR-012): navigation dressed as the panel's other controls, so it reads as
+   an action rather than body text. Same surface, border and radius as `button` in tokens.css. */
+.panel__links { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-bottom: var(--s-2); }
+.panel__links a {
+  display: inline-block;
+  padding: var(--s-1) var(--s-3);
+  color: var(--text);
+  background: var(--panel-high);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  font-size: var(--step--1);
+}
+.panel__links a:hover { border-color: var(--line-strong); background: var(--ink); }
+.panel__links a:focus-visible { outline: 2px solid var(--edge-strong); outline-offset: 2px; }
+
 .check { display: flex; align-items: center; gap: var(--s-2); cursor: pointer; }
 .check input { width: auto; }
 
