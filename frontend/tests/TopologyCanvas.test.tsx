@@ -6,16 +6,22 @@ import { TopologyNode } from "../src/features/graph/TopologyNode";
 import type { GraphNode } from "../src/api/types";
 // jsdom has no measured canvas. Replace the rendering boundary, keeping real view controls,
 // grouping, layout and budget logic so interactions exercise the production data flow.
-vi.mock("@xyflow/react", () => ({
+// Counts mounts of the canvas: React Flow fits the view on mount, so a remount IS a re-fit.
+const canvasMounts = vi.hoisted(() => ({ n: 0 }));
+vi.mock("@xyflow/react", async () => {
+  const { useState } = await import("react");
+  return {
   // Dimming is CSS (app.css): on a focused canvas, anything not marked topology-focus recedes. The
   // mock applies the same rule so the assertions below read what a user would see.
-  ReactFlow: ({nodes, edges, onNodeClick, className}: {className?: string; nodes: {id: string; className?: string; data: {node: {label: string}; degree?: number}}[]; edges: {id: string; className?: string; label?: string; ariaLabel?: string; markerEnd?: {type: string}; style: {stroke: string; strokeDasharray?: string}}[]; onNodeClick: (event: null, node: {id: string}) => void}) => {
+  ReactFlow: ({nodes, edges, onNodeClick, className}: {className?: string; nodes: {id: string; className?: string; position: {x: number; y: number}; data: {node: {label: string}; degree?: number}}[]; edges: {id: string; className?: string; label?: string; ariaLabel?: string; markerEnd?: {type: string}; style: {stroke: string; strokeDasharray?: string}}[]; onNodeClick: (event: null, node: {id: string}) => void}) => {
+    useState(() => { canvasMounts.n++; });
     const recedes = (c?: string) => Boolean(className?.includes("topology-canvas--focused")) && !c?.includes("topology-focus");
-    return <div><span>{edges.length} drawn edges</span>{edges.map(e => <span key={e.id} data-testid="edge" aria-label={e.ariaLabel} data-marker={e.markerEnd?.type} data-opacity={recedes(e.className) ? 0.16 : 1} style={e.style}>{e.label}</span>)}{nodes.map(n => <button key={n.id} data-testid="node" data-dimmed={String(recedes(n.className))} data-degree={n.data.degree} onClick={() => onNodeClick(null, n)}>{n.data.node.label}</button>)}</div>;
+    return <div><span>{edges.length} drawn edges</span>{edges.map(e => <span key={e.id} data-testid="edge" aria-label={e.ariaLabel} data-marker={e.markerEnd?.type} data-opacity={recedes(e.className) ? 0.16 : 1} style={e.style}>{e.label}</span>)}{nodes.map(n => <button key={n.id} data-testid="node" data-x={n.position.x} data-y={n.position.y} data-dimmed={String(recedes(n.className))} data-degree={n.data.degree} onClick={() => onNodeClick(null, n)}>{n.data.node.label}</button>)}</div>;
   },
   BaseEdge: () => null, Background: () => null, Controls: () => null, Handle: () => null,
   BackgroundVariant: {Dots: "dots"}, MarkerType: {ArrowClosed: "arrow"}, Position: {},
-}));
+  };
+});
 afterEach(cleanup);
 const nodes = ["a", "b", "c"].map((id,i) => ({id, name: id, label: id, namespace: i < 2 ? "web" : "db", kind: "Deployment", attributes: {}, first_seen: "2026-01-01", last_seen: "2026-01-02"}));
 const edges = [["a","b"], ["b","c"]].map(([source_id,target_id],i) => ({id: String(i),source_id,target_id,connection_count: 1,destination_port: 80,protocol: "TCP"}));
@@ -111,4 +117,40 @@ it("draws a failed-only connection as a dashed warning, without text", () => {
   expect(screen.getByTestId("edge")).toBeEmptyDOMElement();
   expect(screen.getByTestId("edge").style.strokeDasharray).toBe("6 4");
   expect(screen.getByTestId("edge").style.stroke).toBe("var(--warn)");
+});
+
+describe("re-fitting after a filter change", () => {
+  // Five workloads, filtered down to two that the full layout had put far apart.
+  const all = ["a", "b", "c", "d", "e"].map((id, i) => ({...nodes[0]!, id, name: id, label: id, namespace: i < 2 ? "web" : "db"}));
+  const wide = [["a","c"], ["c","d"], ["d","e"], ["e","b"]].map(([source_id,target_id],i) => ({...edges[0]!, id: `w${i}`, source_id, target_id}));
+  const unfiltered = {nodes: all, edges: wide, filters: {namespaces: []}} as unknown as GraphResponse;
+  const position = (label: string) => {
+    const el = screen.getAllByTestId("node").find(n => n.textContent === label)!;
+    return {x: Number(el.dataset.x), y: Number(el.dataset.y)};
+  };
+
+  it("lays the filtered graph out fresh and fits it, instead of leaving it where it was", () => {
+    const {rerender} = render(<TopologyCanvas graph={unfiltered} selectedId={null} onSelect={() => {}}/>);
+    const mounts = canvasMounts.n;
+    const before = position("b");
+
+    const filtered = {nodes: all.slice(0, 2), edges: [{...edges[0]!, id: "ab", source_id: "a", target_id: "b"}], filters: {namespaces: ["web"]}} as unknown as GraphResponse;
+    rerender(<TopologyCanvas graph={filtered} selectedId={null} onSelect={() => {}}/>);
+
+    expect(canvasMounts.n, "a filter change must remount the canvas so it re-fits").toBe(mounts + 1);
+    // b was at the far end of a five-node chain; laid out fresh it sits one rank after a.
+    expect(position("b")).not.toEqual(before);
+    expect(position("b").x - position("a").x).toBeLessThan(before.x - position("a").x);
+  });
+
+  it("leaves positions and zoom alone on an ordinary poll", () => {
+    const {rerender} = render(<TopologyCanvas graph={unfiltered} selectedId={null} onSelect={() => {}}/>);
+    const mounts = canvasMounts.n;
+    const before = position("b");
+    // Same filters, new counts: what every 5 s poll looks like.
+    const polled = {...unfiltered, edges: wide.map(e => ({...e, connection_count: 9}))} as unknown as GraphResponse;
+    rerender(<TopologyCanvas graph={polled} selectedId={null} onSelect={() => {}}/>);
+    expect(canvasMounts.n).toBe(mounts);
+    expect(position("b")).toEqual(before);
+  });
 });
