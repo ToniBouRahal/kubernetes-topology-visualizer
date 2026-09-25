@@ -116,8 +116,9 @@
 .app__body {
   flex: 1;
   display: grid;
-  grid-template-columns: var(--panel-left) 1fr var(--panel-right);
+  grid-template-columns: var(--panel-left) 1fr;
   min-height: 0;
+  position: relative;
 }
 
 .panel {
@@ -127,8 +128,19 @@
   flex-direction: column;
 }
 .panel--left { border-right: 1px solid var(--line); }
-.panel--right { border-left: 1px solid var(--line); }
-.panel--empty { align-items: center; justify-content: center; padding: var(--s-5); text-align: center; }
+/* The details panel exists only while a component is selected, and floats over the canvas rather
+   than taking a column: resizing the pane on every click would re-fit the graph and throw away
+   the reader's zoom (FitToPane in TopologyCanvas). */
+.panel--right {
+  border-left: 1px solid var(--line);
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--panel-right);
+  z-index: 10;
+  box-shadow: -8px 0 24px rgb(0 0 0 / 0.4);
+}
 
 .panel__section {
   padding: var(--s-4);
@@ -364,19 +376,6 @@
    colour above never reached the only text in it. */
 .react-flow__attribution a { color: var(--text-faint); }
 
-/* Below the 1280px demo width the right panel becomes an overlay rather than squeezing the canvas. */
-@media (max-width: 1100px) {
-  .app__body { grid-template-columns: var(--panel-left) 1fr; }
-  .panel--right {
-    position: absolute;
-    right: 0;
-    top: calc(var(--header-h) + var(--strip-h));
-    bottom: 0;
-    width: var(--panel-right);
-    z-index: 10;
-    box-shadow: -8px 0 24px rgb(0 0 0 / 0.4);
-  }
-}
 
 /* ── Compare controls ────────────────────────────────────────────────────────────────────── */
 

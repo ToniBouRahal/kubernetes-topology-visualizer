@@ -73,3 +73,9 @@ it("distinguishes an unmeasured failure count from zero failures", () => {
   render(<DetailsPanel node={node} detail={unmeasured} loading={false} onClose={() => {}}/>);
   expect(row("a → d")).toHaveTextContent("failed/aborted unmeasured");
 });
+
+it("renders nothing until a component is selected", () => {
+  // The canvas keeps the full width until then; an empty panel would only take it away.
+  const {container} = render(<DetailsPanel node={null} detail={null} loading={false} onClose={() => {}}/>);
+  expect(container).toBeEmptyDOMElement();
+});
