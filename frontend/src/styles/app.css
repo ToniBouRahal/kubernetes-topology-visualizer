@@ -357,6 +357,9 @@
 }
 .react-flow__controls-button:hover { background: var(--panel-high); }
 .react-flow__attribution { background: transparent; color: var(--text-faint); }
+/* React Flow's own stylesheet colours the link itself (#999, 2.42:1 on --ink), so the container's
+   colour above never reached the only text in it. */
+.react-flow__attribution a { color: var(--text-faint); }
 
 /* Below the 1280px demo width the right panel becomes an overlay rather than squeezing the canvas. */
 @media (max-width: 1100px) {
