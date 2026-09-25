@@ -11,7 +11,8 @@ VALUES="$CHART/ci/kind-values.yaml"
 RELEASE="topology"
 
 # Declared dependencies must be present even to render with their condition off (ADR-013 D-13.5).
-bash "$REPO_ROOT/scripts/chart-deps.sh" "$CHART"
+# Without the subcharts nothing renders, and every check below would fail for that one reason.
+bash "$REPO_ROOT/scripts/chart-deps.sh" "$CHART" || { echo "chart-deps failed: the chart cannot render" >&2; exit 1; }
 
 pass=0
 fail=0
