@@ -1,0 +1,90 @@
+[
+  {
+    "nodes": 100,
+    "edges": 300,
+    "firstPaintMs": 448,
+    "domEdges": 140,
+    "domLabels": 0,
+    "frameMs": 33,
+    "select": {
+      "settledMs": 41,
+      "longTaskMs": 0,
+      "worstTaskMs": 0
+    },
+    "deselect": {
+      "settledMs": 21,
+      "longTaskMs": 0,
+      "worstTaskMs": 0
+    },
+    "zoom": {
+      "longTaskMs": 0,
+      "worstTaskMs": 0
+    },
+    "idlePolls": {
+      "longTaskMs": 0,
+      "worstTaskMs": 0
+    }
+  },
+  {
+    "nodes": 170,
+    "edges": 1000,
+    "firstPaintMs": 646,
+    "workloadsView": {
+      "settledMs": 281,
+      "longTaskMs": 311,
+      "worstTaskMs": 237
+    },
+    "domEdges": 652,
+    "domLabels": 0,
+    "frameMs": 33,
+    "select": {
+      "settledMs": 81,
+      "longTaskMs": 0,
+      "worstTaskMs": 0
+    },
+    "deselect": {
+      "settledMs": 76,
+      "longTaskMs": 61,
+      "worstTaskMs": 61
+    },
+    "zoom": {
+      "longTaskMs": 0,
+      "worstTaskMs": 0
+    },
+    "idlePolls": {
+      "longTaskMs": 0,
+      "worstTaskMs": 0
+    }
+  },
+  {
+    "nodes": 500,
+    "edges": 2000,
+    "firstPaintMs": 654,
+    "workloadsView": {
+      "settledMs": 817,
+      "longTaskMs": 859,
+      "worstTaskMs": 729
+    },
+    "domEdges": 1010,
+    "domLabels": 0,
+    "frameMs": 33,
+    "select": {
+      "settledMs": 119,
+      "longTaskMs": 82,
+      "worstTaskMs": 82
+    },
+    "deselect": {
+      "settledMs": 92,
+      "longTaskMs": 68,
+      "worstTaskMs": 68
+    },
+    "zoom": {
+      "longTaskMs": 0,
+      "worstTaskMs": 0
+    },
+    "idlePolls": {
+      "longTaskMs": 0,
+      "worstTaskMs": 0
+    }
+  }
+]

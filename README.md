@@ -77,9 +77,10 @@ Stated plainly, because several of these were measured and then deliberately not
 - **Byte volume is not reported.** Measured, found exact but readable only at connection close —
   8 persistent connections carried 32 MB and reported nothing — and *declined*, because a
   byte-weighted graph would draw the busiest edges as the faintest.
-- **Large graphs need aggregation.** The UI offers namespace grouping, expansion, and direct-neighbor
-  focus before applying a 400-edge display cap. The original ungrouped rendering limit is documented
-  in the evaluation; grouping is not a new browser performance measurement.
+- **Large graphs need aggregation to be readable.** The canvas stays responsive at 2,000 edges, but
+  graphs over 400 edges open grouped by namespace, with expansion and direct-neighbour focus. Past
+  300 edges the layout trades crossing minimisation for speed, and a topology change at 2,000 edges
+  blocks the page for about 0.7 s while the layout re-runs.
 - **A dependency that did not communicate in the window does not exist.** That is the cost of the
   property that makes this useful.
 - IPv4 TCP only. Encrypted payloads are opaque by design. Individual external IPs are never stored.
@@ -93,7 +94,7 @@ Full accounting with numbers in [`docs/limitations.md`](docs/limitations.md).
 | agent memory | **35 MiB** per node | < 256 MiB |
 | capture throughput | **1,325 events/s**, zero kernel drops | 1,000/s |
 | graph query p95 | **62 ms** at 500 nodes / 2,000 edges | < 500 ms |
-| UI at that size | **ungrouped baseline unusable past ~300 edges** | *rejected with evidence* |
+| UI at that size | first paint **1.1 s**, clicks **< 100 ms**; layout on a topology change **~0.7 s** | no freeze > 100 ms: *met except layout* |
 
 Reproduce with `make experiments`. Raw results and method in [`docs/evaluation/`](docs/evaluation/).
 

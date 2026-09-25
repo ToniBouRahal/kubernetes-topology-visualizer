@@ -137,8 +137,10 @@ that makes the tool useful.
 and *declined* — 8 persistent connections carried 32 MB and reported nothing. Showing bytes would
 have drawn the busiest edges as the faintest. See `docs/evaluation/byte-accounting.md`.
 
-**The interface does not scale to its own stated ceiling.** Past ~300 edges it stops rendering.
-Measured, documented in `limitations.md` §4.1, not fixed.
+**The interface was diagnosed wrong once.** Phase 5 found it stopped rendering past ~300 edges
+and blamed the DOM. A later measurement showed the cause was the layout algorithm on dense graphs.
+It now draws 2,000 edges with clicks under 100 ms. Relaying out after a topology change still costs
+~0.7 s at that size. See `limitations.md` §4.1.
 
 Being able to say all four of these, with numbers, is the point of the evaluation work.
 

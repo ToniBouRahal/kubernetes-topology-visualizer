@@ -11,8 +11,6 @@ export interface TopologyNodeData extends Record<string, unknown> {
   group?: { namespace: string; workloads: number };
   /** Distinct components this one talks to. Drives the diameter — ADR-010 D-10.3. */
   degree?: number;
-  /** True when something is selected and this node is neither it nor one of its neighbours. */
-  dimmed?: boolean;
 }
 
 /**
@@ -27,7 +25,7 @@ export interface TopologyNodeData extends Record<string, unknown> {
  * namespace, and a highlight colour would have to be stolen from it.
  */
 function TopologyNodeComponent({ data }: { data: TopologyNodeData }) {
-  const { node, selected, group, degree = 0, dimmed } = data;
+  const { node, selected, group, degree = 0 } = data;
   const hue = group ? namespaceHue(group.namespace) : namespaceHue(node.namespace);
   const external = isExternal(node.kind);
   const diameter = nodeDiameter(degree);
@@ -42,7 +40,7 @@ function TopologyNodeComponent({ data }: { data: TopologyNodeData }) {
 
   return (
     <div
-      className={`topology-node${selected ? " topology-node--selected" : ""}${dimmed ? " topology-node--dimmed" : ""}`}
+      className={`topology-node${selected ? " topology-node--selected" : ""}`}
       style={{ width: diameter, height: diameter + NODE_LABEL_BAND }}
       // The accessible name carries what the circle carries, in words: a screen reader sees
       // neither the fill nor the diameter. Degree is stated because it is now an encoding.

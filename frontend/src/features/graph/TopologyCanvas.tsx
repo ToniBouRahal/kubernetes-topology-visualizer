@@ -17,7 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { GraphEdge, GraphNode, GraphResponse } from "../../api/types";
 import { groupTopology, focusTopology } from "./grouping";
-import { applyRenderBudget, MAX_RENDERED_EDGES } from "./renderBudget";
+import { applyRenderBudget } from "./renderBudget";
 import { TopologyNode, type TopologyNodeData } from "./TopologyNode";
 import { degreesOf, edgeWidth, layoutGraph, type PositionCache } from "./layout";
 
@@ -40,6 +40,32 @@ const EDGE_TYPES = { namespaceLoop: NamespaceLoop };
  * on every render means a new identity on every poll.
  */
 const FIT_OPTIONS: FitViewOptions = { padding: 0.18, maxZoom: 1.2 };
+
+/**
+ * Past this many edges the canvas opens grouped by namespace. Readability, not performance: the
+ * per-workload view draws up to MAX_RENDERED_EDGES responsively, but at that density a reader
+ * needs the namespaces first and the workloads on request.
+ */
+const GROUP_BY_DEFAULT_EDGES = 400;
+
+/** Marks a node or edge in the selected neighbourhood, which stays lit while the rest recedes. */
+const FOCUS_CLASS = "topology-focus";
+
+/** Above this many drawn edges, labels appear only where they are asked for. See the edge map. */
+export const LABEL_ALL_EDGES = 100;
+
+interface Reusable<T> {
+  key: string;
+  value: T;
+}
+
+/** The previous object for `id` when `key` says it draws the same thing, else a new one. */
+function reuse<T>(previous: Map<string, Reusable<T>>, next: Map<string, Reusable<T>>, id: string, key: string, make: () => T): T {
+  const old = previous.get(id);
+  const entry = old && old.key === key ? old : { key, value: make() };
+  next.set(id, entry);
+  return entry.value;
+}
 
 /**
  * Re-fits the view when the pane changes size.
@@ -95,7 +121,7 @@ interface Props {
 }
 
 export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props) {
-  const [grouped, setGrouped] = useState(graph.edges.length > MAX_RENDERED_EDGES);
+  const [grouped, setGrouped] = useState(graph.edges.length > GROUP_BY_DEFAULT_EDGES);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const focusNode = graph.nodes.find(n => n.id === focusedId);
@@ -109,10 +135,10 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
   // Positions survive across polls; see layoutGraph for why this matters.
   const cache = useRef<{ positions: PositionCache; signature: string } | undefined>(undefined);
 
-  const { nodes, edges, capped } = useMemo(() => {
-    // Cap BEFORE layout. Past roughly 300 edges React Flow stops responding altogether
-    // (docs/limitations.md §4.1), and laying out a graph that will never paint wastes the work
-    // twice over.
+  // What gets drawn and where. Selection and hover do not change this, so clicking a component
+  // never re-runs the budget or the layout.
+  const drawn = useMemo(() => {
+    // Cap BEFORE layout: laying out a graph that will never paint wastes the work twice over.
     const budget = applyRenderBudget(view.nodes, view.edges);
 
     // Degree sizes the nodes (D-10.3) and is computed from what will actually be DRAWN — a node
@@ -126,6 +152,19 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
       (max: number, e: GraphEdge) => Math.max(max, e.connection_count),
       0,
     );
+    return { budget, degrees, positions: result.positions, maxConnections };
+  }, [view]);
+
+  const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
+  // Flow objects from the previous render, keyed by what they draw. React Flow re-renders an edge
+  // or node only when its object changes identity, so handing back the same object for anything
+  // that looks the same is what keeps a click or a poll from redrawing the whole graph.
+  const reused = useRef({ nodes: new Map<string, Reusable<Node<TopologyNodeData>>>(), edges: new Map<string, Reusable<Edge>>() });
+
+  const { nodes, edges } = useMemo(() => {
+    const { budget, degrees, positions, maxConnections } = drawn;
+    const nextNodes = new Map<string, Reusable<Node<TopologyNodeData>>>();
+    const nextEdges = new Map<string, Reusable<Edge>>();
 
     // Selecting a component focuses its neighbourhood (D-10.6): it and what it talks to stay lit,
     // everything else recedes. Membership is decided here, once, so nodes and edges cannot
@@ -137,22 +176,35 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
         if (edge.target_id === selectedId) neighbours.add(edge.source_id);
       }
     }
-    const inFocus = (id: string) => selectedId === null || id === selectedId || neighbours.has(id);
+    // Only the neighbourhood is marked; everything unmarked recedes through CSS on the canvas
+    // (.topology-canvas--focused in app.css). Marking what stays lit rather than what dims means
+    // a click changes the handful of objects around the selection, not every one in the graph.
+    const inFocus = (id: string) => selectedId !== null && (id === selectedId || neighbours.has(id));
 
-    const flowNodes: Node<TopologyNodeData>[] = budget.nodes.map((node: GraphNode) => ({
-      id: node.id,
-      type: "topology",
-      position: result.positions.get(node.id) ?? { x: 0, y: 0 },
-      data: {
-        node,
-        selected: node.id === selectedId,
-        group: view.groups.get(node.id),
-        degree: degrees.get(node.id) ?? 0,
-        dimmed: !inFocus(node.id),
-      },
-      draggable: true,
-    }));
+    const flowNodes: Node<TopologyNodeData>[] = budget.nodes.map((node: GraphNode) => {
+      const position = positions.get(node.id) ?? { x: 0, y: 0 };
+      const group = view.groups.get(node.id);
+      const degree = degrees.get(node.id) ?? 0;
+      const selected = node.id === selectedId;
+      const focus = inFocus(node.id);
+      // Everything TopologyNode draws. A reused object may carry an older GraphNode whose
+      // timestamps differ; nothing on the canvas reads them, and the details panel reads its own.
+      const key = [position.x, position.y, node.label, node.name, node.namespace, node.kind,
+        group?.namespace, group?.workloads, degree, selected, focus].join("|");
+      return reuse(reused.current.nodes, nextNodes, node.id, key, () => ({
+        id: node.id,
+        type: "topology",
+        position,
+        data: { node, selected, group, degree },
+        className: focus ? FOCUS_CLASS : undefined,
+        draggable: true,
+      }));
+    });
 
+    // Every label at once only while there are few enough to read: past this they overlap into a
+    // solid block (phase-5 P5-F18), and each is two more DOM elements React Flow has to measure.
+    // Above it, the selected neighbourhood and the edge under the pointer are labelled.
+    const labelAll = budget.edges.length <= LABEL_ALL_EDGES;
     const loopCounts = new Map<string, number>();
     const flowEdges: Edge[] = budget.edges.map((edge: GraphEdge) => {
       const touchesSelection =
@@ -165,19 +217,34 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
       // An edge is in focus only when it TOUCHES the selection. An edge between two neighbours is
       // not part of the selected component's neighbourhood, and lighting it would say it was.
       const edgeInFocus = selectedId === null || touchesSelection;
-      return {
+      const width = edgeWidth(edge.connection_count, maxConnections);
+      // The full reading is ~350px of text, so showing it on every edge buries the graph under its
+      // own labels. The port alone identifies the link and fits; the counts arrive when a
+      // component is selected and its neighbourhood is the only thing labelled. Out of focus
+      // entirely, the label goes rather than fading — React Flow draws it in its own layer, so a
+      // faded edge would keep a fully legible label.
+      const label = !edgeInFocus
+        ? undefined
+        : selectedId !== null
+          ? `${edge.protocol}:${edge.destination_port} · ${outcomeLabel(edge)}`
+          : labelAll || edge.id === hoveredEdge
+            ? `${edge.protocol}:${edge.destination_port}`
+            : undefined;
+
+      const key = [edge.source_id, edge.target_id, loopIndex, stroke, hasFailures, width, edgeInFocus, label].join("|");
+      return reuse(reused.current.edges, nextEdges, edge.id, key, () => ({
         data: { loopIndex },
         id: edge.id,
         type: edge.source_id === edge.target_id ? "namespaceLoop" : "default",
         source: edge.source_id,
         target: edge.target_id,
+        className: touchesSelection ? FOCUS_CLASS : undefined,
         // Width encodes connection count on a capped log scale. The legend names the metric,
         // because thickness alone cannot say WHAT is being measured.
         style: {
           stroke,
           strokeDasharray: hasFailures ? "6 4" : undefined,
-          strokeWidth: edgeWidth(edge.connection_count, maxConnections),
-          opacity: edgeInFocus ? undefined : 0.16,
+          strokeWidth: width,
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
@@ -185,16 +252,7 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
           width: 11,
           height: 11,
         },
-        // The full reading is ~350px of text and every edge carries one, so showing them all at
-        // once buries the graph under its own labels. The port alone identifies the link and
-        // fits; the counts arrive when a component is selected and its neighbourhood is the only
-        // thing labelled. Out of focus entirely, the label goes rather than fading — React Flow
-        // draws it in its own layer, so a faded edge would keep a fully legible label.
-        label: !edgeInFocus
-          ? undefined
-          : selectedId === null
-            ? `${edge.protocol}:${edge.destination_port}`
-            : `${edge.protocol}:${edge.destination_port} · ${outcomeLabel(edge)}`,
+        label,
         labelStyle: {
           fill: "var(--text-dim)",
           // 12px, matching --step--1. A literal number, not the token: React Flow writes this
@@ -208,11 +266,13 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
         // No animation: a continuously animated dash on hundreds of edges burns the frame budget
         // the 100 ms polling target depends on (ADR-006 F9).
         animated: false,
-      };
+      }));
     });
 
-    return { nodes: flowNodes, edges: flowEdges, capped: budget.capped };
-  }, [view, selectedId]);
+    reused.current = { nodes: nextNodes, edges: nextEdges };
+    return { nodes: flowNodes, edges: flowEdges };
+  }, [drawn, view.groups, selectedId, hoveredEdge]);
+  const capped = drawn.budget.capped;
 
   // Reported through an effect, not during render: calling a parent's setState mid-render is what
   // React warns about, and the banner lives outside the canvas so it is not clipped by the pane.
@@ -233,6 +293,7 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
     </div>
     <ReactFlow
       key={viewKey}
+      className={selectedId !== null ? "topology-canvas--focused" : undefined}
       nodes={nodes}
       edges={edges}
       nodeTypes={NODE_TYPES}
@@ -245,6 +306,11 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
         } else onSelect(node.id);
       }}
       onPaneClick={() => onSelect(null)}
+      onEdgeMouseEnter={(_, edge) => setHoveredEdge(edge.id)}
+      onEdgeMouseLeave={() => setHoveredEdge(null)}
+      // Off-screen nodes and edges are not mounted. At fit-view every one is on screen, so this
+      // pays off once someone zooms in to read a neighbourhood.
+      onlyRenderVisibleElements
       fitView
       fitViewOptions={FIT_OPTIONS}
       minZoom={0.2}

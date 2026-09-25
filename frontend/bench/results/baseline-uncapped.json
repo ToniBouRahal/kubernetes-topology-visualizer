@@ -1,0 +1,28 @@
+[
+  {
+    "nodes": 100,
+    "edges": 300,
+    "firstPaintMs": 584,
+    "domEdges": 300,
+    "domLabels": 300,
+    "frameMs": 33,
+    "select": {
+      "settledMs": 95,
+      "longTaskMs": 60,
+      "worstTaskMs": 60
+    },
+    "deselect": {
+      "settledMs": 86,
+      "longTaskMs": 61,
+      "worstTaskMs": 61
+    },
+    "zoom": {
+      "longTaskMs": 0,
+      "worstTaskMs": 0
+    },
+    "idlePolls": {
+      "longTaskMs": 186,
+      "worstTaskMs": 67
+    }
+  }
+]

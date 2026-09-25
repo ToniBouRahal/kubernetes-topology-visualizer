@@ -59,10 +59,9 @@ export function ErrorBanner({ message, onRetry }: { message: string; onRetry: ()
 /**
  * Shown when the graph was too large to draw.
  *
- * Past roughly 300 edges this canvas stops responding rather than slowing down
- * (docs/limitations.md §4.1), so the alternative to this banner is a locked tab. Saying what was
- * left out, and that it was the quietest traffic, is the honest version of a limitation that
- * cannot yet be engineered away.
+ * Past MAX_RENDERED_EDGES nothing has been measured to stay responsive (docs/limitations.md §4.1),
+ * so this canvas draws the busiest edges and says so. Saying what was left out, and that it was the
+ * quietest traffic, beats risking a locked tab.
  */
 export function RenderBudgetBanner({
   shownEdges,
@@ -77,8 +76,8 @@ export function RenderBudgetBanner({
     <div className="banner banner--warn" role="status">
       <span className="banner__text">
         Showing the {shownEdges.toLocaleString()} busiest of {totalEdges.toLocaleString()} edges
-        {hiddenNodes > 0 && <> and hiding {hiddenNodes.toLocaleString()} nodes</>}. Drawing them
-        all would stop the browser responding. Ranking uses successful connections; failed-only
+        {hiddenNodes > 0 && <> and hiding {hiddenNodes.toLocaleString()} nodes</>}. More than
+        that has not been measured to stay responsive. Ranking uses successful connections; failed-only
         relationships may be hidden. Use namespace grouping, focus a workload, or
         shorten the window.
       </span>

@@ -56,6 +56,25 @@ function topologySignature(nodes: GraphNode[], edges: GraphEdge[]): string {
   ].join("::");
 }
 
+/**
+ * Past this many edges, Dagre's defaults are traded for a layout that finishes.
+ *
+ * Measured on the workload-to-Service shape scripts/seed-scale.py produces (bench/README.md):
+ *
+ *                                   300 edges   800 edges   1,000 edges   2,000 edges
+ *   network-simplex, crossings min     185 ms      24 s        > 150 s       > 150 s
+ *   tight-tree, no crossing pass        70 ms     200 ms        250 ms        810 ms
+ *
+ * Both costs are in Dagre: network-simplex ranking and the crossing-minimisation sweeps it repeats
+ * until four pass without improvement. Neither is linear on a dense bipartite graph, and the second
+ * is what hung the browser — not React Flow's DOM, as limitations.md §4.1 first recorded.
+ *
+ * The cost of the fast path is more crossings. Below the threshold nothing changes, so the demo
+ * graph lays out exactly as before; above it the graph is too dense for crossings to be what makes
+ * it hard to read, and a layout that never finishes shows nothing at all.
+ */
+export const FAST_LAYOUT_EDGES = 300;
+
 export interface LayoutResult {
   positions: PositionCache;
   signature: string;
@@ -103,7 +122,15 @@ export function layoutGraph(
   // endpoint. nodesep was tight when a node was a 224px-wide card and the graph was wide rather
   // than tall; a circle is narrower and taller than that card, so the crowding moved to the
   // vertical axis and the separation follows it (ADR-010 D-10.2).
-  graph.setGraph({ rankdir: "LR", ranksep: 150, nodesep: 64, marginx: 24, marginy: 24 });
+  const fast = edges.length > FAST_LAYOUT_EDGES;
+  graph.setGraph({
+    rankdir: "LR",
+    ranksep: 150,
+    nodesep: 64,
+    marginx: 24,
+    marginy: 24,
+    ranker: fast ? "tight-tree" : "network-simplex",
+  });
 
   // Deterministic insertion order: Dagre's output depends on it.
   for (const node of [...nodes].sort((a, b) => a.id.localeCompare(b.id))) {
@@ -116,7 +143,7 @@ export function layoutGraph(
     }
   }
 
-  dagre.layout(graph);
+  dagre.layout(graph, fast ? { disableOptimalOrderHeuristic: true } : undefined);
 
   const positions: PositionCache = new Map();
   for (const node of nodes) {

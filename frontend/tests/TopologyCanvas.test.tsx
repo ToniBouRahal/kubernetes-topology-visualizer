@@ -7,7 +7,12 @@ import type { GraphNode } from "../src/api/types";
 // jsdom has no measured canvas. Replace the rendering boundary, keeping real view controls,
 // grouping, layout and budget logic so interactions exercise the production data flow.
 vi.mock("@xyflow/react", () => ({
-  ReactFlow: ({nodes, edges, onNodeClick}: {nodes: {id: string; data: {node: {label: string}; dimmed?: boolean; degree?: number}}[]; edges: {id: string; label: string; markerEnd?: {type: string}; style: {stroke: string; strokeDasharray?: string; opacity?: number}}[]; onNodeClick: (event: null, node: {id: string}) => void}) => <div><span>{edges.length} drawn edges</span>{edges.map(e => <span key={e.id} data-testid="edge" data-marker={e.markerEnd?.type} data-opacity={e.style.opacity ?? 1} style={e.style}>{e.label}</span>)}{nodes.map(n => <button key={n.id} data-testid="node" data-dimmed={String(Boolean(n.data.dimmed))} data-degree={n.data.degree} onClick={() => onNodeClick(null, n)}>{n.data.node.label}</button>)}</div>,
+  // Dimming is CSS (app.css): on a focused canvas, anything not marked topology-focus recedes. The
+  // mock applies the same rule so the assertions below read what a user would see.
+  ReactFlow: ({nodes, edges, onNodeClick, className}: {className?: string; nodes: {id: string; className?: string; data: {node: {label: string}; degree?: number}}[]; edges: {id: string; className?: string; label: string; markerEnd?: {type: string}; style: {stroke: string; strokeDasharray?: string}}[]; onNodeClick: (event: null, node: {id: string}) => void}) => {
+    const recedes = (c?: string) => Boolean(className?.includes("topology-canvas--focused")) && !c?.includes("topology-focus");
+    return <div><span>{edges.length} drawn edges</span>{edges.map(e => <span key={e.id} data-testid="edge" data-marker={e.markerEnd?.type} data-opacity={recedes(e.className) ? 0.16 : 1} style={e.style}>{e.label}</span>)}{nodes.map(n => <button key={n.id} data-testid="node" data-dimmed={String(recedes(n.className))} data-degree={n.data.degree} onClick={() => onNodeClick(null, n)}>{n.data.node.label}</button>)}</div>;
+  },
   BaseEdge: () => null, Background: () => null, Controls: () => null, Handle: () => null,
   BackgroundVariant: {Dots: "dots"}, MarkerType: {ArrowClosed: "arrow"}, Position: {},
 }));

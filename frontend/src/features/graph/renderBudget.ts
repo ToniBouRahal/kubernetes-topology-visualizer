@@ -1,27 +1,22 @@
 import type { GraphEdge, GraphNode } from "../../api/types";
 
 /**
- * The number of edges this canvas can draw before the browser stops responding.
+ * The most edges this canvas draws: the largest graph measured to stay responsive.
  *
- * Measured, not guessed (docs/limitations.md §4.1):
+ * Measured with bench/ (docs/limitations.md §4.1), production build, 1280x720:
  *
- *   102 nodes /   307 edges   paints in 1.06 s, frames answered in 2 ms
- *   172 nodes / 1,002 edges   never painted within 250 s
- *   500 nodes / 1,908 edges   page stopped responding entirely
+ *   500 nodes / 2,000 edges   first paint 1.1 s, selecting a component 81 ms, idle polls 0 ms
  *
- * The interface does not degrade past roughly 300 edges — it stops. React Flow builds a DOM
- * element per node and per edge, plus a text label per edge, and somewhere past 300 edges that
- * work exceeds what the main thread can finish.
+ * Until P5-F18 this was 400, because 1,000 edges never painted. The cause turned out to be
+ * Dagre's layout on dense graphs, not the DOM (see FAST_LAYOUT_EDGES in layout.ts).
  *
- * 400 sits above the largest graph observed to render comfortably and far below the smallest
- * observed to hang. It is deliberately a round number rather than a fitted one: the true cliff
- * depends on the machine, and pretending to know it to three significant figures would be worse
- * than picking a defensibly safe value.
+ * 2,000 matches the backend's default GRAPH_MAX_EDGES, so normally this never triggers. It stays
+ * because an operator can raise that setting past anything measured here, and a graph that says
+ * what it left out beats one that locks the tab.
  *
- * The real fix is edge virtualisation or canvas rendering. This is the honest interim: a graph
- * that says what it left out beats one that locks the tab.
+ * VITE_MAX_RENDERED_EDGES exists only so the benchmark can measure past the cap.
  */
-export const MAX_RENDERED_EDGES = 400;
+export const MAX_RENDERED_EDGES = Number(import.meta.env.VITE_MAX_RENDERED_EDGES) || 2000;
 
 export interface RenderBudget {
   nodes: GraphNode[];

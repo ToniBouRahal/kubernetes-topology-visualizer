@@ -195,9 +195,11 @@ costs nothing and the figures above are the busy-case ceiling.
 Measured on the demo cluster: agent ~35 MiB RSS per node, 1,325 events/s sustained with no kernel
 drops, graph query p95 62 ms at 500 nodes / 2,000 edges.
 
-**The interface is the binding constraint, not the backend.** Past roughly 300 edges the UI stops
-rendering (`limitations.md` §4.1). On a cluster larger than that, the API remains usable while the
-supplied UI does not.
+**The interface draws up to 2,000 edges**, the backend's default `GRAPH_MAX_EDGES`, with first
+paint around 1 s and clicks under 100 ms. When a workload appears or disappears at that size, the
+page pauses for about 0.7 s while it re-runs the layout (`limitations.md` §4.1). Raising
+`GRAPH_MAX_EDGES` past 2,000 serves more to the API than the canvas will draw; the canvas keeps the
+busiest 2,000 edges and says so.
 
 ## Security posture
 

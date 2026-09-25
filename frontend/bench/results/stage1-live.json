@@ -1,0 +1,33 @@
+[
+  {
+    "nodes": 500,
+    "edges": 2000,
+    "firstPaintMs": 778,
+    "workloadsView": {
+      "settledMs": 846,
+      "longTaskMs": 894,
+      "worstTaskMs": 755
+    },
+    "domEdges": 1010,
+    "domLabels": 0,
+    "frameMs": 33,
+    "select": {
+      "settledMs": 141,
+      "longTaskMs": 98,
+      "worstTaskMs": 98
+    },
+    "deselect": {
+      "settledMs": 1029,
+      "longTaskMs": 79,
+      "worstTaskMs": 79
+    },
+    "zoom": {
+      "longTaskMs": 0,
+      "worstTaskMs": 0
+    },
+    "idlePolls": {
+      "longTaskMs": 0,
+      "worstTaskMs": 0
+    }
+  }
+]

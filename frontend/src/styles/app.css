@@ -275,7 +275,10 @@
   text-overflow: ellipsis;
 }
 /* Focusing a component drops everything outside its neighbourhood back — ADR-010 D-10.6. */
-.topology-node--dimmed { opacity: 0.22; }
+/* Selecting a component marks its neighbourhood; everything unmarked recedes (D-10.6). Dimming
+   lives here rather than on each element so a click restyles the neighbourhood, not the graph. */
+.topology-canvas--focused .react-flow__node:not(.topology-focus) .topology-node { opacity: 0.22; }
+.topology-canvas--focused .react-flow__edge:not(.topology-focus) { opacity: 0.16; }
 .topology-node--selected .topology-node__disc { box-shadow: 0 0 0 3px var(--line-strong); }
 .topology-handle { opacity: 0; }
 
