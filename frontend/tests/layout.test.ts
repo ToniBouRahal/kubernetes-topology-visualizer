@@ -8,6 +8,8 @@ import {
   edgeWidth,
   FAST_LAYOUT_EDGES,
   layoutGraph,
+  NODE_GAP,
+  NODE_LABEL_BAND,
   nodeDiameter,
   NODE_MAX_DIAMETER,
   NODE_MIN_DIAMETER,
@@ -290,5 +292,84 @@ describe("scale ceiling (ADR-006 invariant)", () => {
     // eslint-disable-next-line no-console
     console.log(`  cached re-poll at ${NODES}/${EDGES}: ${elapsed.toFixed(1)} ms`);
     expect(elapsed, `a cached re-poll took ${elapsed.toFixed(1)} ms`).toBeLessThan(100);
+  });
+});
+
+/**
+ * No two nodes ever overlap.
+ *
+ * Cached nodes keep their place across a topology change and new ones take theirs from a fresh
+ * Dagre run, so without a final separation pass a new node could land on an old one — seen in the
+ * demo, EXTERNAL drawn under redis after a filter change.
+ */
+describe("nodes never overlap", () => {
+  function overlapping(nodes: GraphNode[], edges: GraphEdge[], positions: Map<string, { x: number; y: number }>) {
+    const degrees = degreesOf(nodes, edges);
+    const boxes = nodes.map((n) => {
+      const d = nodeDiameter(degrees.get(n.id) ?? 0);
+      const p = positions.get(n.id)!;
+      return { id: n.id, x: p.x, y: p.y, w: d, h: d + NODE_LABEL_BAND };
+    });
+    const pairs: string[] = [];
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i]!, b = boxes[j]!;
+        if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) pairs.push(`${a.id}/${b.id}`);
+      }
+    }
+    return pairs;
+  }
+
+  it("moves a new node off a cached one that sits where Dagre put it", () => {
+    const nodes = [node("frontend", "frontend"), node("backend", "backend"), node("redis", "redis", "StatefulSet", "data"), node("external:EXTERNAL", "EXTERNAL", "External")];
+    const edges = [edge("f-b", "frontend", "backend"), edge("b-r", "backend", "redis"), edge("b-x", "backend", "external:EXTERNAL")];
+    const degrees = degreesOf(nodes, edges);
+    const fresh = layoutGraph(nodes, edges, undefined, degrees).positions;
+
+    // redis was already on screen, exactly where a fresh layout now wants EXTERNAL.
+    const previous = {
+      signature: "an older topology",
+      positions: new Map([
+        ["frontend", fresh.get("frontend")!],
+        ["backend", fresh.get("backend")!],
+        ["redis", fresh.get("external:EXTERNAL")!],
+      ]),
+    };
+    const result = layoutGraph(nodes, edges, previous, degrees);
+
+    expect(overlapping(nodes, edges, result.positions)).toEqual([]);
+    // The node already on screen stays put; the newcomer is the one that moves.
+    expect(result.positions.get("redis")).toEqual(fresh.get("external:EXTERNAL"));
+  });
+
+  it("leaves a fresh Dagre layout untouched", () => {
+    const nodes = ["a", "b", "c", "d"].map((id) => node(id, id));
+    const edges = [edge("1", "a", "b"), edge("2", "a", "c"), edge("3", "c", "d")];
+    const withGap = layoutGraph(nodes, edges).positions;
+    // Dagre's own spacing (nodesep 64, ranksep 150) already exceeds NODE_GAP.
+    expect(NODE_GAP).toBeLessThan(64);
+    expect(overlapping(nodes, edges, withGap)).toEqual([]);
+  });
+
+  it("holds across any sequence of topology changes", () => {
+    // Seeded, so a failure reproduces.
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+    const pool = Array.from({ length: 40 }, (_, i) => node(`n${i}`, `n${i}`, "Deployment", `ns${i % 4}`));
+    let previous: { positions: Map<string, { x: number; y: number }>; signature: string } | undefined;
+
+    for (let step = 0; step < 60; step++) {
+      const edges = Array.from({ length: 10 + Math.floor(rnd() * 50) }, (_, i) => {
+        const a = Math.floor(rnd() * pool.length);
+        const b = (a + 1 + Math.floor(rnd() * (pool.length - 1))) % pool.length;
+        return edge(`s${step}-${i}`, pool[a]!.id, pool[b]!.id);
+      });
+      const used = new Set(edges.flatMap((e) => [e.source_id, e.target_id]));
+      const nodes = pool.filter((n) => used.has(n.id));
+
+      const result = layoutGraph(nodes, edges, previous, degreesOf(nodes, edges));
+      expect(overlapping(nodes, edges, result.positions), `step ${step}`).toEqual([]);
+      previous = { positions: result.positions, signature: result.signature };
+    }
   });
 });

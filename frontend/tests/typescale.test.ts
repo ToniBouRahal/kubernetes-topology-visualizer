@@ -60,13 +60,11 @@ describe("type scale floor", () => {
     expect(offenders, `font-size below ${FLOOR_PX}px:\n${offenders.join("\n")}`).toEqual([]);
   });
 
-  it("the canvas edge label is at the floor — it cannot use the token", () => {
-    // React Flow writes labelStyle into an SVG presentation attribute, where var() does not
-    // resolve, so this one value is necessarily a literal and cannot be caught by the CSS rules
-    // above. It is the single largest group of undersized text the detector found (one label per
-    // rendered edge), which is why it gets its own assertion rather than a comment.
-    const match = canvasSource.match(/fontSize:\s*(\d+)/);
-    expect(match?.[1], "no fontSize found in TopologyCanvas").toBeDefined();
-    expect(parseInt(match![1]!, 10)).toBeGreaterThanOrEqual(FLOOR_PX);
+  it("the canvas sets no inline font size below the floor", () => {
+    // React Flow writes a labelStyle into an SVG presentation attribute, where var() does not
+    // resolve, so any size there is a literal the CSS rules above cannot see. Edges carry no text
+    // now; this keeps the floor if a label ever returns.
+    const sizes = [...canvasSource.matchAll(/fontSize:\s*(\d+)/g)].map((m) => parseInt(m[1]!, 10));
+    expect(sizes.filter((px) => px < FLOOR_PX)).toEqual([]);
   });
 });

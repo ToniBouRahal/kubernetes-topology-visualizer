@@ -69,11 +69,12 @@ test.describe("runtime topology, end to end", () => {
         page.locator(".topology-node__name", { hasText: new RegExp(`^${edge.target}$`) }).first(),
         `${edge.target} should be a node`,
       ).toBeVisible();
-      // ...and the edge between them carries the port, so direction and protocol are visible.
+      // ...and an edge between them, in that direction, on that port. Edges carry no visible
+      // text; their accessible name states both ends and the port.
       await expect(
-        page.locator(".react-flow__edge-text", { hasText: `TCP:${edge.port}` }).first(),
-        `an edge labelled TCP:${edge.port} should be drawn`,
-      ).toBeVisible();
+        page.locator(`.react-flow__edge[aria-label="${edge.source} to ${edge.target}, TCP port ${edge.port}"]`),
+        `an edge ${edge.source} → ${edge.target} on TCP:${edge.port} should be drawn`,
+      ).toHaveCount(1);
     }
   });
 

@@ -83,13 +83,8 @@ export function DetailsPanel({
   /** Null when the chart has no Grafana URL — the section is then simply absent (ADR-012 D-12.1). */
   grafana?: GrafanaConfig | null;
 }) {
-  if (!node) {
-    return (
-      <aside className="panel panel--right panel--empty" aria-label="Details">
-        <p className="panel__hint">Select a component to see what it talks to.</p>
-      </aside>
-    );
-  }
+  // Nothing selected, no panel: the canvas keeps the whole width until a component is chosen.
+  if (!node) return null;
 
   const hue = namespaceHue(node.namespace);
   const touching = [...(detail?.incoming ?? []), ...(detail?.outgoing ?? [])];

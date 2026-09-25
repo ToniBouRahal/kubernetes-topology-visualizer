@@ -19,21 +19,20 @@ import type { GraphEdge, GraphNode, GraphResponse } from "../../api/types";
 import { groupTopology, focusTopology } from "./grouping";
 import { applyRenderBudget } from "./renderBudget";
 import { TopologyNode, type TopologyNodeData } from "./TopologyNode";
-import { degreesOf, edgeWidth, layoutGraph, type PositionCache } from "./layout";
+import { degreesOf, edgeWidth, layoutGraph, nodeDiameter, type PositionCache } from "./layout";
 
-import { outcomeLabel } from "./outcomes";
+import { FloatingEdge } from "./FloatingEdge";
+import { edgeBends, routeBends, type Disc } from "./edgeGeometry";
 
 const NODE_TYPES = { topology: TopologyNode };
 
-function NamespaceLoop({ id, sourceX, sourceY, targetX, targetY, markerEnd, style, label, labelStyle, labelBgStyle, data }: EdgeProps) {
+function NamespaceLoop({ id, sourceX, sourceY, targetX, targetY, markerEnd, style, data }: EdgeProps) {
   const rise = 90 + Number(data?.loopIndex ?? 0) * 32;
   const top = Math.min(sourceY, targetY) - rise;
   const path = `M ${sourceX} ${sourceY} C ${sourceX + 80} ${top}, ${targetX - 80} ${top}, ${targetX} ${targetY}`;
-  return <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style}
-    label={label} labelX={(sourceX + targetX) / 2} labelY={(sourceY + targetY) / 2 - rise * 0.75}
-    labelStyle={labelStyle} labelBgStyle={labelBgStyle} />;
+  return <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />;
 }
-const EDGE_TYPES = { namespaceLoop: NamespaceLoop };
+const EDGE_TYPES = { namespaceLoop: NamespaceLoop, floating: FloatingEdge };
 
 /**
  * Hoisted so its identity is stable. React Flow re-reads this prop, and a fresh object literal
@@ -50,9 +49,6 @@ const GROUP_BY_DEFAULT_EDGES = 400;
 
 /** Marks a node or edge in the selected neighbourhood, which stays lit while the rest recedes. */
 const FOCUS_CLASS = "topology-focus";
-
-/** Above this many drawn edges, labels appear only where they are asked for. See the edge map. */
-export const LABEL_ALL_EDGES = 100;
 
 interface Reusable<T> {
   key: string;
@@ -134,6 +130,7 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
   const viewKey = JSON.stringify([grouped, [...expanded].sort(), activeFocus]);
   // Positions survive across polls; see layoutGraph for why this matters.
   const cache = useRef<{ positions: PositionCache; signature: string } | undefined>(undefined);
+  const routes = useRef<{ positions: PositionCache; discs: Map<string, Disc>; bends: Map<string, number> } | undefined>(undefined);
 
   // What gets drawn and where. Selection and hover do not change this, so clicking a component
   // never re-runs the budget or the layout.
@@ -152,17 +149,33 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
       (max: number, e: GraphEdge) => Math.max(max, e.connection_count),
       0,
     );
-    return { budget, degrees, positions: result.positions, maxConnections };
+    // Curves depend only on where things are, so they are worked out when the layout is, and a
+    // poll that reused the cached layout (the same positions object) reuses the curves too.
+    // Routing checks every edge against every node; doing that per poll cost ~70 ms at 2,000 edges.
+    let geometry = routes.current?.positions === result.positions ? routes.current : undefined;
+    if (!geometry) {
+      const discs = new Map<string, Disc>();
+      for (const node of budget.nodes) {
+        const p = result.positions.get(node.id);
+        if (!p) continue;
+        const r = nodeDiameter(degrees.get(node.id) ?? 0) / 2;
+        discs.set(node.id, { x: p.x + r, y: p.y + r, r });
+      }
+      geometry = { positions: result.positions, discs, bends: routeBends(budget.edges, discs, edgeBends(budget.edges)) };
+      routes.current = geometry;
+    }
+    const { discs, bends } = geometry;
+
+    return { budget, degrees, positions: result.positions, maxConnections, bends, discs };
   }, [view]);
 
-  const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
   // Flow objects from the previous render, keyed by what they draw. React Flow re-renders an edge
   // or node only when its object changes identity, so handing back the same object for anything
   // that looks the same is what keeps a click or a poll from redrawing the whole graph.
   const reused = useRef({ nodes: new Map<string, Reusable<Node<TopologyNodeData>>>(), edges: new Map<string, Reusable<Edge>>() });
 
   const { nodes, edges } = useMemo(() => {
-    const { budget, degrees, positions, maxConnections } = drawn;
+    const { budget, degrees, positions, maxConnections, bends, discs } = drawn;
     const nextNodes = new Map<string, Reusable<Node<TopologyNodeData>>>();
     const nextEdges = new Map<string, Reusable<Edge>>();
 
@@ -201,10 +214,9 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
       }));
     });
 
-    // Every label at once only while there are few enough to read: past this they overlap into a
-    // solid block (phase-5 P5-F18), and each is two more DOM elements React Flow has to measure.
-    // Above it, the selected neighbourhood and the edge under the pointer are labelled.
-    const labelAll = budget.edges.length <= LABEL_ALL_EDGES;
+    // No text on the canvas's edges, selected or not: the port and every count are in the details
+    // panel, one click away. A screen reader still gets the port, from the edge's aria-label.
+    const names = new Map(budget.nodes.map((n: GraphNode) => [n.id, n.label]));
     const loopCounts = new Map<string, number>();
     const flowEdges: Edge[] = budget.edges.map((edge: GraphEdge) => {
       const touchesSelection =
@@ -214,31 +226,22 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
       if (edge.source_id === edge.target_id) loopCounts.set(edge.source_id, loopIndex + 1);
       const hasFailures = (edge.failed_connection_count ?? 0) > 0;
       const stroke = hasFailures ? "var(--warn)" : touchesSelection ? "var(--edge-strong)" : "var(--edge)";
-      // An edge is in focus only when it TOUCHES the selection. An edge between two neighbours is
-      // not part of the selected component's neighbourhood, and lighting it would say it was.
-      const edgeInFocus = selectedId === null || touchesSelection;
       const width = edgeWidth(edge.connection_count, maxConnections);
-      // The full reading is ~350px of text, so showing it on every edge buries the graph under its
-      // own labels. The port alone identifies the link and fits; the counts arrive when a
-      // component is selected and its neighbourhood is the only thing labelled. Out of focus
-      // entirely, the label goes rather than fading — React Flow draws it in its own layer, so a
-      // faded edge would keep a fully legible label.
-      const label = !edgeInFocus
-        ? undefined
-        : selectedId !== null
-          ? `${edge.protocol}:${edge.destination_port} · ${outcomeLabel(edge)}`
-          : labelAll || edge.id === hoveredEdge
-            ? `${edge.protocol}:${edge.destination_port}`
-            : undefined;
+      const ariaLabel = `${names.get(edge.source_id) ?? edge.source_id} to ${names.get(edge.target_id) ?? edge.target_id}, ${edge.protocol} port ${edge.destination_port}`;
 
-      const key = [edge.source_id, edge.target_id, loopIndex, stroke, hasFailures, width, edgeInFocus, label].join("|");
+      const bend = bends.get(edge.id) ?? 0;
+      const from = discs.get(edge.source_id);
+      const to = discs.get(edge.target_id);
+      const key = [edge.source_id, edge.target_id, loopIndex, bend, from?.x, from?.y, from?.r, to?.x, to?.y, to?.r,
+        stroke, hasFailures, width, touchesSelection, ariaLabel].join("|");
       return reuse(reused.current.edges, nextEdges, edge.id, key, () => ({
-        data: { loopIndex },
+        data: { loopIndex, bend, from, to },
         id: edge.id,
-        type: edge.source_id === edge.target_id ? "namespaceLoop" : "default",
+        type: edge.source_id === edge.target_id ? "namespaceLoop" : "floating",
         source: edge.source_id,
         target: edge.target_id,
         className: touchesSelection ? FOCUS_CLASS : undefined,
+        ariaLabel,
         // Width encodes connection count on a capped log scale. The legend names the metric,
         // because thickness alone cannot say WHAT is being measured.
         style: {
@@ -252,17 +255,6 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
           width: 11,
           height: 11,
         },
-        label,
-        labelStyle: {
-          fill: "var(--text-dim)",
-          // 12px, matching --step--1. A literal number, not the token: React Flow writes this
-          // into an SVG presentation attribute where a var() reference does not resolve.
-          fontSize: 12,
-          fontFamily: "var(--mono)",
-        },
-        labelBgStyle: { fill: "var(--ink)", fillOpacity: 0.9 },
-        labelBgPadding: [4, 2] as [number, number],
-        labelBgBorderRadius: 3,
         // No animation: a continuously animated dash on hundreds of edges burns the frame budget
         // the 100 ms polling target depends on (ADR-006 F9).
         animated: false,
@@ -271,7 +263,7 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
 
     reused.current = { nodes: nextNodes, edges: nextEdges };
     return { nodes: flowNodes, edges: flowEdges };
-  }, [drawn, view.groups, selectedId, hoveredEdge]);
+  }, [drawn, view.groups, selectedId]);
   const capped = drawn.budget.capped;
 
   // Reported through an effect, not during render: calling a parent's setState mid-render is what
@@ -306,8 +298,6 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
         } else onSelect(node.id);
       }}
       onPaneClick={() => onSelect(null)}
-      onEdgeMouseEnter={(_, edge) => setHoveredEdge(edge.id)}
-      onEdgeMouseLeave={() => setHoveredEdge(null)}
       // Off-screen nodes and edges are not mounted. At fit-view every one is on screen, so this
       // pays off once someone zooms in to read a neighbourhood.
       onlyRenderVisibleElements

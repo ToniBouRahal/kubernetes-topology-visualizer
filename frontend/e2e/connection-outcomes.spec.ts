@@ -29,25 +29,24 @@ test("failed-only connections and setup timing survive namespace grouping", asyn
     await route.fulfill({ json });
   });
   await page.goto("/");
-  // Unselected, every edge carries its port only; the counts arrive with a selection (ADR-010 D-10.6).
-  await expect(page.locator(".react-flow__edge-text")).toHaveText(["TCP:5432", "TCP:5432"]);
+  // Edges carry no text, selected or not; the counts are in the details panel.
+  await expect(page.locator(".react-flow__edge")).toHaveCount(2);
+  await expect(page.locator(".react-flow__edge-text")).toHaveCount(0);
   // A failed-only edge is still drawn, dashed, rather than hidden for having no successes.
   await expect(page.locator('[data-id="failed"] .react-flow__edge-path')).toHaveCSS("stroke-dasharray", "6px, 4px");
 
   await page.locator('.react-flow__node[data-id="a"]').click();
-  await expect(page.locator(".react-flow__edge-text")).toHaveText(["TCP:5432 · 0 successful · 3 failed/aborted"]);
+  await expect(page.locator(".react-flow__edge-text")).toHaveCount(0);
   await expect(page.getByRole("complementary", { name: "Details for client" })).toContainText("0 successful");
   await expect(page.getByRole("complementary", { name: "Details for client" })).toContainText("3 failed/aborted");
 
   await page.locator('.react-flow__node[data-id="c"]').click();
-  await expect(page.locator(".react-flow__edge-text")).toHaveText([
-    "TCP:5432 · 2 successful · 1 failed/aborted · mean TCP setup 4 ms",
-  ]);
+  await expect(page.locator(".react-flow__edge-text")).toHaveCount(0);
 
   // Grouping merges both edges into one namespace edge; how its counts sum is grouping.test.ts.
   await page.locator(".react-flow__pane").click();
   await page.getByRole("button", { name: "Namespaces", exact: true }).click();
   await expect(page.locator(".react-flow__node")).toHaveCount(2);
-  await expect(page.locator(".react-flow__edge-text")).toHaveText(["TCP:5432"]);
+  await expect(page.locator(".react-flow__edge-text")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
