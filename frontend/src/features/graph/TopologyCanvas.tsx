@@ -38,7 +38,11 @@ const EDGE_TYPES = { namespaceLoop: NamespaceLoop, floating: FloatingEdge };
  * Hoisted so its identity is stable. React Flow re-reads this prop, and a fresh object literal
  * on every render means a new identity on every poll.
  */
-const FIT_OPTIONS: FitViewOptions = { padding: 0.18, maxZoom: 1.2 };
+const FIT_OPTIONS: FitViewOptions = {
+  // The top margin clears the view-controls toolbar, which floats over the top of the pane.
+  padding: { top: "72px", right: "8%", bottom: "8%", left: "8%" },
+  maxZoom: 1.2,
+};
 
 /**
  * Past this many edges the canvas opens grouped by namespace. Readability, not performance: the
@@ -127,14 +131,30 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
     if (grouped) return groupTopology(graph.nodes, graph.edges, expanded);
     return { nodes: graph.nodes, edges: graph.edges, groups: new Map() };
   }, [graph, grouped, expanded, activeFocus]);
-  const viewKey = JSON.stringify([grouped, [...expanded].sort(), activeFocus]);
+  // The filters the backend applied to THIS response. Keyed on the response, not on the filter
+  // controls, so the change lands when the filtered graph arrives rather than one request early —
+  // re-fitting the old graph and then leaving the new one where it fell.
+  const filterKey = JSON.stringify(graph.filters ?? null);
+  // A new key remounts the canvas, and React Flow fits the view on mount. That happens on a view
+  // toggle and on a filter change — both the reader's own doing — and never on a poll, so a
+  // workload appearing does not throw away the zoom someone is reading at.
+  const viewKey = JSON.stringify([grouped, [...expanded].sort(), activeFocus, filterKey]);
   // Positions survive across polls; see layoutGraph for why this matters.
   const cache = useRef<{ positions: PositionCache; signature: string } | undefined>(undefined);
+  const laidOutFor = useRef(filterKey);
   const routes = useRef<{ positions: PositionCache; discs: Map<string, Disc>; bends: Map<string, number> } | undefined>(undefined);
 
   // What gets drawn and where. Selection and hover do not change this, so clicking a component
   // never re-runs the budget or the layout.
   const drawn = useMemo(() => {
+    // A filter change is a different question, not the same graph moving on: lay the answer out
+    // fresh. Keeping the survivors where the unfiltered layout put them leaves a few nodes
+    // scattered across the space the rest used to fill.
+    if (laidOutFor.current !== filterKey) {
+      cache.current = undefined;
+      laidOutFor.current = filterKey;
+    }
+
     // Cap BEFORE layout: laying out a graph that will never paint wastes the work twice over.
     const budget = applyRenderBudget(view.nodes, view.edges);
 
@@ -167,7 +187,7 @@ export function TopologyCanvas({ graph, selectedId, onSelect, onBudget }: Props)
     const { discs, bends } = geometry;
 
     return { budget, degrees, positions: result.positions, maxConnections, bends, discs };
-  }, [view]);
+  }, [view, filterKey]);
 
   // Flow objects from the previous render, keyed by what they draw. React Flow re-renders an edge
   // or node only when its object changes identity, so handing back the same object for anything
