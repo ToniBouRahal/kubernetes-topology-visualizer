@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { GraphEdge, GraphNode } from "../src/api/types";
 import { isExternal, namespaceHue, namespaceLabel } from "../src/features/graph/encoding";
+import { syntheticGraph } from "../bench/graph";
 import {
   degreesOf,
   edgeWidth,
+  FAST_LAYOUT_EDGES,
   layoutGraph,
   nodeDiameter,
   NODE_MAX_DIAMETER,
@@ -187,11 +189,13 @@ describe("node size carries degree (D-10.3)", () => {
  * ignore it. It still catches the regression that matters — an accidental O(n²) in the layout or
  * signature path, which overshoots by orders of magnitude rather than a few milliseconds.
  *
- * WHAT THIS DOES NOT MEASURE, and a caution against reading more into it than it says: these
- * numbers cover `layoutGraph` alone. Measured in a real browser, the same graph never paints —
- * 172 nodes / 1,002 edges did not render within 250 s, because the cost is React Flow building
- * ~2,500 DOM elements, not dagre computing positions. A fast result here says nothing about
- * whether the interface is usable. See `docs/limitations.md` §4.1.
+ * WHAT THIS DOES NOT MEASURE: the browser. That is bench/ (docs/limitations.md §4.1).
+ *
+ * A caution the history of this block earned: its random wiring once passed in under 2 s while
+ * the browser hung on 1,000 edges, and the hang was blamed on the DOM. It was Dagre — on the dense
+ * workload-to-Service shape real resolution produces, network-simplex ranking and the crossing
+ * sweeps took 24 s at 800 edges. Graph SHAPE decides Dagre's cost, so the last test below uses
+ * the shape scripts/seed-scale.py sends through the real ingest path.
  */
 describe("scale ceiling (ADR-006 invariant)", () => {
   const NODES = 500;
@@ -249,6 +253,22 @@ describe("scale ceiling (ADR-006 invariant)", () => {
     console.log(`  poll WITH a topology change at ${NODES}/${EDGES}: ${elapsed.toFixed(1)} ms`);
     // Not asserted against 100 ms: it demonstrably exceeds that, which is the point of measuring.
     expect(elapsed).toBeLessThan(2000);
+  });
+
+  it("lays out the seed-scale shape at the ceiling — the one that hung the browser", () => {
+    // Workloads calling Services: two dense ranks. With Dagre's defaults this never finished
+    // (> 150 s); FAST_LAYOUT_EDGES switches it to a layout that does.
+    const { nodes, edges } = syntheticGraph(NODES, EDGES) as unknown as { nodes: GraphNode[]; edges: GraphEdge[] };
+    expect(edges.length).toBeGreaterThan(FAST_LAYOUT_EDGES);
+
+    const started = performance.now();
+    const result = layoutGraph(nodes, edges, undefined, degreesOf(nodes, edges));
+    const elapsed = performance.now() - started;
+
+    expect(result.positions.size).toBe(nodes.length);
+    // eslint-disable-next-line no-console
+    console.log(`  seed-scale layout at ${nodes.length}/${edges.length}: ${elapsed.toFixed(1)} ms`);
+    expect(elapsed, `layout took ${elapsed.toFixed(1)} ms`).toBeLessThan(5000);
   });
 
   it("a poll that changes nothing structural costs almost nothing", () => {

@@ -104,10 +104,9 @@ describe("applyRenderBudget", () => {
     expect(first).toBe("aaa");
   });
 
-  it("caps below the size measured to hang the browser", () => {
-    // 172 nodes / 1,002 edges never painted within 250 s. The limit must sit well under that.
-    expect(MAX_RENDERED_EDGES).toBeLessThan(1000);
-    // And above the largest graph measured to render comfortably (307 edges).
-    expect(MAX_RENDERED_EDGES).toBeGreaterThanOrEqual(307);
+  it("caps at the largest graph measured to stay responsive", () => {
+    // bench/: 500 nodes / 2,000 edges paints in ~1 s with clicks under 100 ms. Nothing larger
+    // has been measured, so the cap must not claim more.
+    expect(MAX_RENDERED_EDGES).toBeLessThanOrEqual(2000);
   });
 });

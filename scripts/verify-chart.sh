@@ -4,6 +4,9 @@
 # Run by `make lint-helm` and by CI. These assertions are the reason the chart is trustworthy;
 # `helm lint` alone would pass a chart with a wildcard ClusterRole.
 set -uo pipefail
+# Never end a pipeline in `grep -q`: it exits at the first match, the writer upstream dies of
+# SIGPIPE, and pipefail turns a found match into a failure, but only when the input is larger than
+# the pipe buffer. A here-string (`grep -q X <<<"$V"`), or `grep -c X >/dev/null`, reads it all.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHART="$REPO_ROOT/charts/topology-visualizer"
@@ -11,7 +14,8 @@ VALUES="$CHART/ci/kind-values.yaml"
 RELEASE="topology"
 
 # Declared dependencies must be present even to render with their condition off (ADR-013 D-13.5).
-bash "$REPO_ROOT/scripts/chart-deps.sh" "$CHART"
+# Without the subcharts nothing renders, and every check below would fail for that one reason.
+bash "$REPO_ROOT/scripts/chart-deps.sh" "$CHART" || { echo "chart-deps failed: the chart cannot render" >&2; exit 1; }
 
 pass=0
 fail=0
@@ -56,14 +60,14 @@ fi
 echo "== T-7.4: least-privilege RBAC =="
 CLUSTERROLE="$(printf '%s' "$RENDERED" | awk '/^kind: ClusterRole$/,/^---$/')"
 
-if printf '%s' "$CLUSTERROLE" | grep -qE '"\*"'; then
+if grep -qE '"\*"' <<<"$CLUSTERROLE"; then
   bad "ClusterRole contains a wildcard"
 else
   ok "no wildcard in ClusterRole"
 fi
 
-if printf '%s' "$CLUSTERROLE" | grep -q 'verbs:' && \
-   ! printf '%s' "$CLUSTERROLE" | grep 'verbs:' | grep -qvE '\["get", "list", "watch"\]'; then
+if grep -q 'verbs:' <<<"$CLUSTERROLE" && \
+   ! printf '%s' "$CLUSTERROLE" | grep 'verbs:' | grep -cvE '\["get", "list", "watch"\]' >/dev/null; then
   ok "agent verbs are exactly get/list/watch"
 else
   bad "agent ClusterRole has verbs beyond get/list/watch"
@@ -71,7 +75,7 @@ else
 fi
 
 for res in pods services namespaces nodes replicasets deployments statefulsets daemonsets jobs endpointslices; do
-  if printf '%s' "$CLUSTERROLE" | grep -q "$res"; then
+  if grep -q "$res" <<<"$CLUSTERROLE"; then
     ok "watches $res"
   else
     bad "missing RBAC for $res"
@@ -99,27 +103,27 @@ echo "== T-7.7 / T-7.8: database posture =="
 DB_RENDERED="$(render --set postgresql.enabled=true --set postgresql.auth.password=s3cret)"
 
 # A PVC, not an emptyDir: this is what makes history survive pod deletion.
-if printf '%s' "$DB_RENDERED" | grep -q "volumeClaimTemplates"; then
+if grep -q "volumeClaimTemplates" <<<"$DB_RENDERED"; then
   ok "database uses volumeClaimTemplates (durable across pod recreation)"
 else
   bad "database has no volumeClaimTemplates — history would not survive a restart"
 fi
 
 # The password must reach the container by reference, never inline in a pod spec.
-if printf '%s' "$DB_RENDERED" | awk '/^kind: StatefulSet$/,/^---$/' | grep -q "secretKeyRef"; then
+if printf '%s' "$DB_RENDERED" | awk '/^kind: StatefulSet$/,/^---$/' | grep -c "secretKeyRef" >/dev/null; then
   ok "database password comes from a Secret reference"
 else
   bad "database password is not referenced from a Secret"
 fi
 
-if printf '%s' "$DB_RENDERED" | awk '/^kind: StatefulSet$/,/^---$/' | grep -qE 'value:.*s3cret'; then
+if printf '%s' "$DB_RENDERED" | awk '/^kind: StatefulSet$/,/^---$/' | grep -cE 'value:.*s3cret' >/dev/null; then
   bad "the password appears inline in the StatefulSet"
 else
   ok "no inline password in the StatefulSet"
 fi
 
 # The backend must read its DSN from a Secret too.
-if printf '%s' "$DB_RENDERED" | grep -q "database-url"; then
+if grep -q "database-url" <<<"$DB_RENDERED"; then
   ok "backend reads DATABASE_URL from a Secret"
 else
   bad "backend does not read DATABASE_URL from a Secret"
@@ -174,7 +178,7 @@ fi
 AGENT_BLOCK="$(printf '%s' "$SEC_RENDERED" | awk '/^kind: DaemonSet$/,/^---$/')"
 # `grep RuntimeDefault` also matches the comment in the template explaining why it is absent, so
 # the actual YAML key is what gets checked.
-if printf '%s' "$AGENT_BLOCK" | grep -qE '^\s*type:\s*RuntimeDefault'; then
+if grep -qE '^\s*type:\s*RuntimeDefault' <<<"$AGENT_BLOCK"; then
   bad "the agent has seccompProfile RuntimeDefault, which blocks bpf() and breaks capture"
 else
   ok "agent is exempt from seccomp RuntimeDefault (documented in agent-daemonset.yaml)"
@@ -203,18 +207,18 @@ echo "== ADR-011: optional monitoring =="
 # T-11.1 — the default render must not change. Monitoring is opt-in (ADR-001 §4.2: never a
 # mandatory dependency), so with it off there is no monitor, no dashboard and no scrape ingress.
 for k in PodMonitor ServiceMonitor; do
-  if printf '%s' "$RENDERED" | grep -q "^kind: $k"; then
+  if grep -q "^kind: $k" <<<"$RENDERED"; then
     bad "$k rendered with monitoring off"
   else
     ok "no $k by default"
   fi
 done
-if printf '%s' "$RENDERED" | grep -q 'grafana-dashboard'; then
+if grep -q 'grafana-dashboard' <<<"$RENDERED"; then
   bad "dashboard ConfigMap rendered with monitoring off"
 else
   ok "no dashboard ConfigMap by default"
 fi
-if printf '%s' "$SEC_RENDERED" | awk '/^kind: NetworkPolicy$/,/^---$/' | grep -q 'namespaceSelector'; then
+if printf '%s' "$SEC_RENDERED" | awk '/^kind: NetworkPolicy$/,/^---$/' | grep -c 'namespaceSelector' >/dev/null; then
   bad "backend NetworkPolicy admits another namespace with monitoring off"
 else
   ok "backend NetworkPolicy has no scrape ingress by default"
@@ -229,12 +233,12 @@ for k in PodMonitor ServiceMonitor; do
 done
 PM="$(printf '%s' "$MON_RENDERED" | awk '/^kind: PodMonitor$/,/^---$/')"
 SM="$(printf '%s' "$MON_RENDERED" | awk '/^kind: ServiceMonitor$/,/^---$/')"
-if printf '%s' "$PM" | grep -q 'port: metrics'; then
+if grep -q 'port: metrics' <<<"$PM"; then
   ok "PodMonitor scrapes the agent's metrics port"
 else
   bad "PodMonitor does not target port 'metrics'"
 fi
-if printf '%s' "$SM" | grep -q 'port: http' && printf '%s' "$SM" | grep -q 'path: /metrics'; then
+if grep -q 'port: http' <<<"$SM" && grep -q 'path: /metrics' <<<"$SM"; then
   ok "ServiceMonitor scrapes the backend's http port at /metrics"
 else
   bad "ServiceMonitor does not target http:/metrics"
@@ -283,13 +287,13 @@ done
 NPM_RENDERED="$(render --set monitoring.enabled=true --set networkPolicy.enabled=true \
                        --set monitoring.prometheusNamespace=observability)"
 NPM_BACKEND="$(printf '%s' "$NPM_RENDERED" | awk '/^kind: NetworkPolicy$/,/^---$/')"
-if printf '%s' "$NPM_BACKEND" | grep -q 'kubernetes.io/metadata.name: "observability"'; then
+if grep -q 'kubernetes.io/metadata.name: "observability"' <<<"$NPM_BACKEND"; then
   ok "backend NetworkPolicy admits scrapes from monitoring.prometheusNamespace"
 else
   bad "backend NetworkPolicy has no ingress from the Prometheus namespace"
 fi
 if [[ $(printf '%s' "$NPM_BACKEND" | grep -c "port: $(printf '%s' "$NPM_BACKEND" | grep -m1 'port:' | awk '{print $2}')") -eq 2 ]] && \
-   ! printf '%s' "$NPM_BACKEND" | grep -qE 'port: (9090|8081)'; then
+   ! grep -qE 'port: (9090|8081)' <<<"$NPM_BACKEND"; then
   ok "scrape ingress is on the backend port only"
 else
   bad "scrape ingress opens a port other than the backend's"
@@ -332,7 +336,7 @@ else
   bad "frontend.grafana.* did not reach config.json: $SET_CFG"
 fi
 FE_BLOCK="$(printf '%s' "$RENDERED" | awk '/^kind: Deployment$/,/^---$/' | awk '/name: .*-frontend$/,0')"
-if printf '%s' "$FE_BLOCK" | grep -q 'subPath: config.json' && printf '%s' "$FE_BLOCK" | grep -q 'checksum/config'; then
+if grep -q 'subPath: config.json' <<<"$FE_BLOCK" && grep -q 'checksum/config' <<<"$FE_BLOCK"; then
   ok "frontend mounts config.json and rolls when it changes"
 else
   bad "frontend Deployment does not mount config.json with a checksum annotation"
@@ -342,12 +346,12 @@ reject "Grafana url with a javascript: scheme" --set frontend.grafana.url='javas
 
 echo "== ADR-013: bundled observability =="
 # T-13.1 — off by default, and off means nothing: no subchart resources, no scrape annotations.
-if printf '%s' "$RENDERED" | grep -qiE 'app.kubernetes.io/name: (prometheus|grafana|kube-state-metrics)'; then
+if grep -qiE 'app.kubernetes.io/name: (prometheus|grafana|kube-state-metrics)' <<<"$RENDERED"; then
   bad "subchart resources rendered with observability off"
 else
   ok "no Prometheus, Grafana or kube-state-metrics by default"
 fi
-if printf '%s' "$RENDERED" | grep -q 'prometheus.io/scrape'; then
+if grep -q 'prometheus.io/scrape' <<<"$RENDERED"; then
   bad "scrape annotations rendered with observability off"
 else
   ok "no scrape annotations by default"
@@ -357,10 +361,10 @@ fi
 # the bundle declines (alertmanager, pushgateway, node-exporter).
 OBS_RENDERED="$(render --set observability.enabled=true --set networkPolicy.enabled=true)"
 for want in 'app.kubernetes.io/name: prometheus' 'app.kubernetes.io/name: kube-state-metrics' 'app.kubernetes.io/name: grafana'; do
-  if printf '%s' "$OBS_RENDERED" | grep -q "$want"; then ok "bundle renders ${want#*: }"; else bad "bundle is missing ${want#*: }"; fi
+  if grep -q "$want" <<<"$OBS_RENDERED"; then ok "bundle renders ${want#*: }"; else bad "bundle is missing ${want#*: }"; fi
 done
 for absent in alertmanager pushgateway node-exporter; do
-  if printf '%s' "$OBS_RENDERED" | grep -qi "app.kubernetes.io/name: .*$absent"; then
+  if grep -qi "app.kubernetes.io/name: .*$absent" <<<"$OBS_RENDERED"; then
     bad "bundle renders $absent, which it declines (D-13.1)"
   else
     ok "bundle does not render $absent"
@@ -395,12 +399,12 @@ else
 fi
 
 # T-13.4 — Grafana reaches the release's Prometheus, and its sidecar looks for ADR-011's label.
-if printf '%s' "$OBS_RENDERED" | grep -q "url: http://$RELEASE-prometheus-server"; then
+if grep -q "url: http://$RELEASE-prometheus-server" <<<"$OBS_RENDERED"; then
   ok "Grafana datasource points at $RELEASE-prometheus-server"
 else
   bad "Grafana datasource does not point at the release's Prometheus"
 fi
-if printf '%s' "$OBS_RENDERED" | grep -qE 'value: "?grafana_dashboard"?' ; then
+if grep -qE 'value: "?grafana_dashboard"?' <<<"$OBS_RENDERED" ; then
   ok "Grafana sidecar watches the grafana_dashboard label"
 else
   bad "Grafana sidecar is not configured for the grafana_dashboard label"
@@ -423,7 +427,7 @@ fi
 
 # T-13.6 — the bundled Prometheus is in-namespace, so the policy admits it by its own labels; and
 # the two scrape paths cannot be enabled together.
-if printf '%s' "$OBS_RENDERED" | awk '/^kind: NetworkPolicy$/,/^---$/' | grep -q 'app.kubernetes.io/component: server'; then
+if printf '%s' "$OBS_RENDERED" | awk '/^kind: NetworkPolicy$/,/^---$/' | grep -c 'app.kubernetes.io/component: server' >/dev/null; then
   ok "backend NetworkPolicy admits the bundled Prometheus server"
 else
   bad "backend NetworkPolicy does not admit the bundled Prometheus"

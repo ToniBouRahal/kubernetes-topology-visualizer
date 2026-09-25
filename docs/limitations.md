@@ -212,47 +212,46 @@ little exposure while making on-node troubleshooting materially easier.
 
 ## 4. Interface
 
-### 4.1 The interface does not survive its own stated scale ceiling — **measured, open**
+### 4.1 The interface at its stated scale ceiling: **measured, largely met**
 
-ADR-001 §6 states a ceiling of 500 nodes and 2,000 edges with no UI freeze beyond 100 ms. **The API
-meets it comfortably; the interface does not meet it at all.**
+ADR-001 §6 sets a ceiling of 500 nodes and 2,000 edges, with no UI freeze over 100 ms. The API
+meets it (query p95 62 ms). The interface now meets it for paint, clicks, zoom and polling, with one
+exception, stated below.
 
-Measured in a real browser against real ingested data:
+Measured with `frontend/bench/` (production build, 1280x720, synthetic graph shaped like
+`seed-scale.py`). Full method and raw results are in
+[`evaluation/p5-f18-canvas-scale.md`](evaluation/p5-f18-canvas-scale.md).
 
-| graph | time to first paint | main thread |
-|---|---|---|
-| 11 nodes / 6 edges | 1.06 s | 2 ms frame response |
-| 102 nodes / 307 edges | 1.06 s | 2 ms frame response |
-| 172 nodes / 1,002 edges | **> 250 s (timed out)** | — |
-| 500 nodes / 1,908 edges | **> 379 s, page stopped responding** | — |
+| 500 nodes / 2,000 edges | measured |
+|---|---|
+| first paint, grouped by namespace (the default at this size) | 654 ms |
+| first paint, every edge drawn | 1,065 ms |
+| click a component, worst main-thread task | 82 ms (98 ms while counts change every poll) |
+| zoom, idle polls | no task over 50 ms |
+| switch to the per-workload view | **729 ms, once** |
 
-Up to roughly 300 edges the interface behaves as though the graph were empty. Past that it does not
-degrade gradually — it stops.
+**This corrects Phase 5.** Phase 5 found that 1,000 edges never painted and blamed React Flow's
+DOM. The real cause was Dagre. On the dense workload-to-Service shape that real resolution
+produces, its default ranking and crossing minimisation took 24 s at 800 edges and did not finish
+at 1,000. The layout-only unit test had used a random graph of a different shape, which Dagre lays
+out quickly. Past 300 edges the layout now uses a cheaper configuration (2,000 edges in about
+0.8 s). Selection, polling and labels were also reworked so a click or a poll no longer redraws
+every element.
 
-**The honest ceiling is about 100 nodes and 300 edges.** For the demo cluster, which produces a
-dozen nodes, this is invisible; for a real cluster of any size it is disqualifying, and it is the
-single largest gap between what this system claims and what it does.
+**What remains:**
 
-An earlier measurement in `frontend/tests/layout.test.ts` put a topology-changing poll at 208 ms and
-treated that as the limitation. It was measuring the wrong thing: dagre is not the bottleneck. The
-cost is React Flow rendering roughly 2,500 DOM elements, each edge carrying a text label — which no
-unit test on the layout function could have exposed.
-
-**Mitigated, not solved.** The canvas now refuses to draw more than **400 edges**, keeping the
-busiest and saying what it left out:
-
-> Showing the 400 busiest of 1,939 edges and hiding 112 workloads. Drawing them all would stop the
-> browser responding. Narrow by namespace, search for a workload, or shorten the window.
-
-The same 500-node / 1,939-edge graph that previously never painted within 379 seconds now paints in
-**1.2 s** with **16 ms** frame response. Busiest-first rather than an arbitrary slice, because a
-subset chosen by sort order would look like a complete graph while hiding whichever relationships
-happened to fall off the end.
-
-What this does **not** fix: at 400 edges the graph is responsive but still visually dense — a
-reader gets a usable interface, not a readable diagram. The cap converts a hung tab into a
-navigable one, which is worth having, but the real answer is still edge virtualisation or canvas
-rendering rather than a DOM element per edge. `P5-F18` stays open for that reason.
+- **Layout runs on the main thread.** Opening the per-workload view at 2,000 edges blocks for about
+  0.73 s once. A poll that adds or removes a workload pays the same again. Polls that only change
+  counts skip layout. Lifting this means moving layout into a Web Worker.
+- **Past 300 edges, the layout skips crossing minimisation**, so large graphs have more crossings.
+  Smaller graphs, including the demo, lay out exactly as before.
+- **Past 100 drawn edges, labels appear on request**: for the selected component's neighbourhood
+  and for the edge under the pointer.
+- **Responsive is not readable.** 2,000 edges on one canvas is still dense. Graphs over 400 edges
+  therefore open grouped by namespace, and the per-workload view is one click away.
+- The canvas still caps at **2,000 edges**, the largest size measured. That matches the backend's
+  default `GRAPH_MAX_EDGES`, so it only triggers if an operator raises that setting. When it does,
+  the banner states what was left out, keeping the busiest edges.
 
 ### 4.2 Comparing unequal windows produces spurious CHANGED — **measured**
 

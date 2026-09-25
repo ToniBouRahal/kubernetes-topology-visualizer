@@ -29,4 +29,24 @@ if [[ "$present" -ge "$declared" ]]; then
 fi
 
 echo "chart-deps: fetching $declared chart dependencies into $CHART/charts (needs the network once)"
+
+# `helm dependency build` resolves a repository URL only through a repo already added with
+# `helm repo add`; on a fresh machine or CI runner it fails with "no repository definition".
+# Register each declared repository that is not known yet, under a name of our own so an
+# operator's existing repo names are never overwritten.
+known=$(helm repo list -o json 2>/dev/null || echo "[]")
+python3 - "$CHART/Chart.yaml" "$known" <<'EOF_PY' | while read -r name url; do
+import json, sys, yaml
+chart = yaml.safe_load(open(sys.argv[1]))
+known = {r["url"].rstrip("/") for r in json.loads(sys.argv[2] or "[]")}
+for dep in chart.get("dependencies") or []:
+    url = (dep.get("repository") or "").rstrip("/")
+    if url.startswith(("http://", "https://")) and url not in known:
+        known.add(url)
+        print(f"topology-dep-{dep['name']} {url}")
+EOF_PY
+  echo "chart-deps: adding chart repository $url"
+  helm repo add "$name" "$url" >/dev/null
+done
+
 helm dependency build "$CHART"

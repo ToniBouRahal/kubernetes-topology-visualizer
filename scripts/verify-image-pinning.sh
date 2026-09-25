@@ -7,6 +7,9 @@
 #
 # Run by `make verify-pinning` and by CI.
 set -uo pipefail
+# Never end a pipeline in `grep -q`: it exits at the first match, the writer upstream dies of
+# SIGPIPE, and pipefail turns a found match into a failure, but only when the input is larger than
+# the pipe buffer. A here-string (`grep -q X <<<"$V"`), or `grep -c X >/dev/null`, reads it all.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -58,7 +61,7 @@ fi
 bash scripts/chart-deps.sh charts/topology-visualizer
 RENDERED="$(helm template pin charts/topology-visualizer \
   --set clusterId=c1 --set postgresql.enabled=true --set postgresql.auth.password=x 2>/dev/null)"
-if printf '%s' "$RENDERED" | grep -E 'image: "postgres' | grep -q '@sha256:'; then
+if printf '%s' "$RENDERED" | grep -E 'image: "postgres' | grep -c '@sha256:' >/dev/null; then
   ok "the rendered database image resolves to a digest"
 else
   bad "the rendered database image has no digest"

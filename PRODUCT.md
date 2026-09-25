@@ -41,7 +41,7 @@ Runtime observation instead of static inference. The alternatives considered and
 - Byte volume is deliberately not shown: measured as accurate but only readable at connection close, which would draw the busiest persistent edges as the faintest. Connection count is the traffic-intensity fallback.
 - A dependency that did not communicate inside the selected time window does not appear — this is the cost of the property that makes the tool useful, not a bug to hide.
 - Default data retention is 60 days (`RETENTION_HOURS`), configurable; purge runs hourly.
-- Graph responses cap at 500 nodes / 2,000 edges (backend); the ungrouped UI is unusable past ~300 edges, which is why namespace grouping, expansion, and focus-on-selected-workload exist ahead of a hard 400-edge display cap.
+- Graph responses cap at 500 nodes / 2,000 edges (backend); the canvas stays responsive at that size (first paint ~1 s, clicks under 100 ms), but past 400 edges it opens grouped by namespace because a 2,000-edge picture is not readable. A topology change at that size still re-runs layout on the main thread (~0.7 s).
 - Comparison mode diffs two arbitrary time periods (not only adjacent windows) into `NEW` / `REMOVED` / `CHANGED`, successful establishments only.
 - Individual external IPs are never persisted or displayed; unknown routable destinations collapse into one `EXTERNAL` node.
 - Only the eBPF agent runs privileged; backend and frontend run non-root, read-only root filesystem, no extra capabilities.

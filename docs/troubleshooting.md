@@ -117,11 +117,13 @@ kubectl -n topology rollout restart ds/topology-visualizer-agent \
   deploy/topology-visualizer-backend deploy/topology-visualizer-frontend
 ```
 
-## The UI hangs on a large graph
+## The UI pauses on a large graph
 
-Past roughly 300 edges the interface does not slow down — it stops. 172 nodes / 1,002 edges did not
-paint within 250 seconds. This is a known limitation, not a misconfiguration; see
-[`limitations.md`](limitations.md) §4.1. Narrow by namespace or shorten the window.
+At around 2,000 edges, switching to the **Workloads** view, or a poll in which a workload appears or
+disappears, blocks the page for about 0.7 s while the layout runs. This is expected; see
+[`limitations.md`](limitations.md) §4.1. If the page stops responding for longer, check whether
+`GRAPH_MAX_EDGES` was raised: the canvas draws only the busiest 2,000 edges, but the page
+still loads and groups the whole response. Narrow by namespace or shorten the window.
 
 ## The UI shows a stale graph with a banner
 

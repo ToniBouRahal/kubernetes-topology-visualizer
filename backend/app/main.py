@@ -24,6 +24,11 @@ from app.persistence.memory import InMemoryRepository
 from app.persistence.protocol import TopologyRepository
 from app.settings import settings
 
+# How long startup waits for a database that is still coming up. It must stay inside the liveness
+# probe's window (initialDelaySeconds 5 + 3 failures x periodSeconds 20 in backend-deployment.yaml):
+# the server answers no probe until startup finishes, so a longer wait is a restart anyway.
+DATABASE_CONNECT_RETRY_SECONDS = 30.0
+
 DESCRIPTION = """
 Runtime service topology for Kubernetes, collected with eBPF.
 
@@ -53,7 +58,9 @@ async def lifespan(app: FastAPI):
 
             log.info("connecting to storage", extra={"dsn": sanitise_dsn(settings.database_url)})
             postgres = await PostgresRepository.connect(
-                settings.database_url, cluster_id=settings.cluster_id
+                settings.database_url,
+                cluster_id=settings.cluster_id,
+                retry_for=DATABASE_CONNECT_RETRY_SECONDS,
             )
             applied = await postgres.migrate()
             log.info("migrations complete", extra={"applied": applied})

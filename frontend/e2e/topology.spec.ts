@@ -165,8 +165,9 @@ test.describe("runtime topology, end to end", () => {
     const details = page.getByLabel(/^Details for/);
     await expect(details).toBeVisible();
     await expect(details).toContainText("Outgoing");
-    // backend calls redis, so an outgoing dependency must be listed.
-    await expect(details.locator(".dep__name", { hasText: "redis" }).first()).toBeVisible({
+    // backend calls redis, so an outgoing dependency must be listed. Rows name both ends,
+    // `source → destination` (ADR-010 D-10.1).
+    await expect(details.locator(".dep__pair", { hasText: "backend → redis" }).first()).toBeVisible({
       timeout: 15_000,
     });
   });
@@ -175,8 +176,12 @@ test.describe("runtime topology, end to end", () => {
   test("namespaces are discovered from observed traffic", async ({ page }) => {
     await page.goto(BASE);
     const filters = page.getByLabel("Filters");
-    await expect(filters.getByRole("button", { name: "demo" })).toBeVisible({ timeout: 30_000 });
-    await expect(filters.getByRole("button", { name: "data" })).toBeVisible();
+    // exact: the component list beside the namespaces names its buttons "<name> <namespace>",
+    // so "frontend demo" would otherwise match "demo" too.
+    await expect(filters.getByRole("button", { name: "demo", exact: true })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(filters.getByRole("button", { name: "data", exact: true })).toBeVisible();
   });
 
   /** Usable at the demo resolution (ADR-001 §5.6) — no horizontal overflow. */

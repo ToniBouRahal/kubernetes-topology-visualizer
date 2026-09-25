@@ -7,6 +7,7 @@ bytes — that suite is the thing that catches it (ADR-005 D-5.1).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import datetime
@@ -33,6 +34,14 @@ MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
 # ingestion (ADR-005 D-5.5).
 PURGE_BATCH = 5_000
 
+# Failures that clear by themselves while the database is still starting: DNS not resolving yet
+# (socket.gaierror), connection refused, a timeout (all OSError), and PostgreSQL's own "starting
+# up" refusal.
+_TRANSIENT_CONNECT_ERRORS: tuple[type[BaseException], ...] = (
+    OSError,
+    asyncpg.CannotConnectNowError,
+)
+
 
 def sanitise_dsn(dsn: str) -> str:
     """Strip the password from a DSN before it can reach a log or an error.
@@ -57,16 +66,47 @@ class PostgresRepository:
 
     @classmethod
     async def connect(
-        cls, dsn: str, cluster_id: str, *, min_size: int = 2, max_size: int = 10
+        cls,
+        dsn: str,
+        cluster_id: str,
+        *,
+        min_size: int = 2,
+        max_size: int = 10,
+        retry_for: float = 0.0,
     ) -> PostgresRepository:
-        try:
-            pool = await asyncpg.create_pool(
-                dsn, min_size=min_size, max_size=max_size, command_timeout=30
-            )
-        except Exception as exc:  # noqa: BLE001 - re-raised with the DSN removed
-            raise ConnectionError(
-                f"could not connect to PostgreSQL at {sanitise_dsn(dsn)}: {type(exc).__name__}"
-            ) from None
+        """Open the pool, retrying transient failures for up to `retry_for` seconds.
+
+        On a fresh install the backend and its database start together, and the database's
+        Service name does not resolve until its pod is Ready. Failing on the first attempt turned
+        that ordinary race into several CrashLoopBackOff restarts. Only failures that can clear on
+        their own are retried; a wrong password fails at once.
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + retry_for
+        delay = 0.5
+        while True:
+            try:
+                pool = await asyncpg.create_pool(
+                    dsn, min_size=min_size, max_size=max_size, command_timeout=30
+                )
+                break
+            except _TRANSIENT_CONNECT_ERRORS as exc:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    raise ConnectionError(
+                        f"could not connect to PostgreSQL at {sanitise_dsn(dsn)}: "
+                        f"{type(exc).__name__}"
+                    ) from None
+                log.warning(
+                    "database not reachable yet; retrying",
+                    extra={"error": type(exc).__name__, "retry_in_s": min(delay, remaining)},
+                )
+                await asyncio.sleep(min(delay, remaining))
+                delay = min(delay * 2, 5.0)
+            except Exception as exc:  # noqa: BLE001 - re-raised with the DSN removed
+                raise ConnectionError(
+                    f"could not connect to PostgreSQL at {sanitise_dsn(dsn)}: {type(exc).__name__}"
+                ) from None
         if pool is None:  # pragma: no cover - asyncpg returns None only on misuse
             raise ConnectionError("asyncpg returned no pool")
         return cls(pool, cluster_id, dsn)
