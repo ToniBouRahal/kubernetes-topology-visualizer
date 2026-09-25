@@ -12,9 +12,13 @@ import { useMemo, useRef } from "react";
 import type { DiffResponse, GraphNode } from "../../api/types";
 import { TopologyNode, type TopologyNodeData } from "./TopologyNode";
 import { diffStyle } from "./diffEncoding";
-import { layoutGraph, type PositionCache } from "./layout";
+import { layoutGraph, NODE_MIN_DIAMETER, type PositionCache } from "./layout";
+import { FloatingEdge } from "./FloatingEdge";
+import { edgeBends, routeBends, type Disc } from "./edgeGeometry";
 
 const NODE_TYPES = { topology: TopologyNode };
+/** Hoisted: React Flow warns about, and re-registers, an edgeTypes object that changes identity. */
+const EDGE_TYPES = { floating: FloatingEdge };
 
 /**
  * The comparison view.
@@ -99,10 +103,20 @@ export function CompareCanvas({ diff, knownNodes, selectedId, onSelect }: Props)
       draggable: true,
     }));
 
+    // No degrees are passed to the layout here, so every node is drawn at the minimum diameter.
+    const radius = NODE_MIN_DIAMETER / 2;
+    const discs = new Map<string, Disc>();
+    for (const node of graphNodes) {
+      const p = result.positions.get(node.id);
+      if (p) discs.set(node.id, { x: p.x + radius, y: p.y + radius, r: radius });
+    }
+    const bends = routeBends(diffEdges, discs, edgeBends(diffEdges));
     const flowEdges: Edge[] = diffEdges.map((edge) => {
       const style = diffStyle(edge);
       return {
         id: edge.id,
+        type: "floating",
+        data: { bend: bends.get(edge.id) ?? 0, from: discs.get(edge.source_id), to: discs.get(edge.target_id) },
         source: edge.source_id,
         target: edge.target_id,
         style: {
@@ -140,6 +154,7 @@ export function CompareCanvas({ diff, knownNodes, selectedId, onSelect }: Props)
         nodes={nodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
         onNodeClick={(_, node) => onSelect(node.id)}
         onPaneClick={() => onSelect(null)}
         fitView

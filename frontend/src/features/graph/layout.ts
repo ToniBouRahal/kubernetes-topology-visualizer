@@ -164,7 +164,59 @@ export function layoutGraph(
     );
   }
 
+  // Cached nodes first, so the ones already on screen are the last to move; ids break ties so the
+  // same input always settles the same way.
+  const order = [...nodes]
+    .map((n) => n.id)
+    .sort((a, b) => {
+      const cachedA = previous?.positions.has(a) ? 0 : 1;
+      const cachedB = previous?.positions.has(b) ? 0 : 1;
+      return cachedA - cachedB || a.localeCompare(b);
+    });
+  separate(order, positions, boxOf);
+
   return { positions, signature, recomputed: true };
+}
+
+/** Clear space kept around a node that had to be moved out of another's way. */
+export const NODE_GAP = 32;
+
+/**
+ * Move nodes down until no two boxes overlap, in the given order.
+ *
+ * Needed because positions come from two layouts: nodes that already existed keep where they were,
+ * and new ones take their place from a fresh Dagre run that knows nothing about the old one. A new
+ * node can land exactly on an old one, and a node whose degree grew can swell into a neighbour.
+ * Dagre alone never overlaps, so on a first layout this moves nothing.
+ *
+ * Each move puts the node below the box it hit, so it can never hit that box again: at most one
+ * move per placed node, and the loop always ends.
+ */
+function separate(
+  order: string[],
+  positions: PositionCache,
+  boxOf: (id: string) => { width: number; height: number },
+): void {
+  const placed: { x: number; y: number; width: number; height: number }[] = [];
+  for (const id of order) {
+    const { width, height } = boxOf(id);
+    let at = positions.get(id) ?? { x: 0, y: 0 };
+    let moved = false;
+    for (;;) {
+      const hit = placed.find(
+        (o) =>
+          at.x < o.x + o.width + NODE_GAP &&
+          o.x < at.x + width + NODE_GAP &&
+          at.y < o.y + o.height + NODE_GAP &&
+          o.y < at.y + height + NODE_GAP,
+      );
+      if (!hit) break;
+      at = { x: at.x, y: hit.y + hit.height + NODE_GAP };
+      moved = true;
+    }
+    if (moved) positions.set(id, at);
+    placed.push({ x: at.x, y: at.y, width, height });
+  }
 }
 
 /**

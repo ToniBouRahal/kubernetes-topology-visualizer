@@ -226,7 +226,7 @@ Measured with `frontend/bench/` (production build, 1280x720, synthetic graph sha
 |---|---|
 | first paint, grouped by namespace (the default at this size) | 654 ms |
 | first paint, every edge drawn | 1,065 ms |
-| click a component, worst main-thread task | 82 ms (98 ms while counts change every poll) |
+| click a component, worst main-thread task | 86–95 ms (up to 107 ms while counts change every poll) |
 | zoom, idle polls | no task over 50 ms |
 | switch to the per-workload view | **729 ms, once** |
 
@@ -245,8 +245,9 @@ every element.
   counts skip layout. Lifting this means moving layout into a Web Worker.
 - **Past 300 edges, the layout skips crossing minimisation**, so large graphs have more crossings.
   Smaller graphs, including the demo, lay out exactly as before.
-- **Past 100 drawn edges, labels appear on request**: for the selected component's neighbourhood
-  and for the edge under the pointer.
+- **Edges carry no text.** The port, counts, failures and setup timing for each link are in the
+  details panel when a component is selected. Each edge's accessible name still states both ends
+  and the port.
 - **Responsive is not readable.** 2,000 edges on one canvas is still dense. Graphs over 400 edges
   therefore open grouped by namespace, and the per-workload view is one click away.
 - The canvas still caps at **2,000 edges**, the largest size measured. That matches the backend's

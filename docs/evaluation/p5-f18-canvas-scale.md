@@ -34,7 +34,7 @@ why the unit test passed while the browser hung.
 | Past 300 edges, Dagre uses `tight-tree` ranking and skips the crossing-minimisation sweeps | `layout.ts` `FAST_LAYOUT_EDGES` | removes the hang; below 300 edges the layout is unchanged |
 | Node and edge objects are reused when what they draw is unchanged | `TopologyCanvas.tsx` `reuse()` | a poll or a click no longer re-renders every element |
 | Dimming is a class on the canvas plus a mark on the neighbourhood | `TopologyCanvas.tsx`, `app.css` | a click restyles the neighbourhood, not the whole graph |
-| Past 100 drawn edges, labels appear only for the selection's neighbourhood and the hovered edge | `TopologyCanvas.tsx` `LABEL_ALL_EDGES` | two fewer DOM elements per edge; the demo graph is still fully labelled |
+| Past 100 drawn edges, labels appear only for the selection's neighbourhood and the hovered edge (later removed entirely; see the end of this page) | `TopologyCanvas.tsx` | two fewer DOM elements per edge |
 | `onlyRenderVisibleElements` | `TopologyCanvas.tsx` | off-screen elements are not mounted (1,010 of 2,000 edges at the default view) |
 | Cap raised from 400 to 2,000, matching the backend's default `GRAPH_MAX_EDGES` | `renderBudget.ts` | the cap still guards an operator who raises the backend limit |
 | Grouping by namespace by default past 400 edges now has its own constant | `TopologyCanvas.tsx` `GROUP_BY_DEFAULT_EDGES` | same behaviour as before, now a readability choice rather than a performance one |
@@ -85,9 +85,35 @@ first paint is 493 ms at 1,000 edges and 1,065 ms at 2,000.
   into a Web Worker.
 - **Large graphs have more crossings.** The fast layout skips crossing minimisation. Below 300
   edges nothing changed, so the demo graph looks exactly as it did.
-- **Labels past 100 edges appear on request.** Select a component or hover an edge to see them.
+- **Edges carry no text** (changed after this measurement, see below). The details panel has the port and counts.
 - **Responsive is not the same as readable.** 2,000 edges on one canvas is still a dense picture,
   which is why graphs over 400 edges still open grouped by namespace.
 - **Synthetic data, mocked API, one machine.** Phase 5 measured real ingested data. The graph here
   has the same shape and size but is served by a mock, so the backend's share is measured
   separately (query p95 62 ms).
+
+## Addendum: floating edges (2026-09-25)
+
+Edges now run between the circles along the line joining their centres, instead of from a fixed
+right-hand handle to a fixed left-hand one. Separately, `layout.ts` now moves nodes so they never
+overlap, and that can put a target to the left of its source; a fixed-handle edge then looped
+backwards. Edges also curve around any node a straight line would cross (`routeBends`).
+
+Re-measured at 500 / 2,000 with the same bench, three runs each:
+
+| edges | select, worst task | deselect, worst task |
+|---|---:|---:|
+| React Flow default (fixed handles) | 77–97 ms | 76–84 ms |
+| floating, reading positions from React Flow's store | 116–123 ms | 119–125 ms |
+| floating, positions passed in from the layout (shipped) | 87–93 ms | 86–95 ms |
+
+Reading each edge's endpoints from the store cost about 35 ms per click, so the shipped version
+passes the circles in from the layout instead. That is exact because nodes are not draggable. With
+counts changing on every poll, select measured 107 ms once; the 100 ms line sits inside this
+machine's run-to-run noise. Routing is cached with the layout, so polls that reuse the layout stay
+at 0 ms.
+
+Later the same day, text was removed from edges entirely, on request: no port label, and no
+counts when a component is selected. The details panel carries that reading. This only removes
+DOM elements, so it cannot make the numbers above worse.
+
