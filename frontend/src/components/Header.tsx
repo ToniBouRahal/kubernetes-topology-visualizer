@@ -1,3 +1,6 @@
+import type { WindowPreset } from "../api/types";
+import { lengthLabel } from "../features/timerange/history";
+
 export type Mode = "live" | "history" | "compare";
 
 /**
@@ -27,7 +30,7 @@ export function Header({
   connected: boolean;
   windowPreset: string;
   onWindowChange: (preset: string) => void;
-  presets: readonly string[];
+  presets: readonly WindowPreset[];
 }) {
   return (
     <header className="header">
@@ -57,7 +60,8 @@ export function Header({
         <select value={windowPreset} onChange={(e) => onWindowChange(e.target.value)}>
           {presets.map((p) => (
             <option key={p} value={p}>
-              last {p}
+              {/* Live is anchored to now; History to a chosen start, so there it is a length. */}
+              {mode === "live" ? `last ${p}` : lengthLabel(p)}
             </option>
           ))}
         </select>

@@ -28,6 +28,13 @@ Then `kubectl -n topology port-forward svc/topology-visualizer-frontend 8080:808
 
 ## Explore the topology
 
+**Live** shows the last few minutes and refreshes every 5 seconds; the strip under the header says
+**LIVE**. **History** shows a fixed period in the past: pick a start and a length (up to the backend's
+retention, 60 days by default), step through it with **Earlier** and **Later**, and return with
+**Back to live**. History never refreshes on its own, is marked **HISTORY · NOT LIVE** in amber, and
+the details panel, namespace list and graph all read the same period. The details panel separates
+when a component was seen in that period from when it was seen across all stored history.
+
 In Live and History views, choose **Namespaces** to collapse workloads into namespace nodes.
 Click a namespace to expand its workloads; use **Collapse <namespace>** or **Collapse all** to
 return to the overview. Graphs initially exceeding 400 edges start grouped; smaller graphs start
