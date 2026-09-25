@@ -22,9 +22,13 @@
 .header__brand { display: flex; align-items: baseline; gap: var(--s-2); }
 
 /* A small aperture mark: a ring with a gap, suggesting something watched rather than drawn. */
+/* The one place the mode accent is chosen: everything that should read as "live" or "not live"
+   uses --signal, and this rule swaps it. Never branch the accent per component in JS. */
+.app[data-mode="history"], .app[data-mode="compare"] { --signal: var(--signal-history); }
+
 .header__mark {
   width: 11px; height: 11px;
-  border: 2px solid var(--ns-1);
+  border: 2px solid var(--signal);
   border-radius: 50%;
   border-right-color: transparent;
   align-self: center;
@@ -110,6 +114,58 @@
 .strip__stat b { color: var(--text); font-weight: 600; }
 .strip__spacer { flex: 1; }
 .strip__updated { color: var(--text-faint); }
+
+/* Which mode this is, in words, in the mode accent. */
+.strip__mode {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--step--1);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--signal);
+  white-space: nowrap;
+}
+.strip__signal {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+/* The strip's only motion, and only while the reading is genuinely live and unpaused (ADR-006 F9).
+   One element regardless of graph size; reduced-motion stops it via tokens.css. */
+.strip__mode--live .strip__signal {
+  background: var(--signal);
+  animation: signal-pulse 2s ease-in-out infinite;
+}
+@keyframes signal-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--signal) 55%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--signal) 0%, transparent); }
+}
+
+/* History: the strip itself changes, so an old reading cannot pass for a current one. */
+.strip--history {
+  background: color-mix(in srgb, var(--signal) 9%, var(--panel));
+  border-bottom-color: var(--signal);
+  box-shadow: inset 3px 0 0 var(--signal);
+}
+.strip__start input {
+  width: auto;
+  padding: 2px var(--s-2);
+  font-family: var(--mono);
+  font-size: var(--step--1);
+}
+.strip__step, .strip__back {
+  padding: 2px var(--s-2);
+  font-size: var(--step--1);
+  white-space: nowrap;
+}
+.strip__back {
+  border-color: var(--signal);
+  color: var(--signal);
+  font-weight: 600;
+}
+.strip__problem { color: var(--danger); }
 
 /* ── Body ────────────────────────────────────────────────────────────────────────────────── */
 

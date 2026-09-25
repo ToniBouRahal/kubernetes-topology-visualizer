@@ -72,6 +72,13 @@
   --ok: #1f7a4c;
   --warn: #a85a10;
   --danger: #a3332b;
+  /* The mode accent (DESIGN.md "Signal"): cyan-green while the reading is live, amber once it is
+     historical or comparative. A separate token from --ok on purpose — whether the backend is
+     reachable does not depend on which period is being viewed. Swapped only by .app[data-mode]
+     in app.css. History's amber is darker and yellower than --warn, which marks failed edges. */
+  --signal-live: #0b7155;
+  --signal-history: #8a5f00;
+  --signal: var(--signal-live);
 
   /* ── Type ────────────────────────────────────────────────────────────────────────────── */
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;

@@ -91,6 +91,16 @@ export function DetailsPanel({
   const totalSuccessful = touching.reduce((sum, d) => sum + d.connection_count, 0);
   const totalFailed = touching.reduce((sum, d) => sum + (d.failed_connection_count ?? 0), 0);
   const links = grafanaLinks(node, grafana, detail?.window);
+  // When this component was active INSIDE the period on screen. The node's own first_seen and
+  // last_seen span all stored history, which in History can fall outside the period being read.
+  // A bucket is filed by its LAST sighting, so a link already open when the window began brings a
+  // first_seen from just before it. Shown as "already active" at the window's start rather than
+  // as a time outside the period.
+  const earliest = touching.length ? Math.min(...touching.map((d) => new Date(d.first_seen).getTime())) : null;
+  const windowStart = detail ? new Date(detail.window.start).getTime() : null;
+  const alreadyActive = earliest !== null && windowStart !== null && earliest < windowStart;
+  const windowFirst = earliest === null ? null : alreadyActive ? windowStart : earliest;
+  const windowLast = touching.length ? Math.max(...touching.map((d) => new Date(d.last_seen).getTime())) : null;
 
   return (
     <aside className="panel panel--right" aria-label={`Details for ${node.label}`}>
@@ -124,10 +134,22 @@ export function DetailsPanel({
         </section>
       )}
 
+      {windowFirst !== null && windowLast !== null && (
+        <section className="panel__section">
+          <span className="label">First seen in this window</span>
+          <div className="mono panel__value">
+            {alreadyActive ? "already active at " : ""}
+            {new Date(windowFirst).toLocaleString()}
+          </div>
+          <span className="label">Last seen in this window</span>
+          <div className="mono panel__value">{new Date(windowLast).toLocaleString()}</div>
+        </section>
+      )}
+
       <section className="panel__section">
-        <span className="label">First seen</span>
+        <span className="label">First seen in stored history</span>
         <div className="mono panel__value">{new Date(node.first_seen).toLocaleString()}</div>
-        <span className="label">Last seen</span>
+        <span className="label">Last seen in stored history</span>
         <div className="mono panel__value">{new Date(node.last_seen).toLocaleString()}</div>
       </section>
 

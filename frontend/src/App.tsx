@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchNamespaces, fetchNodeDetail } from "./api/client";
 import type { GraphQuery, NodeDetail, WindowPreset } from "./api/types";
@@ -28,6 +28,7 @@ import {
   type CompareSpanId,
 } from "./features/timerange/periods";
 import { useGraph } from "./features/graph/useGraph";
+import { atLatest, historyRange, initialHistoryStart, stepHistoryStart } from "./features/timerange/history";
 
 export default function App() {
   // Read once; absent or malformed means the optional integrations simply do not appear.
@@ -35,6 +36,8 @@ export default function App() {
   const [mode, setMode] = useState<Mode>("live");
   const [preset, setPreset] = useState<WindowPreset>("5m");
   const [paused, setPaused] = useState(false);
+  // History's start, as a datetime-local value. Its length is `preset`, shared with Live.
+  const [historyStart, setHistoryStart] = useState(() => initialHistoryStart("5m"));
   const [namespaces, setNamespaces] = useState<string[]>([]);
   const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
   const [search, setSearch] = useState("");
@@ -63,14 +66,38 @@ export default function App() {
   // FIXED while the user reads them. Recomputing on every render would make the answer move.
   const [periods, setPeriods] = useState(() => adjacentPeriods(5));
 
+  // The period everything on screen is scoped to: relative to now in Live, fixed in History. The
+  // graph, the namespace list and the details panel all read this one value, so they cannot
+  // describe different periods.
+  const history = useMemo(() => historyRange(historyStart, preset), [historyStart, preset]);
+  // A half-typed or future start keeps the last period that could be shown, rather than blanking
+  // the graph while the reader is still choosing.
+  const lastGoodHistory = useRef<{ from: string; to: string } | null>(null);
+  if (history.problem === null) lastGoodHistory.current = { from: history.from, to: history.to };
+  const range = useMemo<Pick<GraphQuery, "window" | "from" | "to">>(() => {
+    if (mode === "history" && lastGoodHistory.current) return { ...lastGoodHistory.current };
+    return { window: preset };
+    // `history` is a dependency because it is what moves lastGoodHistory.
+  }, [mode, preset, history]);
+  const rangeKey = JSON.stringify(range);
+
+  const changeMode = useCallback(
+    (next: Mode) => {
+      // Entering History holds still the window Live was just showing, rather than jumping away.
+      if (next === "history" && mode !== "history") setHistoryStart(initialHistoryStart(preset));
+      setMode(next);
+    },
+    [mode, preset],
+  );
+
   const query = useMemo<GraphQuery>(
     () => ({
-      window: preset,
+      ...range,
       namespace: selectedNamespaces.length ? selectedNamespaces : undefined,
       query: search || undefined,
       includeExternal,
     }),
-    [preset, selectedNamespaces, search, includeExternal],
+    [range, selectedNamespaces, search, includeExternal],
   );
 
   // History mode freezes the window, so polling would only add load without changing anything.
@@ -170,13 +197,13 @@ export default function App() {
   // would make a namespace disappear the moment you deselected it.
   useEffect(() => {
     const controller = new AbortController();
-    fetchNamespaces({ window: preset }, controller.signal)
+    fetchNamespaces(JSON.parse(rangeKey) as GraphQuery, controller.signal)
       .then((response) => setNamespaces(response.namespaces))
       .catch(() => {
         /* The filter list is a convenience; its failure must not disturb the graph. */
       });
     return () => controller.abort();
-  }, [preset, lastUpdated]);
+  }, [rangeKey, lastUpdated]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -185,12 +212,12 @@ export default function App() {
     }
     const controller = new AbortController();
     setDetailLoading(true);
-    fetchNodeDetail(selectedId, { window: preset }, controller.signal)
+    fetchNodeDetail(selectedId, JSON.parse(rangeKey) as GraphQuery, controller.signal)
       .then(setDetail)
       .catch(() => setDetail(null))
       .finally(() => setDetailLoading(false));
     return () => controller.abort();
-  }, [selectedId, preset]);
+  }, [selectedId, rangeKey]);
 
   const selectedNode = useMemo(
     () => graph?.nodes.find((n) => n.id === selectedId) ?? null,
@@ -213,10 +240,11 @@ export default function App() {
   const isEmpty = hasGraph && graph.edges.length === 0;
 
   return (
-    <div className="app">
+    // data-mode swaps the accent between live and history in one CSS rule (DESIGN.md).
+    <div className="app" data-mode={mode}>
       <Header
         mode={mode}
-        onModeChange={setMode}
+        onModeChange={changeMode}
         paused={paused}
         onTogglePause={() => setPaused((p) => !p)}
         onRefresh={refresh}
@@ -232,7 +260,15 @@ export default function App() {
           window={graph.window}
           summary={graph.summary}
           lastUpdated={lastUpdated}
-          live={mode === "live" && !paused}
+          mode={mode === "history" ? "history" : paused ? "paused" : "live"}
+          history={{
+            start: historyStart,
+            onStartChange: setHistoryStart,
+            onStep: (direction) => setHistoryStart((s) => stepHistoryStart(s, preset, direction)),
+            canStepLater: !atLatest(historyStart, preset),
+            problem: history.problem ?? null,
+            onBackToLive: () => changeMode("live"),
+          }}
         />
       )}
 

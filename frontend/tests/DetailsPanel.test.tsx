@@ -79,3 +79,26 @@ it("renders nothing until a component is selected", () => {
   const {container} = render(<DetailsPanel node={null} detail={null} loading={false} onClose={() => {}}/>);
   expect(container).toBeEmptyDOMElement();
 });
+
+it("separates when a component was seen in the window from its whole stored history", () => {
+  // Viewing 14:00–15:00; the node kept talking until 21:33, long after the window.
+  const lifetime = {...node, first_seen: "2026-09-25T12:53:00Z", last_seen: "2026-09-25T18:33:00Z"};
+  const inWindow: NodeDetail = {...detail, node: lifetime, incoming: [], outgoing: [
+    {...detail.outgoing[0]!, first_seen: "2026-09-25T14:00:05Z", last_seen: "2026-09-25T14:40:00Z"},
+    {...detail.outgoing[1]!, first_seen: "2026-09-25T14:10:00Z", last_seen: "2026-09-25T14:59:30Z"},
+  ]};
+  render(<DetailsPanel node={lifetime} detail={inWindow} loading={false} onClose={() => {}}/>);
+  const value = (label: string) => screen.getByText(label).nextElementSibling!.textContent;
+  expect(value("First seen in this window")).toBe(new Date("2026-09-25T14:00:05Z").toLocaleString());
+  expect(value("Last seen in this window")).toBe(new Date("2026-09-25T14:59:30Z").toLocaleString());
+  expect(value("Last seen in stored history")).toBe(new Date("2026-09-25T18:33:00Z").toLocaleString());
+});
+
+it("says a link was already active rather than show a first sighting before the window", () => {
+  const inWindow: NodeDetail = {...detail, window: {start: "2026-09-25T14:00:00Z", end: "2026-09-25T15:00:00Z"}, incoming: [], outgoing: [
+    {...detail.outgoing[0]!, first_seen: "2026-09-25T13:59:57Z", last_seen: "2026-09-25T14:30:00Z"},
+  ]};
+  render(<DetailsPanel node={node} detail={inWindow} loading={false} onClose={() => {}}/>);
+  expect(screen.getByText("First seen in this window").nextElementSibling!.textContent)
+    .toBe(`already active at ${new Date("2026-09-25T14:00:00Z").toLocaleString()}`);
+});

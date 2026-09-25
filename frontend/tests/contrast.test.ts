@@ -53,8 +53,11 @@ const TEXT_SURFACES = SURFACES;
 const TEXT_TOKENS = ["--text", "--text-dim", "--text-faint"] as const;
 const NAMESPACE_TOKENS = ["--ns-1", "--ns-2", "--ns-3", "--ns-4", "--ns-5", "--ns-6", "--external"] as const;
 
+// The mode accent is text too: the strip's LIVE / HISTORY words and "Back to live" are set in it.
+const SIGNAL_TOKENS = ["--signal-live", "--signal-history"] as const;
+
 describe("WCAG AA text contrast", () => {
-  for (const text of TEXT_TOKENS) {
+  for (const text of [...TEXT_TOKENS, ...SIGNAL_TOKENS]) {
     for (const surface of TEXT_SURFACES) {
       it(`${text} on ${surface} meets 4.5:1`, () => {
         const ratio = contrast(token(text), token(surface));
