@@ -8,7 +8,7 @@ SHELL := /bin/bash
 
 # ── Pinned toolchain (ADR-008 D-8.3) ────────────────────────────────────────────────────────
 # Keep in lockstep with docs/prerequisites.md and .github/workflows/ci.yml.
-GO_VERSION      := 1.26.5
+GO_VERSION      := 1.26.7
 NODE_VERSION    := 24.19.0
 PYTHON_VERSION  := 3.13
 HELM_VERSION    := 4.2.3
@@ -214,30 +214,51 @@ image-backend: ## Build the backend image and side-load it into kind
 verify-privacy: ## Screenshots, log defaults and committed credentials (P5-T18, ADR-008 D-8.7)
 	@bash scripts/verify-privacy.sh
 
+.PHONY: pod-security
+pod-security: ## Label the release namespace for Pod Security: enforce privileged (the agent), warn+audit restricted (ADR-014 D-14.12)
+	@# The agent needs two capabilities and a read-only host path, which even `baseline` forbids, so
+	@# the namespace cannot enforce more than `privileged`. Every other workload meets `restricted`;
+	@# warn and audit at that level make anything else that drifts visible at once. The only
+	@# warnings expected are the agent's.
+	$(KUBECTL) label namespace $(NAMESPACE) --overwrite \
+	  pod-security.kubernetes.io/enforce=privileged \
+	  pod-security.kubernetes.io/warn=restricted \
+	  pod-security.kubernetes.io/audit=restricted
+
+.PHONY: verify-tls
+verify-tls: ## From an unlabelled pod: mTLS listeners and PostgreSQL refuse a client without credentials (ADR-014 T-14.7)
+	@KIND_CONTEXT=$(KIND_CONTEXT) NAMESPACE=$(NAMESPACE) RELEASE=$(RELEASE) bash scripts/verify-tls.sh
+
+.PHONY: audit
+audit: ## Known-vulnerability audit: govulncheck, pip-audit, npm audit (ADR-014 D-14.11)
+	@VENV_PY=$(VENV_PY) bash scripts/audit-deps.sh
+
+.PHONY: scan-images
+scan-images: ## Trivy scan + CycloneDX SBOM of the built images and the database image; fails on fixable HIGH/CRITICAL (ADR-008 D-8.7, ADR-014 D-14.11)
+	@bash scripts/scan-images.sh dev sbom
+
 .PHONY: experiments
 experiments: ## Measure every ADR-001 §6 performance target and report met/missed (P5-T12)
 	@bash scripts/experiments.sh all
 
 .PHONY: seed-scale
-seed-scale: ## Ingest a synthetic 500-node graph for scale measurement (needs a port-forward on 18100)
+seed-scale: ## Ingest a synthetic 500-node graph for scale measurement, as an agent over mTLS
 	@echo "Ingests through the real endpoint. Remove afterwards — see phase-5.md."
-	python3 scripts/seed-scale.py --url http://localhost:18100 --nodes 500 --edges 2000
+	@set -e; KUBECTL="$(KUBECTL)" NAMESPACE=$(NAMESPACE) RELEASE=$(RELEASE); \
+	source scripts/lib/mtls.sh; mtls_open agent 18443; \
+	python3 scripts/seed-scale.py --url https://localhost:18443 --nodes 500 --edges 2000 \
+	  --cert "$$MTLS_DIR/tls.crt" --key "$$MTLS_DIR/tls.key" --cacert "$$MTLS_DIR/ca.crt" \
+	  --server-name $(RELEASE)-visualizer-backend.$(NAMESPACE).svc.cluster.local
+
+.PHONY: api-get
+api-get: ## GET a path from the backend API over mTLS as the frontend, e.g. make api-get API_PATH=/api/v1/graph?window=5m
+	@set -e; KUBECTL="$(KUBECTL)" NAMESPACE=$(NAMESPACE) RELEASE=$(RELEASE); \
+	source scripts/lib/mtls.sh; mtls_open frontend 18444; \
+	"$${MTLS_CURL[@]}" "$$MTLS_BASE$(API_PATH)"; echo
 
 .PHONY: verify-pinning
 verify-pinning: ## Assert every third-party image is pinned by digest, not just a tag (P5-K10)
 	@bash scripts/verify-image-pinning.sh
-
-.PHONY: scan-images
-scan-images: ## Scan the built images for HIGH/CRITICAL vulnerabilities (ADR-008 D-8.7)
-	@# Trivy runs in a container so nothing has to be installed on the host. The cache is kept in
-	@# the repo-local .trivy-cache so repeated runs do not re-download a 100 MB database.
-	@mkdir -p .trivy-cache
-	@for img in topology-agent:dev topology-backend:dev topology-frontend:dev postgres:17-alpine; do \
-	  echo "== $$img =="; \
-	  docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-	    -v "$(REPO_ROOT)/.trivy-cache":/root/.cache/ aquasec/trivy:latest image \
-	    --scanners vuln --severity HIGH,CRITICAL --quiet "$$img" || true; \
-	done
 
 .PHONY: verify-db-image
 verify-db-image: ## Prove the database image PULLS rather than relying on a side-loaded copy (P3-K5, ADR-007 D-7.2)
@@ -374,11 +395,14 @@ demo-up: ## Cluster + images + install + demo workloads, ready to observe
 	  -f $(KIND_VALUES) \
 	  --set postgresql.enabled=true --set postgresql.auth.password="$$PW" \
 	  --wait --timeout 6m
+	$(MAKE) pod-security
 	$(MAKE) demo-workloads
 	@echo
 	@echo "Ready. Watch the topology build up with:"
 	@echo "    make demo-traffic && make demo-verify"
 	@echo "    $(KUBECTL) -n $(NAMESPACE) port-forward svc/$(RELEASE)-visualizer-frontend 8080:8080"
+	@echo "Then open http://localhost:8080 and sign in as admin@topology.local, password:"
+	@echo "    $(KUBECTL) -n $(NAMESPACE) get secret $(RELEASE)-visualizer-auth -o jsonpath='{.data.demo-password}' | base64 -d; echo"
 
 .PHONY: demo-traffic
 demo-traffic: ## Generate a known, counted burst of traffic and wait for it to be aggregated

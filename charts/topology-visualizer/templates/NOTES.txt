@@ -16,12 +16,31 @@ Cluster ID: {{ .Values.clusterId }}
 3. Open the UI (port-forwarding is the default access method for kind):
 
      kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "topology.fullname" . }}-frontend {{ .Values.frontend.service.port }}:{{ .Values.frontend.service.port }}
-     open http://localhost:{{ .Values.frontend.service.port }}
+     open {{ .Values.auth.externalUrl | default (printf "http://localhost:%v" .Values.frontend.service.port) }}
+{{- if and .Values.auth.enabled .Values.auth.dex.enabled }}
 
-4. Query the graph directly:
+   Sign in with the bundled Dex (ADR-014 D-14.7):
+     user:     {{ .Values.auth.dex.email }}
+     password: kubectl -n {{ .Release.Namespace }} get secret {{ include "topology.fullname" . }}-auth -o jsonpath='{.data.demo-password}' | base64 -d; echo
+{{- else if .Values.auth.enabled }}
 
-     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "topology.backendService" . }} {{ .Values.backend.service.port }}:{{ .Values.backend.service.port }}
-     curl -s 'http://localhost:{{ .Values.backend.service.port }}/api/v1/graph?window=5m' | jq
+   Sign in through {{ .Values.auth.oidc.issuerUrl }}. The redirect URI registered with it must be
+   exactly: {{ trimSuffix "/" .Values.auth.externalUrl }}/oauth2/callback
+{{- end }}
+
+4. The API is served only over mutual TLS (ADR-014 D-14.3). Outside the UI, use the frontend's
+   client certificate — reading it needs Secret access in this namespace, which is the point:
+
+     kubectl -n {{ .Release.Namespace }} get secret {{ include "topology.fullname" . }}-tls-frontend -o json \
+       | jq -r '.data["tls.crt"], .data["tls.key"], .data["ca.crt"]' | ...   # see docs/operator-guide.md
+     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "topology.backendService" . }} {{ .Values.backend.service.apiPort }}:{{ .Values.backend.service.apiPort }}
+
+   `make api-get API_PATH=/api/v1/graph?window=5m` does all of this for the kind demo.
 
 An empty graph is the normal first state. Generate traffic and allow up to 20 seconds:
 agent aggregation is {{ .Values.agent.flushIntervalSeconds }}s, plus a 5s UI poll.
+{{- if not .Values.auth.enabled }}
+
+WARNING: auth.enabled is false. Anyone who can reach the frontend Service can read the full
+observed topology of this cluster. Turn sign-in on unless that is exactly what you intend.
+{{- end }}

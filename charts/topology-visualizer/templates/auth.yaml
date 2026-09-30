@@ -1,0 +1,88 @@
+{{- /*
+Sign-in secrets and the bundled Dex's configuration (ADR-014 D-14.6, D-14.7).
+
+<fullname>-auth holds what the chart generates: the session-cookie key, and with the bundled Dex
+its client secret, the demo user's password and that password's bcrypt hash. All are generated
+once and kept across upgrades (lookup), so an upgrade does not sign everyone out or change the
+demo password. The hash is stored too, rather than recomputed: bcrypt salts, so recomputing it
+would change Dex's configuration — and restart Dex — on every upgrade.
+*/ -}}
+{{- if .Values.auth.enabled }}
+{{- $full := include "topology.fullname" . }}
+{{- $existing := (lookup "v1" "Secret" .Release.Namespace (printf "%s-auth" $full)).data | default dict }}
+{{- $cookie := index $existing "cookie-secret" | default (randAlphaNum 32 | b64enc) | b64dec }}
+{{- $clientSecret := index $existing "client-secret" | default (randAlphaNum 40 | b64enc) | b64dec }}
+{{- $password := index $existing "demo-password" | default (randAlphaNum 20 | b64enc) | b64dec }}
+{{- $hash := index $existing "demo-password-hash" | default (bcrypt $password | b64enc) | b64dec }}
+{{- if not .Values.auth.externalUrl }}
+{{- fail "auth.externalUrl is required when auth.enabled: the URL people open the UI at, e.g. https://topology.example.com" }}
+{{- end }}
+{{- if and (not .Values.auth.dex.enabled) (or (not .Values.auth.oidc.issuerUrl) (not .Values.auth.oidc.clientId) (not .Values.auth.oidc.clientSecret.existingSecret)) }}
+{{- fail "auth.oidc.issuerUrl, auth.oidc.clientId and auth.oidc.clientSecret.existingSecret are required when auth.enabled without the bundled Dex (auth.dex.enabled)" }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $full }}-auth
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: auth
+type: Opaque
+data:
+  # oauth2-proxy's session-cookie key: exactly 32 bytes, which selects AES-256.
+  cookie-secret: {{ $cookie | b64enc | quote }}
+  {{- if .Values.auth.dex.enabled }}
+  client-secret: {{ $clientSecret | b64enc | quote }}
+  demo-password: {{ $password | b64enc | quote }}
+  demo-password-hash: {{ $hash | b64enc | quote }}
+  {{- end }}
+{{- if .Values.auth.dex.enabled }}
+{{- $externalUrl := trimSuffix "/" .Values.auth.externalUrl }}
+---
+# Dex reads its configuration from this Secret (dex.configSecret.name), not from values.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: topology-dex-config
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: auth
+type: Opaque
+stringData:
+  config.yaml: |
+    # Served under /dex through the frontend, so the demo keeps one port-forward.
+    issuer: {{ printf "%s/dex" $externalUrl | quote }}
+    storage:
+      type: memory
+    web:
+      https: 0.0.0.0:5554
+      tlsCert: /etc/dex/tls/tls.crt
+      tlsKey: /etc/dex/tls/tls.key
+      tlsMinVersion: "1.3"
+    oauth2:
+      skipApprovalScreen: true
+      responseTypes: ["code"]
+    enablePasswordDB: true
+    staticClients:
+      - id: topology
+        name: Runtime Topology
+        secret: {{ $clientSecret | quote }}
+        redirectURIs:
+          - {{ printf "%s/oauth2/callback" $externalUrl | quote }}
+    staticPasswords:
+      - email: {{ .Values.auth.dex.email | quote }}
+        username: admin
+        userID: {{ .Values.auth.dex.email | sha256sum | trunc 32 | quote }}
+        hash: {{ $hash | quote }}
+---
+# Dex uses in-memory storage and never calls the Kubernetes API, so its pods get no token.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: topology-dex
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: auth
+automountServiceAccountToken: false
+{{- end }}
+{{- end }}

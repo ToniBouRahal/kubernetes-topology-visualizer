@@ -58,5 +58,37 @@ class Settings(BaseSettings):
     # The only schema version this release accepts. Anything else is 400, not 422.
     supported_schema_version: int = 1
 
+    # Listeners (ADR-014 D-14.3). With no TLS files the process serves one plain listener on
+    # ops_port, as in development and tests. With all four, it serves three: ingest and api over
+    # mutual TLS, each trusting one client CA, and ops in plain HTTP for probes and scraping.
+    ops_port: int = 8000
+    ingest_port: int = 8443
+    api_port: int = 8444
+    tls_cert_file: str = ""
+    tls_key_file: str = ""
+    tls_ingest_client_ca_file: str = ""
+    tls_api_client_ca_file: str = ""
+
+    @property
+    def tls_files(self) -> tuple[str, str, str, str]:
+        return (
+            self.tls_cert_file,
+            self.tls_key_file,
+            self.tls_ingest_client_ca_file,
+            self.tls_api_client_ca_file,
+        )
+
+    @property
+    def tls_enabled(self) -> bool:
+        """All four TLS files, or none. Some but not all refuses to start: a half-configured
+        listener set must fail closed rather than quietly serve plain HTTP."""
+        present = [bool(f) for f in self.tls_files]
+        if any(present) and not all(present):
+            raise ValueError(
+                "TLS_CERT_FILE, TLS_KEY_FILE, TLS_INGEST_CLIENT_CA_FILE and TLS_API_CLIENT_CA_FILE "
+                "must be set together"
+            )
+        return all(present)
+
 
 settings = Settings()

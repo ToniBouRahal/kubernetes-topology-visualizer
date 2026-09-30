@@ -3,79 +3,179 @@
   "title": "topology-visualizer values",
   "description": "Fails fast on malformed values. Verified by test T-7.3 (ADR-007 D-7.2).",
   "type": "object",
-  "required": ["clusterId", "agent", "backend", "frontend"],
+  "required": [
+    "clusterId",
+    "agent",
+    "backend",
+    "frontend",
+    "tls"
+  ],
   "properties": {
-    "nameOverride": { "type": "string" },
-    "fullnameOverride": { "type": "string" },
-
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    },
     "clusterId": {
       "type": "string",
       "minLength": 1,
       "pattern": "^[^:]+$",
-      "description": "Embedded in every canonical node ID. Must not contain ':' — that is the ID separator and would make identity ambiguous. Must be identical for agent and backend."
+      "description": "Embedded in every canonical node ID. Must not contain ':' \u2014 that is the ID separator and would make identity ambiguous. Must be identical for agent and backend."
     },
-
     "agent": {
       "type": "object",
-      "required": ["enabled", "image", "flushIntervalSeconds", "maxPendingBatches"],
+      "required": [
+        "enabled",
+        "image",
+        "flushIntervalSeconds",
+        "maxPendingBatches"
+      ],
       "properties": {
-        "enabled": { "type": "boolean" },
-        "image": { "$ref": "#/$defs/image" },
-        "backendIngestUrl": { "type": "string" },
-        "flushIntervalSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
-        "maxPendingBatches": { "type": "integer", "minimum": 1 },
-        "infrastructurePorts": { "type": "string" },
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "$ref": "#/$defs/image"
+        },
+        "backendIngestUrl": {
+          "type": "string"
+        },
+        "flushIntervalSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "maxPendingBatches": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "infrastructurePorts": {
+          "type": "string"
+        },
         "debugRawEvents": {
           "type": "boolean",
-          "description": "Logs raw source/destination IPs. Must stay false outside debugging (ADR-001 §6)."
+          "description": "Logs raw source/destination IPs. Must stay false outside debugging (ADR-001 \u00a76)."
         },
-        "metricsPort": { "$ref": "#/$defs/port" },
-        "healthPort": { "$ref": "#/$defs/port" },
-        "privileged": { "type": "boolean" },
-        "hostPID": { "type": "boolean" },
-        "tolerations": { "type": "array" },
-        "resources": { "type": "object" }
+        "metricsPort": {
+          "$ref": "#/$defs/port"
+        },
+        "healthPort": {
+          "$ref": "#/$defs/port"
+        },
+        "privileged": {
+          "type": "boolean"
+        },
+        "tolerations": {
+          "type": "array"
+        },
+        "resources": {
+          "type": "object"
+        }
       }
     },
-
     "backend": {
       "type": "object",
-      "required": ["enabled", "image", "service", "retentionHours"],
+      "required": [
+        "enabled",
+        "image",
+        "service",
+        "retentionHours"
+      ],
       "properties": {
-        "enabled": { "type": "boolean" },
+        "enabled": {
+          "type": "boolean"
+        },
         "replicaCount": {
           "type": "integer",
           "minimum": 1,
           "maximum": 1,
-          "description": "Multi-replica backend is deferred (ADR-001 §13) and would break single-writer assumptions."
+          "description": "Multi-replica backend is deferred (ADR-001 \u00a713) and would break single-writer assumptions."
         },
-        "image": { "$ref": "#/$defs/image" },
-        "service": { "$ref": "#/$defs/service" },
-        "retentionHours": { "type": "integer", "minimum": 1 },
-        "graphMaxNodes": { "type": "integer", "minimum": 1 },
-        "graphMaxEdges": { "type": "integer", "minimum": 1 },
-        "diffChangeThresholdPercent": { "type": "number", "minimum": 0 },
+        "image": {
+          "$ref": "#/$defs/image"
+        },
+        "service": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/service"
+            },
+            {
+              "type": "object",
+              "required": [
+                "ingestPort",
+                "apiPort"
+              ],
+              "properties": {
+                "ingestPort": {
+                  "$ref": "#/$defs/port"
+                },
+                "apiPort": {
+                  "$ref": "#/$defs/port"
+                }
+              }
+            }
+          ]
+        },
+        "retentionHours": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "graphMaxNodes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "graphMaxEdges": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "diffChangeThresholdPercent": {
+          "type": "number",
+          "minimum": 0
+        },
         "corsAllowedOrigins": {
           "type": "string",
           "minLength": 1,
-          "not": { "const": "*" },
-          "description": "Never '*' — unrestricted CORS is prototype defect B2 (ADR-004 D-4.6)."
+          "not": {
+            "const": "*"
+          },
+          "description": "Never '*' \u2014 unrestricted CORS is prototype defect B2 (ADR-004 D-4.6)."
         },
-        "resources": { "type": "object" },
-        "securityContext": { "type": "object" }
+        "resources": {
+          "type": "object"
+        },
+        "securityContext": {
+          "type": "object"
+        }
       }
     },
-
     "frontend": {
       "type": "object",
-      "required": ["enabled", "image", "service"],
+      "required": [
+        "enabled",
+        "image",
+        "service"
+      ],
       "properties": {
-        "enabled": { "type": "boolean" },
-        "replicaCount": { "type": "integer", "minimum": 1 },
-        "image": { "$ref": "#/$defs/image" },
-        "service": { "$ref": "#/$defs/service" },
-        "resources": { "type": "object" },
-        "securityContext": { "type": "object" },
+        "enabled": {
+          "type": "boolean"
+        },
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "image": {
+          "$ref": "#/$defs/image"
+        },
+        "service": {
+          "$ref": "#/$defs/service"
+        },
+        "resources": {
+          "type": "object"
+        },
+        "securityContext": {
+          "type": "object"
+        },
         "grafana": {
           "type": "object",
           "description": "Grafana deep links from the details panel (ADR-012). Off while url is empty.",
@@ -85,41 +185,78 @@
               "pattern": "^(https?://[^\\s\"'<>]+)?$",
               "description": "Empty, or an http(s) URL. It lands in an href, so a bare hostname or another scheme is refused here rather than rendered."
             },
-            "workloadDashboardUid": { "type": "string", "pattern": "^[A-Za-z0-9_-]*$" },
-            "lokiDatasourceUid": { "type": "string", "pattern": "^[A-Za-z0-9_-]*$" }
+            "workloadDashboardUid": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]*$"
+            },
+            "lokiDatasourceUid": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]*$"
+            }
           }
         }
       }
     },
-
     "postgresql": {
       "type": "object",
       "properties": {
-        "mode": { "enum": ["internal", "external"] },
-        "enabled": { "type": "boolean" },
-        "image": { "$ref": "#/$defs/image" },
+        "mode": {
+          "enum": [
+            "internal",
+            "external"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "$ref": "#/$defs/image"
+        },
         "auth": {
           "type": "object",
           "properties": {
-            "database": { "type": "string", "minLength": 1 },
-            "username": { "type": "string", "minLength": 1 },
-            "password": { "type": "string" },
-            "existingSecret": { "type": "string" }
+            "database": {
+              "type": "string",
+              "minLength": 1
+            },
+            "username": {
+              "type": "string",
+              "minLength": 1
+            },
+            "password": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            }
           }
         },
-        "persistence": { "type": "object" },
-        "service": { "$ref": "#/$defs/service" },
-        "resources": { "type": "object" }
+        "persistence": {
+          "type": "object"
+        },
+        "service": {
+          "$ref": "#/$defs/service"
+        },
+        "resources": {
+          "type": "object"
+        }
       },
       "allOf": [
         {
           "$comment": "An in-cluster database requires a password: either inline or via an existing Secret. An empty one must fail at install, not at first connection.",
           "if": {
             "properties": {
-              "enabled": { "const": true },
-              "mode": { "const": "internal" }
+              "enabled": {
+                "const": true
+              },
+              "mode": {
+                "const": "internal"
+              }
             },
-            "required": ["enabled", "mode"]
+            "required": [
+              "enabled",
+              "mode"
+            ]
           },
           "then": {
             "properties": {
@@ -127,45 +264,76 @@
                 "type": "object",
                 "anyOf": [
                   {
-                    "properties": { "password": { "type": "string", "minLength": 1 } },
-                    "required": ["password"]
+                    "properties": {
+                      "password": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "password"
+                    ]
                   },
                   {
-                    "properties": { "existingSecret": { "type": "string", "minLength": 1 } },
-                    "required": ["existingSecret"]
+                    "properties": {
+                      "existingSecret": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "existingSecret"
+                    ]
                   }
                 ]
               }
             },
-            "required": ["auth"]
+            "required": [
+              "auth"
+            ]
           }
         },
         {
           "$comment": "An external database must name the Secret holding its URL.",
           "if": {
-            "properties": { "mode": { "const": "external" } },
-            "required": ["mode"]
+            "properties": {
+              "mode": {
+                "const": "external"
+              }
+            },
+            "required": [
+              "mode"
+            ]
           },
           "then": {
             "properties": {
-              "externalDatabaseUrlSecret": { "type": "string", "minLength": 1 }
+              "externalDatabaseUrlSecret": {
+                "type": "string",
+                "minLength": 1
+              }
             }
           }
         }
       ]
     },
-
-    "externalDatabaseUrlSecret": { "type": "string" },
+    "externalDatabaseUrlSecret": {
+      "type": "string"
+    },
     "networkPolicy": {
       "type": "object",
-      "properties": { "enabled": { "type": "boolean" } }
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
     },
-
     "monitoring": {
       "type": "object",
-      "description": "Optional Prometheus Operator monitors and a Grafana sidecar dashboard (ADR-011). Off by default; never a dependency (ADR-001 §4.2).",
+      "description": "Optional Prometheus Operator monitors and a Grafana sidecar dashboard (ADR-011). Off by default; never a dependency (ADR-001 \u00a74.2).",
       "properties": {
-        "enabled": { "type": "boolean" },
+        "enabled": {
+          "type": "boolean"
+        },
         "scrapeInterval": {
           "type": "string",
           "pattern": "^[0-9]+(ms|s|m|h)$",
@@ -173,7 +341,9 @@
         },
         "monitorLabels": {
           "type": "object",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "prometheusNamespace": {
           "type": "string",
@@ -182,58 +352,246 @@
         },
         "prometheusPodSelector": {
           "type": "object",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "dashboard": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "sidecarLabel": { "type": "string", "minLength": 1 },
-            "sidecarLabelValue": { "type": "string" },
-            "namespace": { "type": "string" },
-            "folder": { "type": "string" }
+            "enabled": {
+              "type": "boolean"
+            },
+            "sidecarLabel": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sidecarLabelValue": {
+              "type": "string"
+            },
+            "namespace": {
+              "type": "string"
+            },
+            "folder": {
+              "type": "string"
+            }
           }
         }
       }
     },
-
     "observability": {
       "type": "object",
-      "description": "Bundled Prometheus + Grafana (ADR-013). Off by default; never a dependency of any accepted feature (ADR-001 §4.2).",
-      "properties": { "enabled": { "type": "boolean" } }
+      "description": "Bundled Prometheus + Grafana (ADR-013). Off by default; never a dependency of any accepted feature (ADR-001 \u00a74.2).",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "tls": {
+      "type": "object",
+      "description": "Mutual TLS between every component (ADR-014 D-14.2). Always on.",
+      "additionalProperties": false,
+      "required": [
+        "generate",
+        "certificateValidityDays",
+        "caValidityDays"
+      ],
+      "properties": {
+        "generate": {
+          "type": "boolean"
+        },
+        "certificateValidityDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 825
+        },
+        "caValidityDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 7300
+        }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "OIDC sign-in in front of the UI and API (ADR-014 D-14.6, D-14.7).",
+      "required": [
+        "enabled",
+        "externalUrl",
+        "oidc",
+        "sessionHours",
+        "dex",
+        "proxy"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "externalUrl": {
+          "type": "string",
+          "pattern": "^$|^https?://[^/\\s]+$",
+          "description": "Scheme and host the UI is opened at, no path or trailing slash."
+        },
+        "sessionHours": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 168
+        },
+        "oidc": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "issuerUrl": {
+              "type": "string",
+              "pattern": "^$|^https://"
+            },
+            "clientId": {
+              "type": "string"
+            },
+            "clientSecret": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "existingSecret": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "scopes": {
+              "type": "string",
+              "pattern": "openid"
+            },
+            "allowedEmailDomains": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1
+            },
+            "allowedGroups": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "dex": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "email": {
+              "type": "string",
+              "pattern": "^[^@\\s]+@[^@\\s]+$"
+            }
+          }
+        },
+        "proxy": {
+          "type": "object",
+          "properties": {
+            "image": {
+              "$ref": "#/$defs/image"
+            },
+            "resources": {
+              "type": "object"
+            }
+          }
+        }
+      }
     }
   },
-
   "allOf": [
     {
       "$comment": "monitoring.* emits PodMonitor/ServiceMonitor CRDs for an EXISTING Prometheus Operator; observability.* brings a plain Prometheus with no operator. Together, the CRDs fail the install on the cluster the bundle is for (ADR-013 D-13.2).",
       "if": {
-        "properties": { "observability": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] } },
-        "required": ["observability"]
+        "properties": {
+          "observability": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            },
+            "required": [
+              "enabled"
+            ]
+          }
+        },
+        "required": [
+          "observability"
+        ]
       },
       "then": {
-        "properties": { "monitoring": { "properties": { "enabled": { "const": false } } } }
+        "properties": {
+          "monitoring": {
+            "properties": {
+              "enabled": {
+                "const": false
+              }
+            }
+          }
+        }
       }
     }
   ],
-
   "$defs": {
-    "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
     "image": {
       "type": "object",
-      "required": ["repository", "tag"],
+      "required": [
+        "repository",
+        "tag"
+      ],
       "properties": {
-        "repository": { "type": "string", "minLength": 1 },
-        "tag": { "type": "string", "minLength": 1 },
-        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pullPolicy": {
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        }
       }
     },
     "service": {
       "type": "object",
-      "required": ["port"],
+      "required": [
+        "port"
+      ],
       "properties": {
-        "type": { "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
-        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+        "type": {
+          "enum": [
+            "ClusterIP",
+            "NodePort",
+            "LoadBalancer"
+          ]
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
       }
     }
   }

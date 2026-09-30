@@ -162,16 +162,20 @@ real, and naming one of its arms would invent a dependency that was never observ
 
 ## 3. Deployment and environment
 
-### 3.1 The agent is privileged — **inherent**
+### 3.1 The agent holds two capabilities — **measured, minimal**
 
-Loading a BPF program and attaching it to a tracepoint requires CAP_BPF and CAP_PERFMON
-(CAP_SYS_ADMIN on older kernels). There is no unprivileged configuration that can do it.
+Until ADR-014 the agent ran `privileged: true` with `hostPID`. It now runs with **only `CAP_BPF` and
+`CAP_PERFMON`**, all other capabilities dropped, no host namespace, a read-only root filesystem,
+the runtime's default seccomp profile, and one host path, `/sys/kernel/tracing`, mounted read-only.
+Measured on the kind cluster (kernel 6.8): the program loads and attaches, and the counted burst
+still reports exactly 100 of 100. `CAP_BPF` loads the program and its ring buffer; `CAP_PERFMON`
+attaches it to the tracepoint and lets it read kernel socket state. Nothing else was needed.
 
-The blast radius is bounded elsewhere: read-only Kubernetes RBAC (get/list/watch), no payload
-capture, no database credentials, and no seccomp profile *only* because `RuntimeDefault` blocks the
-very syscalls the agent exists to make. Every other workload runs non-root with a read-only root
-filesystem, all capabilities dropped and seccomp applied; the chart asserts that exactly one
-privileged container exists.
+What remains: those two capabilities are powerful — `CAP_PERFMON` lets a process read kernel
+memory through BPF — so the agent is still the most trusted workload, and because it needs them
+plus a host path, even the `baseline` Pod Security Standard rejects it (§6.5). `privileged: true`
+is kept as a chart value only for kernels without `CAP_BPF` (before 5.8), outside the supported
+range. The chart asserts that no container is privileged by default.
 
 ### 3.2 Linux 5.8+ with BTF — **inherent**
 
@@ -203,10 +207,12 @@ on every agent, where on kind it reads in the hundreds.
 horizontal scaling — the idempotency key makes duplicate delivery safe — but it has not been tested,
 and a schema that permits an untested topology invites a failure nobody has seen.
 
-### 3.6 The agent image is not distroless — **deliberate**
+### 3.6 The agent image is not distroless — **deliberate, worth revisiting**
 
-`debian:bookworm-slim` rather than distroless. The container is already privileged, so a shell adds
-little exposure while making on-node troubleshooting materially easier.
+`debian:bookworm-slim` rather than distroless, for on-node troubleshooting. The original argument
+was that a privileged container gains little from dropping its shell. With the agent now down to
+two capabilities (§3.1), a shell is a larger share of what an attacker who reached the container
+would have, and a distroless image is the natural next step.
 
 ---
 
@@ -269,16 +275,18 @@ cluster contacted.
 
 ---
 
-### 4.4 Ingestion is unauthenticated — **by design, mitigated**
+### 4.4 Ingestion is authenticated by mutual TLS — **closed by ADR-014**
 
-Any workload that can reach the ingest port could submit fabricated topology data. ADR-001 places
-authentication and role-based access explicitly out of scope, so this is a scope boundary rather
-than an oversight — but it is worth stating plainly rather than leaving a reader to infer it.
+This entry used to say that any workload reaching the ingest port could submit fabricated topology.
+It no longer can: batches are accepted only on a listener that requires a client certificate from
+the ingest-client CA, which signs the agents' certificate and nothing else. Measured from an
+unlabelled pod in the namespace (`make verify-tls`): no certificate, no handshake.
 
-What limits it: a NetworkPolicy admits only agent and frontend pods, nothing is exposed outside the
-cluster by default, and the request body is bounded at 10,000 edges so a single call cannot pin the
-backend. On a cluster where any pod reaching the ingest port is an acceptable trust boundary, this
-is fine; where it is not, the NetworkPolicy is doing the work and must be enforced by the CNI.
+What remains: all agents share **one** client certificate, so the backend can tell an agent from
+anything else but not one agent from another — a batch's `agent_id` is still what the batch says.
+Per-node certificates would need issuing at pod start (cert-manager's CSI driver, for example),
+which is outside what the chart can generate. And anyone who can read Secrets in the namespace
+can take that certificate, which is why Secret read access there is the real boundary.
 
 ---
 
@@ -304,3 +312,70 @@ Honest gaps rather than known-bad behaviour.
   delete a real bucket.
 - **`kubectl` 1.31.1 against a 1.36.1 server** is outside the supported skew for the local tooling.
   It has caused no observed problem, but it is not a supported combination.
+
+---
+
+## 6. Security (ADR-014)
+
+What the hardening does not do, measured where it could be.
+
+### 6.1 Certificates are rotated by hand — **by design**
+
+The chart generates every certificate (three CAs, five server and client certificates) and keeps
+them across upgrades. They are valid for 365 days and nothing renews them: rotation is deleting the
+certificate Secrets and running `helm upgrade`, after which every pod rolls onto the new set
+(operator guide). The CA private keys are never stored, so rotation always replaces the whole set.
+Automatic renewal is available by supplying the Secrets from cert-manager (`tls.generate: false`).
+
+### 6.2 The bundled Dex also listens on plain HTTP — **stated, mitigated**
+
+The Dex chart this depends on always passes `--web-http-addr` and offers no switch to remove it,
+so port 5556 is open inside the pod alongside the HTTPS port every client uses. A NetworkPolicy
+admits only the frontend pods, and only on HTTPS — which protects nothing under a CNI that does not
+enforce NetworkPolicy, kind's default among them (§3.3). The bundled Dex is a demo convenience; a
+real installation points `auth.oidc` at its own identity provider.
+
+### 6.3 Dex's sign-in page trips the Content-Security-Policy — **observed, harmless**
+
+Dex's login page carries one inline script (it focuses the username field), which the policy
+`script-src 'self'` blocks, and the browser logs a violation. The form works without it. Loosening
+the policy for one convenience script on a demo page would weaken it everywhere else.
+
+### 6.4 Images are scanned but not signed — **declined**
+
+CI scans every image with Trivy and keeps a CycloneDX SBOM of each (`make scan-images`). They are not
+signed: this project never publishes images to a registry — kind side-loads them — so there is no
+pulled artefact a signature would protect. Signing belongs with a release pipeline that publishes.
+
+### 6.5 The namespace cannot enforce a Pod Security Standard — **measured**
+
+A dry run against the live pods: every workload except the agent — backend, frontend and its
+oauth2-proxy, PostgreSQL, Dex — already meets **`restricted`**. The agent fails even `baseline`, for
+exactly the two things §3.1 measured as necessary: non-default capabilities and a host path. So the
+namespace enforces only `privileged` and warns and audits at `restricted` (`make pod-security`),
+where the agent's warnings are the only ones expected. Running the agent in its own namespace would
+let this one enforce `restricted`; the chart installs into one namespace and does not do that.
+
+### 6.6 Development mode serves plain HTTP — **deliberate, loud**
+
+The backend with no TLS settings, and the agent with an `http://` URL and no certificate, run as
+before ADR-014 so unit tests and local development keep working. Both log a warning at start-up
+saying so; half a TLS configuration refuses to start. The chart always configures TLS.
+
+### 6.7 Who signed in is logged — **deliberate**
+
+The backend's request log records the signed-in user's e-mail for every API read, from a header
+nginx sets and the backend trusts only on the listener nginx alone can reach. That is an audit
+trail of who looked at the topology; it is also personal data in the backend's logs, retained as
+long as those logs are.
+
+
+### 6.8 One binary is excluded from the image-scan gate — **argued, bounded**
+
+The official `postgres:17-alpine` image ships `gosu`, built with Go 1.24.6, and every HIGH and
+CRITICAL finding left in that image is in its Go runtime. The image's entrypoint runs `gosu` only
+when started as root (`if [ "$(id -u)" = '0' ]`), to drop to the `postgres` user; this chart starts
+PostgreSQL as uid 999 with `runAsNonRoot`, so the binary is never executed. `make scan-images`
+therefore skips that one file when gating — the SBOM still lists it — and says why in the script.
+The exclusion is only sound while the database runs non-root, which `verify-chart.sh` asserts.
+Lifting it means an upstream image rebuilt with a current Go, or building our own without `gosu`.

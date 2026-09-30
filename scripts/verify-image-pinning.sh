@@ -59,7 +59,10 @@ else
 fi
 
 bash scripts/chart-deps.sh charts/topology-visualizer
-RENDERED="$(helm template pin charts/topology-visualizer \
+# Sign-in is on by default and needs a URL and a provider before the chart renders at all
+# (ADR-014 D-14.1); the bundled Dex supplies the provider, and its images are checked below.
+AUTH_ARGS=(--set auth.externalUrl=https://topology.example --set auth.dex.enabled=true)
+RENDERED="$(helm template pin charts/topology-visualizer "${AUTH_ARGS[@]}" \
   --set clusterId=c1 --set postgresql.enabled=true --set postgresql.auth.password=x 2>/dev/null)"
 if printf '%s' "$RENDERED" | grep -E 'image: "postgres' | grep -c '@sha256:' >/dev/null; then
   ok "the rendered database image resolves to a digest"
@@ -67,14 +70,28 @@ else
   bad "the rendered database image has no digest"
 fi
 
+echo "== sign-in images (ADR-014 D-14.6, D-14.7) =="
+for want in "quay.io/oauth2-proxy/oauth2-proxy" "ghcr.io/dexidp/dex"; do
+  ref="$(printf '%s' "$RENDERED" | grep -oE "image: \"?${want}[^\" ]*" | head -1 | sed -E 's/image: "?//')"
+  if [[ -z "$ref" ]]; then
+    bad "$want is not rendered with sign-in on"
+  elif [[ "$ref" == *"@sha256:"* ]]; then
+    ok "$want pinned by digest"
+  else
+    bad "$want is pinned only by tag: $ref"
+  fi
+done
+
 echo "== bundled observability images (ADR-013 D-13.6, T-13.7) =="
 # Everything the optional bundle would pull, checked the same way. The project's own images carry
 # a :dev tag and are side-loaded, so they are the only ones excused.
-OBS_RENDERED="$(helm template pin charts/topology-visualizer --set clusterId=c1 \
+OBS_RENDERED="$(helm template pin charts/topology-visualizer --set clusterId=c1 "${AUTH_ARGS[@]}" \
   --set observability.enabled=true 2>/dev/null)"
 count=0
 while IFS= read -r ref; do
   [[ "$ref" == topology-* ]] && continue
+  # Checked in their own section above.
+  [[ "$ref" == quay.io/oauth2-proxy/* || "$ref" == ghcr.io/dexidp/* ]] && continue
   count=$((count + 1))
   if [[ "$ref" == *"@sha256:"* ]]; then
     ok "bundle: ${ref%%@*} pinned"

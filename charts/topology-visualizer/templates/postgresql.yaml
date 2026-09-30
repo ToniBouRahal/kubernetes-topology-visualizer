@@ -38,6 +38,11 @@ spec:
       {{- include "topology.postgresql.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      annotations:
+        checksum/hba: {{ include "topology.postgresql.hba" . | sha256sum }}
+        {{- if .Values.tls.generate }}
+        checksum/tls: {{ include "topology.pkiChecksum" (dict "root" . "role" "postgresql") }}
+        {{- end }}
       labels:
         {{- include "topology.postgresql.selectorLabels" . | nindent 8 }}
     spec:
@@ -64,6 +69,20 @@ spec:
             # read-only would need two more emptyDirs for a database that is a demo convenience,
             # so the honest posture is a writable rootfs with everything else dropped.
             readOnlyRootFilesystem: false
+          # TLS 1.3 with a server-CA certificate, and a host-based-auth file that refuses any TCP
+          # connection that is not TLS (ADR-014 D-14.8). Passed as server options so they also
+          # apply to the image's temporary server during first-time initialisation.
+          args:
+            - -c
+            - ssl=on
+            - -c
+            - ssl_cert_file=/etc/postgresql/tls/tls.crt
+            - -c
+            - ssl_key_file=/etc/postgresql/tls/tls.key
+            - -c
+            - ssl_min_protocol_version=TLSv1.3
+            - -c
+            - hba_file=/etc/postgresql/hba/pg_hba.conf
           ports:
             - name: postgresql
               containerPort: 5432
@@ -96,6 +115,30 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
+            - name: tls
+              mountPath: /etc/postgresql/tls
+              readOnly: true
+            - name: hba
+              mountPath: /etc/postgresql/hba
+              readOnly: true
+      volumes:
+        # PostgreSQL accepts a key owned by root only when it is not group-writable or
+        # world-accessible: 0440 with the postgres group from fsGroup satisfies that.
+        - name: tls
+          secret:
+            secretName: {{ $fullname }}-tls-postgresql
+            defaultMode: 0440
+            items:
+              - { key: tls.crt, path: tls.crt }
+              - { key: tls.key, path: tls.key }
+        - name: hba
+          configMap:
+            name: {{ $fullname }}-postgresql-hba
+        {{- if not .Values.postgresql.persistence.enabled }}
+        - name: data
+          # Explicitly non-durable. Only for a throwaway run; the chart's default is a PVC.
+          emptyDir: {}
+        {{- end }}
 {{- if .Values.postgresql.persistence.enabled }}
   # volumeClaimTemplates, NOT an emptyDir. This is what makes history survive pod deletion,
   # which Phase 3 and Phase 5 both gate on (T-5.10, T-7.8).
@@ -110,10 +153,16 @@ spec:
         resources:
           requests:
             storage: {{ .Values.postgresql.persistence.size | quote }}
-{{- else }}
-      volumes:
-        - name: data
-          # Explicitly non-durable. Only for a throwaway run; the chart's default is a PVC.
-          emptyDir: {}
 {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-postgresql-hba
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+data:
+  pg_hba.conf: |
+    {{- include "topology.postgresql.hba" . | nindent 4 }}
 {{- end }}

@@ -21,11 +21,19 @@ spec:
         # running pod keeps serving the old one indefinitely. That is how a retention change from
         # 24 to 1440 hours was observed to take effect nowhere at all.
         checksum/config: {{ include (print $.Template.BasePath "/configmaps.yaml") . | sha256sum }}
+        {{- if .Values.tls.generate }}
+        # Roll onto new certificates; uvicorn reads them once, at start-up.
+        checksum/tls: {{ include "topology.pkiChecksum" (dict "root" . "role" "server") }}
+        {{- end }}
       labels:
         {{- include "topology.backend.selectorLabels" . | nindent 8 }}
     spec:
       # No Kubernetes API permissions: the backend never talks to the API server (ADR-007 D-7.3).
       automountServiceAccountToken: false
+      securityContext:
+        # The certificate volumes are group-readable by this group only, so the key is readable
+        # by the backend's user and by nothing else in the container.
+        fsGroup: {{ .Values.backend.securityContext.runAsUser }}
       containers:
         - name: backend
           image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
@@ -35,17 +43,36 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.backend.service.port }}
+            - name: ingest
+              containerPort: {{ .Values.backend.service.ingestPort }}
+            - name: api
+              containerPort: {{ .Values.backend.service.apiPort }}
           envFrom:
             - configMapRef:
                 name: {{ include "topology.fullname" . }}-backend
-          {{- if or .Values.postgresql.enabled .Values.externalDatabaseUrlSecret }}
           env:
+            {{- if or .Values.postgresql.enabled .Values.externalDatabaseUrlSecret }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ include "topology.databaseSecret" . }}
                   key: database-url
-          {{- end }}
+            {{- end }}
+            # Three listeners (ADR-014 D-14.3). All four files set is what switches them on.
+            - name: OPS_PORT
+              value: {{ .Values.backend.service.port | quote }}
+            - name: INGEST_PORT
+              value: {{ .Values.backend.service.ingestPort | quote }}
+            - name: API_PORT
+              value: {{ .Values.backend.service.apiPort | quote }}
+            - name: TLS_CERT_FILE
+              value: /etc/topology/tls/server/tls.crt
+            - name: TLS_KEY_FILE
+              value: /etc/topology/tls/server/tls.key
+            - name: TLS_INGEST_CLIENT_CA_FILE
+              value: /etc/topology/tls/client-cas/ingest-ca.crt
+            - name: TLS_API_CLIENT_CA_FILE
+              value: /etc/topology/tls/client-cas/api-ca.crt
           livenessProbe:
             httpGet:
               path: /health/live
@@ -61,4 +88,25 @@ spec:
             periodSeconds: 10
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
+          volumeMounts:
+            - name: tls-server
+              mountPath: /etc/topology/tls/server
+              readOnly: true
+            - name: tls-client-cas
+              mountPath: /etc/topology/tls/client-cas
+              readOnly: true
+      volumes:
+        - name: tls-server
+          secret:
+            secretName: {{ include "topology.fullname" . }}-tls-server
+            defaultMode: 0440
+            items:
+              - { key: tls.crt, path: tls.crt }
+              - { key: tls.key, path: tls.key }
+              # The server CA: what PostgreSQL's certificate is verified against.
+              - { key: ca.crt, path: ca.crt }
+        - name: tls-client-cas
+          secret:
+            secretName: {{ include "topology.fullname" . }}-tls-client-cas
+            defaultMode: 0444
 {{- end }}

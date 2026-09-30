@@ -14,7 +14,10 @@ export default defineConfig({
   workers: 1,
   reporter: [["list"]],
   timeout: 60_000,
+  // Signs in once through the bundled Dex; every test reuses the session (ADR-014 D-14.6).
+  globalSetup: "./e2e/global-setup.ts",
   use: {
+    storageState: "e2e/.auth/session.json",
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:18080",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",

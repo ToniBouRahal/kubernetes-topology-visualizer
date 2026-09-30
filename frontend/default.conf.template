@@ -15,21 +15,45 @@
 # frontend keeps serving the app shell so the UI can show its own error state.
 resolver __RESOLVERS__ valid=10s ipv6=off;
 
+# One bucket per client address for the API (ADR-014 D-14.10). The UI polls two endpoints every
+# 5 s, so 20 requests a second with a burst of 40 never touches a person using it; it bounds a
+# script hammering the graph query. Behind a port-forward every client shares one address, which
+# makes this a ceiling for the whole install — still far above what the UI asks for.
+limit_req_zone $binary_remote_addr zone=api:10m rate=20r/s;
+limit_req_status 429;
+
 server {
     listen 8080;
     server_name _;
     root /usr/share/nginx/html;
     index index.html;
 
+    # No version in error pages or the Server header.
+    server_tokens off;
+    # The UI only ever sends GETs; nothing legitimate needs a large body.
+    client_max_body_size 64k;
+
+    include /etc/nginx/snippets/security-headers.conf;
+
+    # Sign-in and the bundled Dex (ADR-014 D-14.6, D-14.7), each switched by one variable so a
+    # single image serves every mode. auth-on puts every location below behind auth_request.
+    set $auth_email "";
+    set $dex_upstream "https://${DEX_HOST}:${DEX_PORT}";
+    set $dex_host "${DEX_HOST}";
+    include /etc/nginx/snippets/auth-${AUTH_MODE}.conf;
+    include /etc/nginx/snippets/dex-${DEX_MODE}.conf;
+
     # Hashed assets are immutable. index.html must never be cached, or a deploy serves a stale
     # shell pointing at assets that no longer exist.
     location /assets/ {
         expires 1y;
         add_header Cache-Control "public, immutable";
+        include /etc/nginx/snippets/security-headers.conf;
     }
 
     location = /index.html {
         add_header Cache-Control "no-store";
+        include /etc/nginx/snippets/security-headers.conf;
     }
 
     # Runtime configuration, mounted from a ConfigMap (ADR-012 D-12.2). Never cached, so a
@@ -37,15 +61,35 @@ server {
     # cache expiry. Absent in a dev build, which the app treats as "not configured".
     location = /config.json {
         add_header Cache-Control "no-store";
+        include /etc/nginx/snippets/security-headers.conf;
     }
 
     # Same-origin API: the browser talks only to this pod, so CORS_ALLOWED_ORIGINS stays a real
     # restriction rather than being widened to make the browser work.
+    #
+    # To the backend's API listener over mutual TLS (ADR-014 D-14.5): this pod presents the
+    # frontend's certificate — the only one that listener trusts — and verifies the backend's
+    # against the server CA, by Service name. That listener serves reads only, so nothing can
+    # reach the ingest path through here.
     location /api/ {
+        limit_req zone=api burst=40 nodelay;
+        # No session: JSON 401, not a redirect to an HTML sign-in page.
+        error_page 401 = @api_unauthorized;
+        # Who asked, for the backend's request log. Set here, so a client cannot supply its own.
+        proxy_set_header X-Forwarded-Email $auth_email;
         # A variable in proxy_pass forces runtime resolution. No URI part, so the original
         # request path is passed through unchanged.
-        set $backend "http://${BACKEND_HOST}:${BACKEND_PORT}";
+        set $backend "https://${BACKEND_HOST}:${BACKEND_API_PORT}";
         proxy_pass $backend;
+        proxy_ssl_certificate /etc/nginx/tls/tls.crt;
+        proxy_ssl_certificate_key /etc/nginx/tls/tls.key;
+        proxy_ssl_trusted_certificate /etc/nginx/tls/ca.crt;
+        proxy_ssl_verify on;
+        proxy_ssl_verify_depth 2;
+        proxy_ssl_name ${BACKEND_HOST};
+        proxy_ssl_server_name on;
+        proxy_ssl_protocols TLSv1.3;
+        proxy_ssl_session_reuse on;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Request-Id $request_id;
@@ -53,17 +97,25 @@ server {
         proxy_read_timeout 30s;
     }
 
+    # The backend's plain ops listener: health only, no topology (ADR-014 D-14.3).
     location /health/ {
-        set $backend_health "http://${BACKEND_HOST}:${BACKEND_PORT}";
+        set $backend_health "http://${BACKEND_HOST}:${BACKEND_OPS_PORT}";
         proxy_pass $backend_health;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
     }
 
-    # This pod's own liveness, answered without depending on the backend.
+    location @api_unauthorized {
+        default_type application/json;
+        include /etc/nginx/snippets/security-headers.conf;
+        return 401 '{"error":"unauthorized","detail":"your session has ended; sign in again"}';
+    }
+
+    # This pod's own liveness, answered without depending on the backend — or on a session.
     location = /healthz {
+        auth_request off;
         access_log off;
-        add_header Content-Type text/plain;
+        default_type text/plain;
         return 200 "ok\n";
     }
 

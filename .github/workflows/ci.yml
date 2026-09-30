@@ -6,6 +6,9 @@ name: CI
 #
 # Toolchain versions are pinned here, in the Makefile, and in docs/prerequisites.md. All three
 # must move together.
+#
+# Every action is pinned to a commit, with its tag as a comment (ADR-014 D-14.11). A tag can be
+# moved to different code after review; a commit cannot.
 
 on:
   push:
@@ -17,7 +20,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.26.5"
+  GO_VERSION: "1.26.7"
   NODE_VERSION: "24.19.0"
   PYTHON_VERSION: "3.13"
   HELM_VERSION: "v4.2.3"
@@ -27,8 +30,8 @@ jobs:
     name: Go agent
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: agent/go.sum
@@ -36,7 +39,7 @@ jobs:
         run: cd agent && go vet ./...
       # v7+ is required for golangci-lint v2. Action v6 only understands v1 version strings
       # and fails at "invalid version string" before it ever lints.
-      - uses: golangci/golangci-lint-action@v7
+      - uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
         with:
           version: v2.12.2
           working-directory: agent
@@ -47,8 +50,8 @@ jobs:
     name: Python backend
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
       - name: Create environment
         run: cd backend && uv venv --python ${{ env.PYTHON_VERSION }} && uv pip install -e ".[dev]"
       - name: Lint
@@ -63,8 +66,8 @@ jobs:
     name: Contract drift
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
       - name: Create environment
         run: cd backend && uv venv --python ${{ env.PYTHON_VERSION }} && uv pip install -e ".[dev]"
       # T-3.6. Without this the committed contract slowly becomes fiction while the frontend
@@ -76,8 +79,8 @@ jobs:
     name: Frontend
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Typecheck, lint, test, build
@@ -111,8 +114,8 @@ jobs:
     name: Helm chart
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
         with:
           version: ${{ env.HELM_VERSION }}
       - name: Install PyYAML for manifest assertions
@@ -127,12 +130,31 @@ jobs:
       - name: Verify every third-party image is pinned by digest
         run: bash scripts/verify-image-pinning.sh
 
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: agent/go.sum
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Create backend environment
+        run: cd backend && uv venv --python ${{ env.PYTHON_VERSION }} && uv pip install -e ".[dev]"
+      # ADR-014 D-14.11: govulncheck, pip-audit, npm audit. Same target a developer runs.
+      - name: make audit
+        run: make audit
+
   images:
     name: Container images
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Build images that exist
         run: |
           for component in agent backend frontend; do
@@ -144,3 +166,13 @@ jobs:
               echo "$component/Dockerfile not present yet — built from its own phase"
             fi
           done
+      # ADR-014 D-14.11: fail on fixable HIGH/CRITICAL; SBOMs kept with the run.
+      - name: Scan images and write SBOMs
+        run: bash scripts/scan-images.sh ci sbom
+      - name: Upload SBOMs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom/
+          if-no-files-found: warn

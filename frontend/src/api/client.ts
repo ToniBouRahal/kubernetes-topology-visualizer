@@ -74,11 +74,28 @@ function buildQuery(query: GraphQuery): string {
   return encoded ? `?${encoded}` : "";
 }
 
+/**
+ * Where the browser goes when the session has ended (ADR-014 D-14.6): oauth2-proxy's sign-in,
+ * returning to the page the reader was on. Injectable so a test can observe it.
+ */
+export const signIn = {
+  redirect(path: string = window.location.pathname) {
+    window.location.assign(`/oauth2/start?rd=${encodeURIComponent(path)}`);
+  },
+};
+
 async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${BASE}${path}`, {
     signal,
     headers: { Accept: "application/json" },
   });
+
+  // nginx answers an API call without a session with 401 JSON rather than a sign-in page, since a
+  // fetch cannot follow one. Only this page can: send it to sign in, and come back.
+  if (response.status === 401) {
+    signIn.redirect();
+    throw new ApiError(401, "your session has ended — signing in again");
+  }
 
   if (!response.ok) {
     let detail = "";

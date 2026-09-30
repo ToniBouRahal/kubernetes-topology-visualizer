@@ -22,7 +22,15 @@ make demo-traffic  # open exactly 100 connections
 make demo-verify   # assert the graph matches, counts included
 ```
 
-Then `kubectl -n topology port-forward svc/topology-visualizer-frontend 8080:8080`.
+Then `kubectl -n topology port-forward svc/topology-visualizer-frontend 8080:8080`, open
+`http://localhost:8080` and sign in as `admin@topology.local` — the password is generated at install:
+
+```bash
+kubectl -n topology get secret topology-visualizer-auth -o jsonpath='{.data.demo-password}' | base64 -d
+```
+
+Everything is behind that sign-in, all traffic between components is mutual TLS, and the eBPF agent
+runs on two capabilities rather than `privileged` — see [ADR-014](docs/adr/ADR-014-security-hardening.md).
 
 [`docs/demo-script.md`](docs/demo-script.md) is a fifteen-minute walkthrough.
 

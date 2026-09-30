@@ -3,7 +3,7 @@
 # Runs as a non-root user with a read-only root filesystem in the chart (ADR-001 §6), so
 # everything it needs must be baked in at build time — nothing is written at runtime.
 
-FROM python:3.13-slim-bookworm@sha256:00faa2debb87529f9f0764e9491d8ba400a3678976616c3bd7cb193745ac20d1 AS builder
+FROM python:3.13-slim-bookworm@sha256:2325bb286ec344af3e5898cc224b5844e2707ac6e26b1632516fd3edc84a5e26 AS builder
 
 # uv resolves and installs far faster than pip, and is already the documented local toolchain,
 # so the image and the developer environment stay in step.
@@ -24,7 +24,7 @@ COPY migrations ./migrations
 RUN uv venv /opt/venv && VIRTUAL_ENV=/opt/venv uv pip install --no-cache .
 
 # ── Runtime ─────────────────────────────────────────────────────────────────────────────────
-FROM python:3.13-slim-bookworm@sha256:00faa2debb87529f9f0764e9491d8ba400a3678976616c3bd7cb193745ac20d1
+FROM python:3.13-slim-bookworm@sha256:2325bb286ec344af3e5898cc224b5844e2707ac6e26b1632516fd3edc84a5e26
 
 # A fixed uid so the chart's runAsUser matches, and no shell for the account.
 #
@@ -54,9 +54,8 @@ ENV PATH="/opt/venv/bin:$PATH" \
 WORKDIR /srv
 USER 10001
 
-EXPOSE 8000
+# ops (plain: probes, /metrics) · ingest (mTLS, agents) · api (mTLS, the frontend) — ADR-014 D-14.3.
+# Without TLS_* set the process serves everything on 8000 in plain HTTP, as it always has.
+EXPOSE 8000 8443 8444
 
-# One worker: ingestion is idempotent per batch, but the in-memory adapter used in Phase 2 is
-# per-process, so a second worker would serve a different half of the data. Phase 3's shared
-# PostgreSQL removes that constraint.
-ENTRYPOINT ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+ENTRYPOINT ["python", "-m", "app.serve"]
