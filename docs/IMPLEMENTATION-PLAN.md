@@ -321,7 +321,7 @@ Threat model, decisions and what is declined (image signing, cert-manager as a r
 - [x] **S14-4** PostgreSQL TLS — D-14.8
 - [x] **S14-5** OIDC sign-in and bundled Dex — D-14.6, D-14.7
 - [x] **S14-6** Agent least privilege and namespace Pod Security — D-14.9, D-14.12
-- [ ] **S14-7** Verification on the kind demo; `limitations.md` §4.4 and the operator guide updated
+- [x] **S14-7** Verification on the kind demo, security review (no findings), CI green on PR #5; `limitations.md` and the operator guide updated
 ---
 
 ## Definition of Done cross-check

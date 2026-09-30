@@ -201,7 +201,8 @@ namespace is the lift, and is not taken here.
   refused; sign-out ends the session).
 - [x] **S14-6** Agent least privilege and namespace Pod Security — measured as above; `verify-chart.sh`
   asserts the exact grant and no privileged container. T-14.8: burst 100/100.
-- [ ] **S14-7** Verification: `make verify-tls` 8/8 from an unlabelled pod (T-14.7); E2E 27 passed,
+- [x] **S14-7** Verification: `make verify-tls` 8/8 from an unlabelled pod (T-14.7); E2E 27 passed,
   1 skipped (Grafana credentials); `limitations.md` §3.1, §3.6, §4.4 and §6, the operator guide and
-  the demo script updated. Open: an independent security review of the change, and CI green on the
-  branch.
+  the demo script updated. Security review of the branch (`/security-review`): no findings. CI
+  green on PR #5 — all seven jobs, including the new dependency audit and the gating image scan
+  (0 fixable HIGH/CRITICAL).
