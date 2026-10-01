@@ -1,5 +1,7 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+// From vitest/config, not vite: it accepts the `test` block below. Vitest 3 used to add that key
+// to Vite's own config type; from Vitest 5 only this import does.
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
