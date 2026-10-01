@@ -8,6 +8,7 @@ does not hide a failure that will never clear.
 
 from __future__ import annotations
 
+import asyncio
 import socket
 
 import asyncpg
@@ -93,3 +94,27 @@ async def test_stops_retrying_at_the_deadline(monkeypatch: pytest.MonkeyPatch) -
     with pytest.raises(ConnectionError, match="ConnectionRefusedError"):
         await PostgresRepository.connect(DSN, "c1", retry_for=0.6)
     assert 2 <= len(calls) <= 3  # 0.5s, then the 0.1s remainder
+
+
+async def test_a_crumb_of_time_left_is_the_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A clock that has not moved must not turn the last instant into a spin of retries.
+
+    Deterministic version of what CI hit once: with uvloop the loop clock advanced only between
+    iterations, the remainder sat at 7e-15 s, and 27 attempts ran back to back. Here the clock is
+    frozen a microsecond short of the deadline, so a `remaining <= 0` check would retry forever; the
+    minimum wait ends it at the first failure.
+    """
+    calls = fake_create_pool(monkeypatch, [ConnectionRefusedError()] * 1000)
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    ticks = iter([start])  # the deadline is set from the first read
+
+    def frozen() -> float:
+        # A microsecond: far above float spacing at loop-clock magnitudes (~1e-12 at 1e4 s, which
+        # would round the crumb away to exactly 0), far below the minimum wait.
+        return next(ticks, start + 0.5 - 1e-6)
+
+    monkeypatch.setattr(loop, "time", frozen)
+    with pytest.raises(ConnectionError, match="ConnectionRefusedError"):
+        await PostgresRepository.connect(DSN, "c1", retry_for=0.5)
+    assert len(calls) == 1

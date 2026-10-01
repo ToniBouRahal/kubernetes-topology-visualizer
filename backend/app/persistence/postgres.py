@@ -37,6 +37,9 @@ PURGE_BATCH = 5_000
 # Failures that clear by themselves while the database is still starting: DNS not resolving yet
 # (socket.gaierror), connection refused, a timeout (all OSError), and PostgreSQL's own "starting
 # up" refusal.
+# The shortest wait worth retrying after (see PostgresRepository.connect).
+_MIN_RETRY_WAIT = 0.05
+
 _TRANSIENT_CONNECT_ERRORS: tuple[type[BaseException], ...] = (
     OSError,
     asyncpg.CannotConnectNowError,
@@ -92,7 +95,11 @@ class PostgresRepository:
                 break
             except _TRANSIENT_CONNECT_ERRORS as exc:
                 remaining = deadline - loop.time()
-                if remaining <= 0:
+                # Not `<= 0`: a sleep can return a hair early and leave a floating-point crumb of
+                # time, and a loop clock that only advances between iterations (uvloop) then
+                # reads the same crumb again — a zero-length "retry" spinning in place. A wait
+                # too short to give the database a chance is the deadline.
+                if remaining < _MIN_RETRY_WAIT:
                     raise ConnectionError(
                         f"could not connect to PostgreSQL at {sanitise_dsn(dsn)}: "
                         f"{type(exc).__name__}"
