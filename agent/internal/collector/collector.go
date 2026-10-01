@@ -63,9 +63,9 @@ type Collector struct {
 	tp     link.Link
 	reader *ringbuf.Reader
 
-	// Wall-clock instant corresponding to a monotonic timestamp of zero. Captured once so
-	// per-event conversion is arithmetic rather than a syscall.
-	monotonicEpoch time.Time
+	// Reads the wall clock and CLOCK_MONOTONIC together; nil means the system clocks. A field so
+	// a test can stop the monotonic clock the way a suspend does.
+	clock func() (wall time.Time, mono time.Duration)
 }
 
 // New loads the BPF program, attaches it to sock/inet_sock_set_state, and opens the ring buffer.
@@ -103,24 +103,33 @@ func New() (_ *Collector, err error) {
 		return nil, fmt.Errorf("open ring buffer reader: %w", err)
 	}
 
-	if c.monotonicEpoch, err = monotonicEpoch(); err != nil {
-		return nil, fmt.Errorf("establish monotonic epoch: %w", err)
-	}
-
 	return c, nil
 }
 
-// monotonicEpoch returns the wall-clock instant at which CLOCK_MONOTONIC read zero.
-//
-// bpf_ktime_get_ns() is CLOCK_MONOTONIC, so event timestamps are offsets from this point.
-// Reading it once avoids a time.Now() call per event, which matters at the 1,000 events/s/node
-// target (ADR-001 §6).
-func monotonicEpoch() (time.Time, error) {
+// systemClock reads the wall clock and CLOCK_MONOTONIC, back to back.
+func systemClock() (time.Time, time.Duration) {
 	var ts unix.Timespec
-	if err := unix.ClockGettime(unix.CLOCK_MONOTONIC, &ts); err != nil {
-		return time.Time{}, err
+	// CLOCK_MONOTONIC cannot fail on Linux; on error the zero reading only skews this event.
+	_ = unix.ClockGettime(unix.CLOCK_MONOTONIC, &ts)
+	return time.Now(), time.Duration(ts.Nano())
+}
+
+// wallTime converts an event's bpf_ktime_get_ns() reading (CLOCK_MONOTONIC) to wall-clock time:
+// now, minus how long ago on the monotonic clock the event happened.
+//
+// Measured against the clocks as they read NOW, not against an epoch fixed at start-up.
+// CLOCK_MONOTONIC stops while the machine is suspended, so a fixed epoch falls behind by the
+// length of every suspend: after a laptop slept for 83 minutes, every event was stamped 83 minutes
+// in the past and the live graph went empty until the agent restarted. Reading both clocks per
+// event costs two vDSO calls — tens of nanoseconds, well under a millisecond a second at the
+// 1,000 events/s/node target (ADR-001 §6) — and also follows NTP adjustments to the wall clock.
+func (c *Collector) wallTime(ktimeNs uint64) time.Time {
+	read := c.clock
+	if read == nil {
+		read = systemClock
 	}
-	return time.Now().Add(-time.Duration(ts.Nano())), nil
+	wall, mono := read()
+	return wall.Add(time.Duration(ktimeNs) - mono)
 }
 
 // Run drains the ring buffer until ctx is cancelled, invoking handle for each decoded event.
@@ -178,7 +187,7 @@ func (c *Collector) decode(raw []byte) (Event, error) {
 	return Event{
 		Failed:           e.Outcome == 1,
 		ConnectLatencyUS: latency,
-		Timestamp:        c.monotonicEpoch.Add(time.Duration(e.TimestampNs)),
+		Timestamp:        c.wallTime(e.TimestampNs),
 		PID:              e.Pid,
 		// AddrFrom4 takes the network-order bytes as-is. No byte swapping: the bytes are
 		// already in the order an IPv4 address is written.

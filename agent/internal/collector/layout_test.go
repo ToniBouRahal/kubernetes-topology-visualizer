@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -164,23 +165,56 @@ func TestDecodeRejectsWrongSchemaVersion(t *testing.T) {
 	}
 }
 
-func TestDecodeTimestampIsOffsetFromMonotonicEpoch(t *testing.T) {
-	epoch := mustTime(t, "2026-08-12T09:00:00Z")
-	c := &Collector{monotonicEpoch: epoch}
-
+// rawEventAt is a minimal valid record whose bpf_ktime_get_ns() reading is ktime.
+func rawEventAt(ktime time.Duration) []byte {
 	raw := make([]byte, eventSize)
 	raw[offVersion] = EventSchemaVersion
-	// 90 seconds in nanoseconds, little-endian.
-	for i, b := range []byte{0x00, 0x90, 0x2F, 0xF0, 0x14, 0x00, 0x00, 0x00} {
-		raw[offTimestampNs+i] = b
-	}
+	binary.LittleEndian.PutUint64(raw[offTimestampNs:], uint64(ktime))
+	return raw
+}
 
-	ev, err := c.decode(raw)
+func TestDecodeTimestampIsWallTimeOfTheEvent(t *testing.T) {
+	now := mustTime(t, "2026-08-12T09:00:00Z")
+	// The event happened 2 s before the clocks were read.
+	c := &Collector{clock: func() (time.Time, time.Duration) { return now, 92 * time.Second }}
+
+	ev, err := c.decode(rawEventAt(90 * time.Second))
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if !ev.Timestamp.After(epoch) {
-		t.Errorf("timestamp %v should be after the epoch %v", ev.Timestamp, epoch)
+	if want := now.Add(-2 * time.Second); !ev.Timestamp.Equal(want) {
+		t.Errorf("timestamp %v, want %v", ev.Timestamp, want)
+	}
+}
+
+// CLOCK_MONOTONIC stops while the machine is suspended; the wall clock does not. An event right
+// after resuming must be stamped with the time it happened — not the time it would have been had
+// the suspend not occurred, which is what an epoch captured at start-up produced (83 minutes in
+// the past after an 83-minute sleep, and an empty live graph until the agent restarted).
+func TestTimestampsSurviveASuspend(t *testing.T) {
+	start := mustTime(t, "2026-09-25T15:00:00Z")
+	wall, mono := start, 10*time.Second
+	c := &Collector{clock: func() (time.Time, time.Duration) { return wall, mono }}
+
+	// Running normally: an event 1 s ago.
+	before, err := c.decode(rawEventAt(mono - time.Second))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if want := start.Add(-time.Second); !before.Timestamp.Equal(want) {
+		t.Fatalf("before suspend: %v, want %v", before.Timestamp, want)
+	}
+
+	// Suspended for 83 minutes: the wall clock moves on, the monotonic clock does not. Then
+	// 5 s pass awake, and a connection happens now.
+	wall = wall.Add(83*time.Minute + 5*time.Second)
+	mono += 5 * time.Second
+	after, err := c.decode(rawEventAt(mono))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !after.Timestamp.Equal(wall) {
+		t.Errorf("after resume: stamped %v, but it happened at %v (%v off)", after.Timestamp, wall, wall.Sub(after.Timestamp))
 	}
 }
 
