@@ -142,6 +142,10 @@ def create_app(repository: TopologyRepository | None = None) -> FastAPI:
         description=DESCRIPTION,
         version="0.1.0",
         openapi_url="/api/v1/openapi.json",
+        # No interactive docs in a deployed service (ADR-014 D-14.10): they are a second UI with
+        # a "try it" button. The contract is contracts/openapi.json, generated from this app.
+        docs_url=None,
+        redoc_url=None,
         lifespan=lifespan,
     )
 

@@ -6,10 +6,16 @@ target met would be measuring the wrong thing, so this ingests a graph of the st
 the real ingest endpoint — same validation, same transaction, same storage path as an agent.
 
     python3 scripts/seed-scale.py --url http://localhost:18100 --nodes 500 --edges 2000
+
+A deployed backend accepts batches only on its mutual-TLS ingest listener (ADR-014 D-14.3), so
+against a cluster the script presents the agent's certificate. `make seed-scale` does that.
 """
 import argparse
+import http.client
 import json
 import random
+import socket
+import ssl
 import string
 import sys
 import urllib.error
@@ -33,7 +39,14 @@ def main() -> int:
     ap.add_argument("--nodes", type=int, default=500)
     ap.add_argument("--edges", type=int, default=2000)
     ap.add_argument("--batch-size", type=int, default=200)
+    # Mutual TLS to the ingest listener, through a port-forward: connect to --url's port on
+    # 127.0.0.1, verify the certificate for --server-name.
+    ap.add_argument("--cert")
+    ap.add_argument("--key")
+    ap.add_argument("--cacert")
+    ap.add_argument("--server-name")
     args = ap.parse_args()
+    post = _mtls_poster(args) if args.cert else None
 
     rnd = random.Random(20260822)  # fixed seed: the same graph every run, so runs compare
 
@@ -85,6 +98,13 @@ def main() -> int:
             "interval_seconds": 10,
             "edges": chunk,
         }
+        if post:
+            status, detail = post(json.dumps(body).encode())
+            if status not in (200, 202):
+                print(f"ingest failed {status}: {detail[:300]}", file=sys.stderr)
+                return 1
+            sent += len(chunk)
+            continue
         req = urllib.request.Request(
             f"{args.url}/api/v1/ingest/batches",
             data=json.dumps(body).encode(),
@@ -103,6 +123,31 @@ def main() -> int:
 
     print(f"seeded {sent} edges across {args.nodes} nodes")
     return 0
+
+
+def _mtls_poster(args):
+    port = int(args.url.rsplit(":", 1)[1].rstrip("/"))
+    context = ssl.create_default_context(cafile=args.cacert)
+    context.load_cert_chain(args.cert, args.key)
+
+    class Forwarded(http.client.HTTPSConnection):
+        """Connects to the port-forward on 127.0.0.1, verifies the certificate for the Service."""
+
+        def connect(self):
+            sock = socket.create_connection(("127.0.0.1", self.port), self.timeout)
+            self.sock = context.wrap_socket(sock, server_hostname=self.host)
+
+    def post(payload: bytes) -> tuple[int, str]:
+        conn = Forwarded(args.server_name, port, context=context, timeout=30)
+        try:
+            conn.request("POST", "/api/v1/ingest/batches", body=payload,
+                         headers={"Content-Type": "application/json"})
+            response = conn.getresponse()
+            return response.status, response.read().decode(errors="replace")
+        finally:
+            conn.close()
+
+    return post
 
 
 if __name__ == "__main__":

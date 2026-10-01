@@ -38,6 +38,10 @@ type config struct {
 	backendIngest     string
 	intervalSeconds   int
 	maxPendingBatches int
+	// Mutual TLS to the ingest listener (ADR-014 D-14.4). All three or none.
+	tlsCert string
+	tlsKey  string
+	tlsCA   string
 }
 
 func loadConfig() (config, error) {
@@ -53,6 +57,26 @@ func loadConfig() (config, error) {
 	// mistake later than it needs to, and cannot be tested without starting the agent.
 	if c.backendIngest == "" {
 		return c, fmt.Errorf("BACKEND_INGEST_URL is required")
+	}
+
+	// Fail closed on a half-configured transport. An https URL with no certificate cannot reach
+	// the ingest listener; certificates with an http URL would silently send batches in the
+	// clear. Plain http with no certificates is development only (ADR-014 D-14.1).
+	c.tlsCert, c.tlsKey, c.tlsCA = env("AGENT_TLS_CERT_FILE", ""), env("AGENT_TLS_KEY_FILE", ""), env("AGENT_TLS_CA_FILE", "")
+	tlsSet := 0
+	for _, f := range []string{c.tlsCert, c.tlsKey, c.tlsCA} {
+		if f != "" {
+			tlsSet++
+		}
+	}
+	https := strings.HasPrefix(c.backendIngest, "https://")
+	switch {
+	case tlsSet != 0 && tlsSet != 3:
+		return c, fmt.Errorf("AGENT_TLS_CERT_FILE, AGENT_TLS_KEY_FILE and AGENT_TLS_CA_FILE must be set together")
+	case https && tlsSet == 0:
+		return c, fmt.Errorf("BACKEND_INGEST_URL is https but AGENT_TLS_* is not set: the ingest listener requires a client certificate")
+	case !https && tlsSet == 3:
+		return c, fmt.Errorf("AGENT_TLS_* is set but BACKEND_INGEST_URL is not https: batches would be sent in the clear")
 	}
 
 	if c.nodeName == "" {
@@ -156,7 +180,17 @@ func run(log *slog.Logger) error {
 	agg := aggregate.New(cfg.clusterID, agentID, cfg.infraPorts)
 
 	sender := delivery.New(cfg.backendIngest, cfg.maxPendingBatches, log)
-	log.Info("delivery configured", "url", cfg.backendIngest, "max_pending", cfg.maxPendingBatches)
+	if cfg.tlsCert != "" {
+		tlsConfig, err := delivery.ClientTLS(cfg.tlsCert, cfg.tlsKey, cfg.tlsCA)
+		if err != nil {
+			return err
+		}
+		sender.WithTLS(tlsConfig)
+	} else {
+		log.Warn("delivering in plain HTTP with no client certificate: development only (ADR-014 D-14.1)")
+	}
+	log.Info("delivery configured", "url", cfg.backendIngest, "max_pending", cfg.maxPendingBatches,
+		"mutual_tls", cfg.tlsCert != "")
 
 	// Health and metrics come up first so the kubelet sees a live process while the informer
 	// caches sync, which can take a few seconds on a busy cluster.

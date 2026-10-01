@@ -619,3 +619,10 @@ def test_invalid_outcome_counters(client, fields):
     batch = load_batch()
     batch["edges"][0].update(fields)
     assert client.post("/api/v1/ingest/batches", json=batch).status_code == 422
+
+
+def test_no_interactive_docs(client: TestClient) -> None:
+    """ADR-014 D-14.10: no Swagger UI or ReDoc in a deployed service; the contract file stays."""
+    assert client.get("/docs").status_code == 404
+    assert client.get("/redoc").status_code == 404
+    assert client.get("/api/v1/openapi.json").status_code == 200

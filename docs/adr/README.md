@@ -41,6 +41,7 @@ off by default, so the kind demo can show both of the above working.
 | [ADR-011](ADR-011-optional-prometheus-grafana.md) | Optional Prometheus scrape + Grafana dashboard | `charts/topology-visualizer/templates/monitoring.yaml`, `charts/topology-visualizer/dashboards/` | §4.2, §5.1, §13 | post-5 | §6 |
 | [ADR-012](ADR-012-grafana-deep-links.md) | Grafana deep links from the details panel | `frontend/src/config.ts`, `frontend/src/features/details/`, `charts/…/templates/frontend-*.yaml` | §13, §5.6 | post-5 | §6 |
 | [ADR-013](ADR-013-bundled-observability.md) | Bundled Prometheus + Grafana, optional | `charts/…/Chart.yaml`, `charts/…/dashboards/`, `scripts/chart-deps.sh` | §4.2, §5.7 | post-5 | §6 |
+| [ADR-014](ADR-014-security-hardening.md) | Security hardening: OIDC sign-in, mutual TLS, least-privilege agent | `charts/topology-visualizer/`, `backend/app/`, `agent/internal/`, `frontend/default.conf.template`, CI | §6, §13 | post-5 | §6 |
 
 **Progress tracking:** [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) is the master checklist —
 every task carries an ID like `P1-A2` (phase 1, agent, task 2). Each component ADR repeats its own

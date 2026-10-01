@@ -25,8 +25,16 @@ helm install topology charts/topology-visualizer \
   --namespace topology --create-namespace \
   --set clusterId=prod-eu-west-1 \
   --set postgresql.enabled=true \
-  --set postgresql.auth.password="$(openssl rand -base64 24)"
+  --set postgresql.auth.password="$(openssl rand -base64 24)" \
+  --set auth.externalUrl=https://topology.example.com \
+  --set auth.oidc.issuerUrl=https://login.example.com \
+  --set auth.oidc.clientId=topology \
+  --set auth.oidc.clientSecret.existingSecret=topology-oidc
 ```
+
+Sign-in is on by default, so the chart will not render without an `externalUrl` and an identity
+provider — see [Sign-in with your identity provider](#sign-in-with-your-identity-provider), or
+`auth.dex.enabled=true` for a self-contained trial.
 
 `clusterId` is **not** cosmetic: it is part of every node identity, so changing it later makes all
 existing history unreachable. It may not contain a colon, and the schema rejects one that does.
@@ -203,15 +211,85 @@ busiest 2,000 edges and says so.
 
 ## Security posture
 
-- One privileged container (the agent). The chart asserts the count, so a second cannot appear unnoticed.
-- Agent RBAC is `get`/`list`/`watch` only. Backend and frontend mount no ServiceAccount token at all.
-- Backend, frontend and database run non-root with `RuntimeDefault` seccomp and all capabilities dropped.
-- Two NetworkPolicies: ingest reachable only from agent and frontend pods, the database only from the backend.
-- No packet payload is read. No individual external IP is persisted or returned.
-- Database credentials come from a Secret; a DSN never reaches a log or a response.
+Hardened by [ADR-014](adr/ADR-014-security-hardening.md). In one paragraph: nobody reads the topology
+without signing in, nobody writes it without the agent's client certificate, every connection
+between components is TLS (mutual, where one side is ours), and the agent holds two capabilities
+instead of privilege.
 
-The agent is exempt from seccomp deliberately — `RuntimeDefault` restricts `bpf()` and
-`perf_event_open()`, which is what it exists to call. Do not "fix" this; the chart asserts its absence.
+- **Sign-in on every path.** oauth2-proxy in the frontend pod; nginx asks it before every request.
+  A page without a session is sent to sign in, an API call gets `401`.
+- **Mutual TLS inside the cluster.** Agent → backend and frontend → backend present client
+  certificates from two different CAs, and each backend listener trusts only one of them. Backend →
+  PostgreSQL is TLS with `verify-full`; PostgreSQL rejects any connection without TLS.
+- **The backend's three ports:** `8443` ingest (agents), `8444` API (the frontend), `8000` health and
+  `/metrics` only, in plain HTTP for probes and Prometheus. No topology crosses `8000`.
+- **Least privilege.** The agent: `CAP_BPF` and `CAP_PERFMON` only, read-only root, default seccomp,
+  one read-only host path. Every other workload meets the `restricted` Pod Security Standard. RBAC is
+  `get`/`list`/`watch` for the agent and nothing for anything else.
+- **Browser headers:** a Content-Security-Policy with no inline or `eval` script, framing refused,
+  `nosniff`, no referrer, and a request-rate limit on `/api/`.
+- No packet payload is read. No individual external IP is persisted or returned.
+
+### Sign-in with your identity provider
+
+Register an OIDC client with redirect URI **`<externalUrl>/oauth2/callback`** — exactly that — then:
+
+```bash
+kubectl -n topology create secret generic topology-oidc --from-literal=client-secret='…'
+helm upgrade --install topology charts/topology-visualizer -n topology \
+  --set auth.externalUrl=https://topology.example.com \
+  --set auth.oidc.issuerUrl=https://login.example.com \
+  --set auth.oidc.clientId=topology \
+  --set auth.oidc.clientSecret.existingSecret=topology-oidc \
+  --set 'auth.oidc.allowedGroups={platform-team}'
+```
+
+`allowedEmailDomains` and `allowedGroups` decide who may sign in; everyone admitted can read
+everything (the application is read-only). Sessions last `auth.sessionHours` (8). Serve the UI
+over HTTPS: the session cookie is `Secure`, which a browser honours on `http://` only for localhost.
+
+The kind demo instead sets `auth.dex.enabled` — a bundled Dex with one user
+(`admin@topology.local`, password in the `topology-visualizer-auth` Secret). It is for the demo;
+see `limitations.md` §6.2.
+
+`auth.enabled: false` turns sign-in off. The topology is then readable by anyone who reaches the
+frontend Service, and the install notes say so every time.
+
+### Certificates
+
+The chart generates three CAs and five certificates on first install and keeps them across
+upgrades. The CA private keys are never stored. To rotate — before the 365-day expiry, or after a
+suspected leak:
+
+```bash
+kubectl -n topology delete secret topology-visualizer-tls-{server,postgresql,agent,frontend,client-cas} topology-dex-tls
+helm upgrade topology charts/topology-visualizer -n topology --reuse-values
+```
+
+A new set is generated and every pod rolls onto it. To have cert-manager issue and renew them
+instead, set `tls.generate: false` and create Secrets with the same names and keys (`tls.crt`,
+`tls.key`, `ca.crt`; `ingest-ca.crt` and `api-ca.crt` for `-client-cas`).
+
+### Reaching the API outside the UI
+
+The API answers only a client presenting the frontend's certificate, so reading it needs Secret
+access in the namespace — the same boundary as the rest of the release:
+
+```bash
+make api-get API_PATH='/api/v1/graph?window=5m'   # the kind demo
+```
+
+`scripts/lib/mtls.sh` is what that uses: it fetches the certificate from the Secret into a private
+temporary directory, port-forwards the API port, and verifies the backend by its Service name.
+
+### Checking it
+
+| | |
+|---|---|
+| `make verify-tls` | from an unlabelled pod: the mTLS ports refuse it, `8000` serves no topology, PostgreSQL refuses plain TCP |
+| `make pod-security` | labels the namespace: enforce `privileged` (the agent), warn and audit `restricted` |
+| `make audit` | govulncheck, pip-audit, npm audit |
+| `make scan-images` | Trivy on every image, CycloneDX SBOMs in `sbom/` |
 
 ## Upgrading
 

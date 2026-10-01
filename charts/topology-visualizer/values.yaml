@@ -33,10 +33,9 @@ agent:
   metricsPort: 9090
   healthPort: 8081
 
-  # Privileged is required to load and attach eBPF programs on the target setup and is accepted
-  # for the FYP (ADR-001 §5.7). Capability reduction is attempted only after correctness.
-  privileged: true
-  hostPID: true
+  # Off: the agent runs with the BPF and PERFMON capabilities only (ADR-014 D-14.9). True is an
+  # escape hatch for a kernel without CAP_BPF (before 5.8), outside ADR-002's support range.
+  privileged: false
 
   # The agent must run on EVERY node including the control-plane, or the three-node validation
   # in Phase 1 and Phase 5 silently under-reports.
@@ -61,7 +60,12 @@ backend:
 
   service:
     type: ClusterIP
+    # ops: plain HTTP, /health/* and /metrics only (kubelet probes, Prometheus). Named "http".
     port: 8000
+    # Mutual TLS listeners (ADR-014 D-14.3): the agent ingests on one, the frontend reads on the
+    # other, and each trusts only its own client CA.
+    ingestPort: 8443
+    apiPort: 8444
 
   # Two months. Storage grows with DISTINCT EDGES x minutes, not with traffic volume, so a busy
   # cluster with a stable topology costs no more than a quiet one. Size the database volume below
@@ -155,7 +159,7 @@ postgresql:
     # different image today than last month — so a tag alone cannot make a build reproducible.
     # The tag stays for readability; the digest is what actually resolves.
     # Set to "" to follow the tag instead.
-    digest: "sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73"
+    digest: "sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24"
     pullPolicy: IfNotPresent
 
   auth:
@@ -350,3 +354,124 @@ networkPolicy:
   #
   # On a cluster whose CNI ignores NetworkPolicy these are inert, not harmful.
   enabled: true
+
+# ── Transport security (ADR-014 D-14.2) ─────────────────────────────────────────────────────
+# Every connection between components is mutual TLS; there is no switch to turn it off.
+tls:
+  # true: the chart generates three CAs and all certificates, and keeps them across upgrades.
+  # false: the chart expects Secrets <fullname>-tls-{server,postgresql,agent,frontend} (keys
+  # tls.crt, tls.key, ca.crt) and <fullname>-tls-client-cas (ingest-ca.crt, api-ca.crt) to exist,
+  # e.g. issued by cert-manager.
+  generate: true
+  # Leaf certificates. Rotate by deleting the five Secrets and running `helm upgrade`: a new set
+  # is generated and every pod rolls onto it (docs/operator-guide.md).
+  certificateValidityDays: 365
+  caValidityDays: 3650
+
+
+# ── Sign-in (ADR-014 D-14.6, D-14.7) ────────────────────────────────────────────────────────
+# Every path of the UI and API sits behind an OIDC sign-in: an oauth2-proxy sidecar in the
+# frontend pod, asked by nginx on every request. The application is read-only, so a signed-in,
+# allowed user has one role: viewer.
+auth:
+  # On by default. Turning it off leaves the topology readable by anyone who reaches the frontend
+  # Service; the chart's NOTES say so on every install that does.
+  enabled: true
+  # The URL people open the UI at, scheme and host, no trailing slash. The OIDC redirect URI is
+  # this plus /oauth2/callback — register exactly that with your provider.
+  externalUrl: ""
+  oidc:
+    # Your provider's issuer. Ignored when dex.enabled (the bundled Dex is the issuer).
+    issuerUrl: ""
+    clientId: ""
+    # The client secret, from a Secret you create: never a value in this file.
+    clientSecret:
+      existingSecret: ""
+      key: client-secret
+    scopes: "openid email profile"
+    # Who may sign in. "*" admits any account the provider authenticates.
+    allowedEmailDomains: ["*"]
+    # If set, only members of these groups (the provider's `groups` claim) are admitted.
+    allowedGroups: []
+  sessionHours: 8
+  # A Dex for clusters with no identity provider — the kind demo first. One static user whose
+  # password is generated at install and kept in the <fullname>-auth Secret.
+  dex:
+    enabled: false
+    email: admin@topology.local
+  proxy:
+    image:
+      repository: quay.io/oauth2-proxy/oauth2-proxy
+      tag: v7.15.4
+      digest: "sha256:b1b2021fe8f4004573e8d690dec6c7bb29cc44364572cf8510a05bf3a0ae2ded"
+      pullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 64Mi
+
+# The bundled Dex's chart values (subchart, condition auth.dex.enabled). Its configuration is not
+# here: this chart renders it into topology-dex-config, because the user's password hash and the
+# client secret are generated at install time and a values file cannot hold either.
+dex:
+  fullnameOverride: topology-dex
+  image:
+    repository: ghcr.io/dexidp/dex
+    tag: v2.45.1
+    digest: "sha256:8499afd690c437f52301efd2b05b2455da5bd2dfc20332cd697dc9937f808462"
+  configSecret:
+    create: false
+    name: topology-dex-config
+  # HTTPS with a server-CA certificate (ADR-014): oauth2-proxy exchanges the sign-in code and the
+  # client secret with Dex over this, never in the clear. The chart this depends on also always
+  # opens plain HTTP on 5556 and has no switch for it; the NetworkPolicy admits only 5554.
+  https:
+    enabled: true
+  volumes:
+    # Dex writes its expanded configuration to /tmp at start-up; the root filesystem stays
+    # read-only and only this scratch directory is writable.
+    - name: tmp
+      emptyDir:
+        medium: Memory
+        sizeLimit: 8Mi
+    - name: tls
+      secret:
+        secretName: topology-dex-tls
+        defaultMode: 0440
+        items:
+          - { key: tls.crt, path: tls.crt }
+          - { key: tls.key, path: tls.key }
+  volumeMounts:
+    - name: tmp
+      mountPath: /tmp
+    - name: tls
+      mountPath: /etc/dex/tls
+      readOnly: true
+  # In-memory storage and no Kubernetes API use: no RBAC, and a ServiceAccount (created by this
+  # chart) that mounts no token.
+  rbac:
+    create: false
+    createClusterScoped: false
+  serviceAccount:
+    create: false
+    name: topology-dex
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    fsGroup: 1001
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 96Mi

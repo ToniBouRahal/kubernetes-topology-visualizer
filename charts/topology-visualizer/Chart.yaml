@@ -18,3 +18,7 @@ dependencies:
     version: 10.5.15
     repository: https://grafana.github.io/helm-charts
     condition: observability.enabled
+  - name: dex
+    version: 0.25.2
+    repository: https://charts.dexidp.io
+    condition: auth.dex.enabled

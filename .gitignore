@@ -84,3 +84,9 @@ graphify-out/
 
 # graphify backup of settings.json
 *.graphify-bak
+
+# CycloneDX SBOMs written by `make scan-images` (ADR-014 D-14.11)
+/sbom/
+
+# Playwright sign-in session (e2e/global-setup.ts) — a live session cookie, never committed
+/frontend/e2e/.auth/

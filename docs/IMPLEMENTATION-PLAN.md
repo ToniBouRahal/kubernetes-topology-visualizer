@@ -305,6 +305,23 @@ Grafana): [ADR-013](adr/ADR-013-bundled-observability.md).
 - [x] **P6-K14** `make demo-observability`; T-13.1 – T-13.7 in the two verification scripts — 76 + 22 assertions green
 - [x] **P6-K15** Docs: operator guide, prerequisites, limitations, ADR cross-references, index
 
+
+### ADR-014 — security hardening (all components)
+
+Closes the doors Phase 5 deliberately left open: nobody can read the topology without signing in
+(OIDC through oauth2-proxy, Dex bundled for the kind demo), nobody can write it without the agent's
+client certificate, all in-cluster traffic is mutual TLS with one CA per role, PostgreSQL requires
+TLS, the agent drops `privileged` for two capabilities, and CI scans dependencies and images.
+Threat model, decisions and what is declined (image signing, cert-manager as a requirement):
+[ADR-014](adr/ADR-014-security-hardening.md).
+
+- [x] **S14-1** ADR-014, index and plan entry
+- [x] **S14-2** HTTP hardening and supply-chain CI — D-14.10, D-14.11
+- [x] **S14-3** Internal PKI, backend listeners, agent and frontend mTLS — D-14.2 – D-14.5
+- [x] **S14-4** PostgreSQL TLS — D-14.8
+- [x] **S14-5** OIDC sign-in and bundled Dex — D-14.6, D-14.7
+- [x] **S14-6** Agent least privilege and namespace Pod Security — D-14.9, D-14.12
+- [x] **S14-7** Verification on the kind demo, security review (no findings), CI green on PR #5; `limitations.md` and the operator guide updated
 ---
 
 ## Definition of Done cross-check

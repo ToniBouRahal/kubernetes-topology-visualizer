@@ -15,6 +15,9 @@ NAMESPACE="${NAMESPACE:-topology}"
 RELEASE="${RELEASE:-topology}"
 KUBECTL="kubectl --context $CONTEXT"
 PORT="${EXP_PORT:-18100}"
+API_PORT="${EXP_API_PORT:-18101}"
+# shellcheck source=lib/mtls.sh
+source "$REPO_ROOT/scripts/lib/mtls.sh"
 
 pass=0; fail=0
 ok()   { printf '  \033[32mMET\033[0m    %s\n' "$1"; pass=$((pass+1)); }
@@ -22,7 +25,7 @@ miss() { printf '  \033[31mMISSED\033[0m %s\n' "$1"; fail=$((fail+1)); }
 info() { printf '  \033[36m·\033[0m      %s\n' "$1"; }
 
 PF_PID=""
-cleanup() { [[ -n "$PF_PID" ]] && kill "$PF_PID" 2>/dev/null; wait "$PF_PID" 2>/dev/null; return 0; }
+cleanup() { [[ -n "$PF_PID" ]] && kill "$PF_PID" 2>/dev/null; wait "$PF_PID" 2>/dev/null; mtls_close; return 0; }
 trap cleanup EXIT INT TERM
 
 api_up() {
@@ -31,7 +34,13 @@ api_up() {
   PF_PID=$!
   for _ in $(seq 1 20); do
     sleep 1
-    curl -sf -o /dev/null --max-time 2 "http://localhost:${PORT}/health/ready" 2>/dev/null && return 0
+    if curl -sf -o /dev/null --max-time 2 "http://localhost:${PORT}/health/ready" 2>/dev/null; then
+      # Topology reads go to the mTLS API listener as the frontend (ADR-014 D-14.3). The TLS
+      # handshake is now part of each measured query, as it is for the UI.
+      mtls_open frontend "$API_PORT" || return 1
+      trap cleanup EXIT INT TERM
+      return 0
+    fi
   done
   return 1
 }
@@ -152,8 +161,8 @@ exp_latency() {
   local times=()
   for _ in $(seq 1 $n); do
     local ms
-    ms=$(curl -s -o /dev/null -w '%{time_total}' --max-time 10 \
-         "http://localhost:${PORT}/api/v1/graph?window=1h" 2>/dev/null)
+    ms=$("${MTLS_CURL[@]}" -o /dev/null -w '%{time_total}' --max-time 10 \
+         "$MTLS_BASE/api/v1/graph?window=1h" 2>/dev/null)
     times+=("$ms")
   done
 
@@ -163,7 +172,7 @@ exp_latency() {
   p50=$(printf '%s\n' "${times[@]}" | sort -n | awk -v n="$n" 'NR==int(n*0.50){print $1*1000}')
 
   local nodes edges
-  read -r nodes edges < <(curl -s --max-time 10 "http://localhost:${PORT}/api/v1/graph?window=1h" \
+  read -r nodes edges < <("${MTLS_CURL[@]}" --max-time 10 "$MTLS_BASE/api/v1/graph?window=1h" \
     | python3 -c 'import json,sys; g=json.load(sys.stdin); print(len(g["nodes"]), len(g["edges"]))')
 
   info "graph size: ${nodes} nodes, ${edges} edges (${n} requests)"
@@ -184,7 +193,7 @@ exp_churn() {
   api_up || { miss "API unreachable"; return; }
 
   local before
-  before=$(curl -s --max-time 10 "http://localhost:${PORT}/api/v1/graph?window=15m" \
+  before=$("${MTLS_CURL[@]}" --max-time 10 "$MTLS_BASE/api/v1/graph?window=15m" \
     | python3 -c 'import json,sys; g=json.load(sys.stdin); print(",".join(sorted(n["id"] for n in g["nodes"])))')
 
   info "restarting the demo backend..."
@@ -193,7 +202,7 @@ exp_churn() {
   sleep 35
 
   local after
-  after=$(curl -s --max-time 10 "http://localhost:${PORT}/api/v1/graph?window=15m" \
+  after=$("${MTLS_CURL[@]}" --max-time 10 "$MTLS_BASE/api/v1/graph?window=15m" \
     | python3 -c 'import json,sys; g=json.load(sys.stdin); print(",".join(sorted(n["id"] for n in g["nodes"])))')
 
   # The property: replacing every pod must not create new node IDs. Identity is the workload, not

@@ -18,6 +18,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app.api.listeners import LISTENER_SCOPE_KEY
+
 # Set per request; read by the formatter without threading it through every call.
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
 
@@ -115,14 +117,19 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         finally:
             request_id_var.reset(token)
 
-        log.info(
-            "request",
-            extra={
-                "method": request.method,
-                "path": request.url.path,
-                "status": response.status_code,
-                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
-            },
-        )
+        fields = {
+            "method": request.method,
+            "path": request.url.path,
+            "status": response.status_code,
+            "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+        }
+        # Who read it (ADR-014 D-14.6). Trusted only on the API listener: its one client is nginx,
+        # which sets this header from the sign-in session and overwrites any a browser sent. On
+        # any other listener the header could come from anyone, so it is not recorded at all.
+        if request.scope.get(LISTENER_SCOPE_KEY) == "api" and (
+            user := request.headers.get("x-forwarded-email")
+        ):
+            fields["user"] = user
+        log.info("request", extra=fields)
         response.headers["x-request-id"] = request_id
         return response

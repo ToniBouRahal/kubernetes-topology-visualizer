@@ -13,6 +13,10 @@ NAMESPACE="${NAMESPACE:-topology}"
 RELEASE="${RELEASE:-topology}"
 WINDOW="${WINDOW:-15m}"
 PORT="${VERIFY_PORT:-18099}"
+API_PORT="${VERIFY_API_PORT:-18098}"
+KUBECTL="kubectl --context $CONTEXT"
+# shellcheck source=lib/mtls.sh
+source "$REPO_ROOT/scripts/lib/mtls.sh"
 
 pass=0
 fail=0
@@ -25,6 +29,7 @@ cleanup() {
   # port and makes the next run fail for a reason that has nothing to do with the system.
   [[ -n "$PF_PID" ]] && kill "$PF_PID" 2>/dev/null
   wait "$PF_PID" 2>/dev/null
+  mtls_close
   return 0
 }
 trap cleanup EXIT INT TERM
@@ -51,7 +56,15 @@ if [[ "$api_ready" != true ]]; then
 fi
 ok "backend API reachable and ready"
 
-GRAPH="$(curl -s --max-time 15 "http://localhost:${PORT}/api/v1/graph?window=${WINDOW}" 2>/dev/null)"
+# The topology is on the mTLS API listener only (ADR-014 D-14.3): read it as the frontend does.
+if ! mtls_open frontend "$API_PORT"; then
+  bad "could not reach the API listener over mutual TLS"
+  echo
+  echo "demo verification: $pass passed, $fail failed"
+  exit 1
+fi
+trap cleanup EXIT INT TERM
+GRAPH="$("${MTLS_CURL[@]}" --max-time 15 "$MTLS_BASE/api/v1/graph?window=${WINDOW}" 2>/dev/null)"
 if [[ -z "$GRAPH" ]]; then
   bad "the graph endpoint returned nothing"
   echo

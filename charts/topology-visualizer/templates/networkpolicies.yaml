@@ -16,15 +16,24 @@ spec:
   # half-correct egress policy that silently breaks name resolution is worse than none.
   policyTypes: [Ingress]
   ingress:
-    # Ingestion accepts traffic only from agent pods, plus the frontend for its API proxy.
+    # One client per listener (ADR-014 D-14.3). mTLS already refuses the wrong certificate on
+    # each; this refuses the connection before a handshake is even attempted.
+    # Agents: the ingest listener only.
     - from:
         - podSelector:
             matchLabels:
               {{- include "topology.agent.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.service.ingestPort }}
+    # The frontend: the API listener for reads, and the ops listener for its /health proxy.
+    - from:
         - podSelector:
             matchLabels:
               {{- include "topology.frontend.selectorLabels" . | nindent 14 }}
       ports:
+        - protocol: TCP
+          port: {{ .Values.backend.service.apiPort }}
         - protocol: TCP
           port: {{ .Values.backend.service.port }}
 {{- if .Values.monitoring.enabled }}
@@ -85,5 +94,32 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
+{{- end }}
+{{- if and .Values.auth.enabled .Values.auth.dex.enabled }}
+---
+# The bundled Dex (ADR-014 D-14.7): its HTTPS port, from the frontend pods only — nginx for the
+# browser's sign-in pages, oauth2-proxy for the token exchange. Its chart also always opens plain
+# HTTP on 5556, which this leaves unreachable. Probes use the telemetry port, which kubelet
+# reaches regardless of policy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "topology.fullname" . }}-dex
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: dex
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "topology.frontend.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 5554
 {{- end }}
 {{- end }}

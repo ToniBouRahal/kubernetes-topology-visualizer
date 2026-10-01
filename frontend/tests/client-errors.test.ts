@@ -62,3 +62,21 @@ describe("API error messages", () => {
     await expect(fetchGraph({ window: "5m" })).rejects.toThrow(/failed with status 418/);
   });
 });
+
+describe("an ended session (ADR-014 D-14.6)", () => {
+  it("sends the page to sign in, back to where it was, instead of showing an error", async () => {
+    const { signIn } = await import("../src/api/client");
+    const redirect = vi.spyOn(signIn, "redirect").mockImplementation(() => {});
+    respondWith(401, { error: "unauthorized", detail: "your session has ended; sign in again" }, "Unauthorized");
+    await expect(fetchGraph({ window: "5m" })).rejects.toBeInstanceOf(ApiError);
+    expect(redirect).toHaveBeenCalledOnce();
+  });
+
+  it("does not sign in again on any other failure", async () => {
+    const { signIn } = await import("../src/api/client");
+    const redirect = vi.spyOn(signIn, "redirect").mockImplementation(() => {});
+    respondWith(502);
+    await expect(fetchGraph({ window: "5m" })).rejects.toBeInstanceOf(ApiError);
+    expect(redirect).not.toHaveBeenCalled();
+  });
+});

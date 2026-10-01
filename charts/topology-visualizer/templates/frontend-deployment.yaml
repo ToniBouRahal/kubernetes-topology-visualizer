@@ -17,10 +17,20 @@ spec:
         # Roll the pods when config.json changes — a subPath mount is read once at start and
         # never updates in place, so without this a Grafana URL change would apply to nothing.
         checksum/config: {{ include (print $.Template.BasePath "/frontend-configmap.yaml") . | sha256sum }}
+        {{- if .Values.tls.generate }}
+        checksum/tls: {{ include "topology.pkiChecksum" (dict "root" . "role" "frontend") }}
+        {{- end }}
+        {{- if .Values.auth.enabled }}
+        # Roll when a sign-in setting changes: oauth2-proxy reads its flags once.
+        checksum/auth: {{ toJson .Values.auth | sha256sum }}
+        {{- end }}
       labels:
         {{- include "topology.frontend.selectorLabels" . | nindent 8 }}
     spec:
       automountServiceAccountToken: false
+      securityContext:
+        # The client key is group-readable by nginx's user only (ADR-014 D-14.5).
+        fsGroup: {{ .Values.frontend.securityContext.runAsUser }}
       containers:
         - name: frontend
           image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
@@ -39,8 +49,20 @@ spec:
             # client in the cluster but not for nginx — a 502 with "Host not found".
             - name: BACKEND_HOST
               value: {{ printf "%s.%s.svc.cluster.local" (include "topology.backendService" .) .Release.Namespace | quote }}
-            - name: BACKEND_PORT
+            # Reads go to the mTLS API listener; /health to the plain ops listener (ADR-014 D-14.3).
+            - name: BACKEND_API_PORT
+              value: {{ .Values.backend.service.apiPort | quote }}
+            - name: BACKEND_OPS_PORT
               value: {{ .Values.backend.service.port | quote }}
+            # Sign-in (ADR-014 D-14.6): nginx asks the oauth2-proxy sidecar before every request.
+            - name: AUTH_MODE
+              value: {{ ternary "on" "off" .Values.auth.enabled | quote }}
+            - name: DEX_MODE
+              value: {{ ternary "on" "off" (and .Values.auth.enabled .Values.auth.dex.enabled) | quote }}
+            - name: DEX_HOST
+              value: {{ printf "topology-dex.%s.svc.cluster.local" .Release.Namespace | quote }}
+            - name: DEX_PORT
+              value: "5554"
           readinessProbe:
             httpGet:
               path: /
@@ -64,7 +86,110 @@ spec:
               mountPath: /usr/share/nginx/html/config.json
               subPath: config.json
               readOnly: true
+            - name: tls-frontend
+              mountPath: /etc/nginx/tls
+              readOnly: true
+        {{- if .Values.auth.enabled }}
+        {{- $externalUrl := trimSuffix "/" .Values.auth.externalUrl }}
+        {{- $dexInCluster := printf "https://topology-dex.%s.svc.cluster.local:5554/dex" .Release.Namespace }}
+        # oauth2-proxy (ADR-014 D-14.6), on loopback only: nginx is its one client, so nothing else
+        # in the cluster can reach it. Auth-only mode (static upstream): nginx serves the app.
+        - name: oauth2-proxy
+          image: "{{ .Values.auth.proxy.image.repository }}:{{ .Values.auth.proxy.image.tag }}{{ with .Values.auth.proxy.image.digest }}@{{ . }}{{ end }}"
+          imagePullPolicy: {{ .Values.auth.proxy.image.pullPolicy }}
+          args:
+            - --http-address=127.0.0.1:4180
+            - --upstream=static://202
+            - --reverse-proxy=true
+            - --provider=oidc
+            - --redirect-url={{ $externalUrl }}/oauth2/callback
+            - --code-challenge-method=S256
+            # Ask for consent only when the provider needs it, not on every sign-in: oauth2-proxy's
+            # default forces a consent screen that the bundled Dex would otherwise skip.
+            - --approval-prompt=auto
+            - --skip-provider-button=true
+            - --set-xauthrequest=true
+            - --cookie-name=_topology_session
+            # Secure, except for plain http on a non-loopback host, where a browser would refuse
+            # the cookie and sign-in would loop. The NOTES warn about that configuration.
+            - --cookie-secure={{ or (hasPrefix "https://" $externalUrl) (regexMatch `^http://(localhost|127\.0\.0\.1)(:[0-9]+)?$` $externalUrl) }}
+            - --cookie-httponly=true
+            - --cookie-samesite=lax
+            - --cookie-expire={{ .Values.auth.sessionHours }}h
+            - --silence-ping-logging=true
+            {{- range .Values.auth.oidc.allowedEmailDomains }}
+            - --email-domain={{ . }}
+            {{- end }}
+            {{- range .Values.auth.oidc.allowedGroups }}
+            - --allowed-group={{ . }}
+            {{- end }}
+            {{- if .Values.auth.dex.enabled }}
+            # The bundled Dex has two addresses: the browser reaches it through this pod at
+            # externalUrl/dex, oauth2-proxy reaches it in-cluster over TLS. Discovery would hand
+            # back the browser's address for both, so the endpoints are given explicitly and the
+            # issuer stays the browser-facing one the tokens carry.
+            - --client-id=topology
+            - --scope=openid email profile
+            - --oidc-issuer-url={{ $externalUrl }}/dex
+            - --skip-oidc-discovery=true
+            - --login-url={{ $externalUrl }}/dex/auth
+            - --redeem-url={{ $dexInCluster }}/token
+            - --oidc-jwks-url={{ $dexInCluster }}/keys
+            - --provider-ca-file=/etc/oauth2-proxy/tls/ca.crt
+            {{- else }}
+            - --client-id={{ .Values.auth.oidc.clientId }}
+            - --scope={{ .Values.auth.oidc.scopes }}
+            - --oidc-issuer-url={{ .Values.auth.oidc.issuerUrl }}
+            {{- end }}
+          env:
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "topology.fullname" . }}-auth
+                  key: cookie-secret
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.auth.dex.enabled }}
+                  name: {{ include "topology.fullname" . }}-auth
+                  key: client-secret
+                  {{- else }}
+                  name: {{ .Values.auth.oidc.clientSecret.existingSecret }}
+                  key: {{ .Values.auth.oidc.clientSecret.key }}
+                  {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            {{- toYaml .Values.auth.proxy.resources | nindent 12 }}
+          {{- if .Values.auth.dex.enabled }}
+          volumeMounts:
+            # The server CA only, to verify the bundled Dex.
+            - name: tls-server-ca
+              mountPath: /etc/oauth2-proxy/tls
+              readOnly: true
+          {{- end }}
+        {{- end }}
       volumes:
+        {{- if and .Values.auth.enabled .Values.auth.dex.enabled }}
+        - name: tls-server-ca
+          secret:
+            secretName: {{ include "topology.fullname" . }}-tls-frontend
+            defaultMode: 0444
+            items:
+              - { key: ca.crt, path: ca.crt }
+        {{- end }}
+        - name: tls-frontend
+          secret:
+            secretName: {{ include "topology.fullname" . }}-tls-frontend
+            defaultMode: 0440
         - name: ui-config
           configMap:
             name: {{ include "topology.fullname" . }}-frontend

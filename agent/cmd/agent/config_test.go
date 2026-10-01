@@ -65,3 +65,33 @@ func TestIngestURLIsRequired(t *testing.T) {
 			"is indistinguishable from a cluster with no traffic")
 	}
 }
+
+// ADR-014 D-14.4: the transport to the backend fails closed when half-configured.
+func TestIngestTransportFailsClosed(t *testing.T) {
+	cases := []struct {
+		name, url, cert, key, ca string
+		ok                       bool
+	}{
+		{"development: plain http, no certificates", "http://backend:8000/x", "", "", "", true},
+		{"deployed: https with all three", "https://backend:8443/x", "/c", "/k", "/ca", true},
+		{"https without certificates", "https://backend:8443/x", "", "", "", false},
+		{"certificates over plain http", "http://backend:8000/x", "/c", "/k", "/ca", false},
+		{"two of three", "https://backend:8443/x", "/c", "/k", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("NODE_NAME", "node-a")
+			t.Setenv("BACKEND_INGEST_URL", tc.url)
+			t.Setenv("AGENT_TLS_CERT_FILE", tc.cert)
+			t.Setenv("AGENT_TLS_KEY_FILE", tc.key)
+			t.Setenv("AGENT_TLS_CA_FILE", tc.ca)
+			_, err := loadConfig()
+			if tc.ok && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !tc.ok && err == nil {
+				t.Fatal("expected loadConfig to refuse this configuration")
+			}
+		})
+	}
+}

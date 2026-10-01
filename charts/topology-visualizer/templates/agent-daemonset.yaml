@@ -20,6 +20,9 @@ spec:
         # running pod keeps serving the old one indefinitely. That is how a retention change from
         # 24 to 1440 hours was observed to take effect nowhere at all.
         checksum/config: {{ include (print $.Template.BasePath "/configmaps.yaml") . | sha256sum }}
+        {{- if .Values.tls.generate }}
+        checksum/tls: {{ include "topology.pkiChecksum" (dict "root" . "role" "agent") }}
+        {{- end }}
         {{- if .Values.observability.enabled }}
         # The bundled Prometheus has no operator and discovers targets by annotation (ADR-013
         # D-13.2). Absent otherwise, so the default render is unchanged. T-13.3 asserts this port
@@ -32,7 +35,6 @@ spec:
         {{- include "topology.agent.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ include "topology.serviceAccountName" . }}
-      hostPID: {{ .Values.agent.hostPID }}
       # Runs on every node, control-plane included. Without this the three-node validation
       # in Phase 1 and Phase 5 silently under-reports.
       tolerations:
@@ -42,22 +44,29 @@ spec:
           image: "{{ .Values.agent.image.repository }}:{{ .Values.agent.image.tag }}"
           imagePullPolicy: {{ .Values.agent.image.pullPolicy }}
           securityContext:
-            # THE ONE PRIVILEGED WORKLOAD, and the asymmetry D-7.4 requires spelling out.
-            #
-            # Loading a BPF program and attaching it to a tracepoint needs CAP_BPF and
-            # CAP_PERFMON (CAP_SYS_ADMIN on older kernels), plus a raised memlock limit. There is
-            # no configuration of a non-privileged container that can do this — the capability is
-            # the feature.
-            #
-            # Deliberately NOT given seccompProfile: RuntimeDefault, unlike every other workload
-            # here. The default profile restricts bpf() and perf_event_open(), which are precisely
-            # the syscalls this agent exists to make; applying it would break capture at start-up.
-            #
-            # What limits the blast radius instead: the container is read-only in effect (it opens
-            # no files for writing), its RBAC is get/list/watch only (agent-rbac.yaml), it never
-            # reads packet payloads (ADR-001 §6), and it holds no database credentials. The
-            # privilege buys kernel-level *observation*, not cluster-level authority.
-            privileged: {{ .Values.agent.privileged }}
+            {{- if .Values.agent.privileged }}
+            # Escape hatch only, for a kernel without CAP_BPF (before 5.8, outside ADR-002's
+            # support range). Everything below is what a supported kernel needs instead.
+            privileged: true
+            {{- else }}
+            # Two capabilities, not privilege (ADR-014 D-14.9). Measured on kernel 6.8: BPF loads
+            # the program and creates the ring buffer; PERFMON attaches it to the tracepoint and
+            # lets it read kernel socket state. Nothing else was needed — memlock is not raised
+            # (BPF memory is cgroup-accounted since 5.11), no hostPID, no BPF filesystem, and the
+            # runtime's default seccomp profile admits bpf() and perf_event_open() for exactly
+            # these capabilities. uid 0 because a capability is only effective for root inside
+            # the container; with everything else dropped, root holds exactly these two.
+            privileged: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsUser: 0
+            runAsNonRoot: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["BPF", "PERFMON"]
+            seccompProfile:
+              type: RuntimeDefault
+            {{- end }}
           ports:
             - name: health
               containerPort: {{ .Values.agent.healthPort }}
@@ -76,6 +85,14 @@ spec:
               value: {{ .Values.clusterId | quote }}
             - name: BACKEND_INGEST_URL
               value: {{ include "topology.backendIngestUrl" . | quote }}
+            # Mutual TLS to the ingest listener (ADR-014 D-14.4): the agent's own certificate,
+            # and the server CA it verifies the backend with.
+            - name: AGENT_TLS_CERT_FILE
+              value: /etc/topology/tls/agent/tls.crt
+            - name: AGENT_TLS_KEY_FILE
+              value: /etc/topology/tls/agent/tls.key
+            - name: AGENT_TLS_CA_FILE
+              value: /etc/topology/tls/agent/ca.crt
             - name: AGENT_FLUSH_INTERVAL_SECONDS
               value: {{ .Values.agent.flushIntervalSeconds | quote }}
             - name: AGENT_MAX_PENDING_BATCHES
@@ -104,17 +121,20 @@ spec:
           resources:
             {{- toYaml .Values.agent.resources | nindent 12 }}
           volumeMounts:
-            - name: bpffs
-              mountPath: /sys/fs/bpf
-            - name: debugfs
-              mountPath: /sys/kernel/debug
+            - name: tls-agent
+              mountPath: /etc/topology/tls/agent
+              readOnly: true
+            # Read-only: only the tracepoint's id is read here, to attach the program.
+            - name: tracefs
+              mountPath: /sys/kernel/tracing
+              readOnly: true
       volumes:
-        - name: bpffs
+        - name: tls-agent
+          secret:
+            secretName: {{ include "topology.fullname" . }}-tls-agent
+            defaultMode: 0400
+        - name: tracefs
           hostPath:
-            path: /sys/fs/bpf
-            type: DirectoryOrCreate
-        - name: debugfs
-          hostPath:
-            path: /sys/kernel/debug
+            path: /sys/kernel/tracing
             type: Directory
 {{- end }}

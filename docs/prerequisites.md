@@ -12,7 +12,7 @@ Run `make tools` to compare your machine against these pins.
 
 | Tool | Pinned | Why this version |
 |---|---|---|
-| Go | **1.26.5** | `cilium/ebpf`, `bpf2go`, client-go informers |
+| Go | **1.26.7** | `cilium/ebpf`, `bpf2go`, client-go informers |
 | Node | **24.19.0** | Current active LTS (Krypton). Vite 7 requires ≥ 20.19; Node 18 is EOL. |
 | Python | **3.13** | FastAPI + Pydantic v2 |
 | Helm | **4.2.3** | **Helm 4, not 3.** Chart syntax and lint strictness are validated against v4. |
@@ -76,7 +76,7 @@ system Node 18 and would break if it were replaced.
 
 ```bash
 # Go → ~/.local/go, symlinked into ~/.local/bin
-curl -fsSL -o go.tar.gz https://go.dev/dl/go1.26.5.linux-amd64.tar.gz
+curl -fsSL -o go.tar.gz https://go.dev/dl/go1.26.7.linux-amd64.tar.gz
 tar -C ~/.local -xzf go.tar.gz
 ln -sf ~/.local/go/bin/go    ~/.local/bin/go
 ln -sf ~/.local/go/bin/gofmt ~/.local/bin/gofmt

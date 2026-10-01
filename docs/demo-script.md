@@ -69,7 +69,14 @@ reported". It is checkable, and it is checked.
 kubectl --context kind-topology -n topology port-forward svc/topology-visualizer-frontend 8080:8080
 ```
 
-Open `http://localhost:8080`.
+Open `http://localhost:8080`. You land on a sign-in page, which is the first thing to point out:
+nothing about this cluster's topology is visible without an account (ADR-014). Sign in as
+`admin@topology.local`; the password was generated at install:
+
+```bash
+kubectl --context kind-topology -n topology get secret topology-visualizer-auth \
+  -o jsonpath='{.data.demo-password}' | base64 -d; echo
+```
 
 Four things to point out, in order:
 

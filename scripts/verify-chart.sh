@@ -136,13 +136,41 @@ echo "== D-7.4: security posture =="
 SEC_RENDERED="$(render --set postgresql.enabled=true --set postgresql.auth.password=s3cret \
                        --set networkPolicy.enabled=true)"
 
-# Exactly ONE privileged container is expected: the agent. Anything else is a regression, and the
-# count is asserted rather than the presence, so a second privileged workload cannot slip in.
+# NO privileged container (ADR-014 D-14.9). The agent runs on two capabilities; any container
+# turning up privileged — the agent included — is a regression. Counted, not merely searched for.
 priv=$(printf '%s' "$SEC_RENDERED" | grep -c 'privileged: true' || true)
-if [[ "$priv" -eq 1 ]]; then
-  ok "exactly one privileged container (the agent)"
+if [[ "$priv" -eq 0 ]]; then
+  ok "no privileged container, the agent included"
 else
-  bad "expected exactly 1 privileged container, found $priv"
+  bad "expected no privileged container, found $priv"
+fi
+# The agent's exact grant: BPF and PERFMON added, everything else dropped, no host PID namespace,
+# read-only root, and one host path, read-only.
+AGENT_POSTURE="$(printf '%s' "$SEC_RENDERED" | python3 -c '
+import sys, yaml
+for d in yaml.safe_load_all(sys.stdin):
+    if d and d.get("kind") == "DaemonSet":
+        spec = d["spec"]["template"]["spec"]
+        c = spec["containers"][0]
+        sc = c["securityContext"]
+        caps = sc.get("capabilities", {})
+        host = [(v["hostPath"]["path"]) for v in spec["volumes"] if "hostPath" in v]
+        ro = {m["name"]: m.get("readOnly", False) for m in c["volumeMounts"]}
+        hostnames = [v["name"] for v in spec["volumes"] if "hostPath" in v]
+        problems = []
+        if sorted(caps.get("add", [])) != ["BPF", "PERFMON"]: problems.append("adds " + str(caps.get("add")))
+        if caps.get("drop") != ["ALL"]: problems.append("does not drop ALL")
+        if spec.get("hostPID") or spec.get("hostNetwork"): problems.append("shares a host namespace")
+        if not sc.get("readOnlyRootFilesystem"): problems.append("writable root filesystem")
+        if sc.get("allowPrivilegeEscalation") is not False: problems.append("privilege escalation allowed")
+        if (sc.get("seccompProfile") or {}).get("type") != "RuntimeDefault": problems.append("no RuntimeDefault seccomp")
+        if host != ["/sys/kernel/tracing"] or not all(ro[n] for n in hostnames): problems.append(f"host paths {host}, read-only {[ro[n] for n in hostnames]}")
+        print("; ".join(problems) or "OK")
+' 2>&1)"
+if [[ "$AGENT_POSTURE" == "OK" ]]; then
+  ok "agent: BPF + PERFMON only, no host namespaces, read-only root, one read-only host path"
+else
+  bad "agent posture: $AGENT_POSTURE"
 fi
 
 # Every workload that is NOT the agent must be hardened. Counted against the three non-agent
@@ -173,16 +201,11 @@ else
   bad "expected >= 2 read-only root filesystems, found $ro"
 fi
 
-# The agent must NOT carry seccomp RuntimeDefault: the default profile restricts bpf() and
-# perf_event_open(), so applying it would break capture. Asserted so nobody "fixes" it later.
-AGENT_BLOCK="$(printf '%s' "$SEC_RENDERED" | awk '/^kind: DaemonSet$/,/^---$/')"
-# `grep RuntimeDefault` also matches the comment in the template explaining why it is absent, so
-# the actual YAML key is what gets checked.
-if grep -qE '^\s*type:\s*RuntimeDefault' <<<"$AGENT_BLOCK"; then
-  bad "the agent has seccompProfile RuntimeDefault, which blocks bpf() and breaks capture"
-else
-  ok "agent is exempt from seccomp RuntimeDefault (documented in agent-daemonset.yaml)"
-fi
+# The agent's seccomp profile is RuntimeDefault, and that is asserted in the agent posture check
+# above (ADR-014 D-14.9). This used to be asserted ABSENT: under `privileged` on the Phase 5 setup
+# the default profile broke capture. With BPF and PERFMON as real capabilities, the runtime's
+# default profile admits bpf() and perf_event_open() — measured on the kind cluster, where the
+# counted burst still reports exactly 100 of 100.
 
 # Probes and limits on every workload — a pod with no readiness probe takes traffic before it can
 # serve it, and one with no limit can starve a node.
@@ -292,14 +315,25 @@ if grep -q 'kubernetes.io/metadata.name: "observability"' <<<"$NPM_BACKEND"; the
 else
   bad "backend NetworkPolicy has no ingress from the Prometheus namespace"
 fi
-if [[ $(printf '%s' "$NPM_BACKEND" | grep -c "port: $(printf '%s' "$NPM_BACKEND" | grep -m1 'port:' | awk '{print $2}')") -eq 2 ]] && \
-   ! grep -qE 'port: (9090|8081)' <<<"$NPM_BACKEND"; then
+# The rule admitting the Prometheus namespace must open the plain ops port and nothing else — in
+# particular not the mTLS listeners, which carry topology (ADR-014 D-14.3).
+SCRAPE_PORTS="$(printf '%s' "$NPM_RENDERED" | python3 -c '
+import sys, yaml
+for doc in yaml.safe_load_all(sys.stdin):
+    if doc and doc.get("kind") == "NetworkPolicy" and doc["metadata"]["name"].endswith("-backend"):
+        for rule in doc["spec"]["ingress"]:
+            if any("namespaceSelector" in peer for peer in rule["from"]):
+                print(" ".join(str(p["port"]) for p in rule["ports"]))
+')"
+if [[ "$SCRAPE_PORTS" == "8000" ]]; then
   ok "scrape ingress is on the backend port only"
 else
   bad "scrape ingress opens a port other than the backend's"
 fi
-DS_OFF="$(printf '%s' "$RENDERED" | awk '/^kind: DaemonSet$/,/^---$/')"
-DS_ON="$(printf '%s' "$NPM_RENDERED" | awk '/^kind: DaemonSet$/,/^---$/')"
+# checksum/tls differs between any two renders by design: `helm template` has no cluster to look
+# existing certificates up in, so each render generates a fresh PKI (ADR-014 D-14.2).
+DS_OFF="$(printf '%s' "$RENDERED" | awk '/^kind: DaemonSet$/,/^---$/' | grep -v 'checksum/tls')"
+DS_ON="$(printf '%s' "$NPM_RENDERED" | awk '/^kind: DaemonSet$/,/^---$/' | grep -v 'checksum/tls')"
 if [[ "$DS_OFF" == "$DS_ON" ]]; then
   ok "agent DaemonSet is unchanged by monitoring (no new listener, no new capability)"
 else
@@ -433,6 +467,111 @@ else
   bad "backend NetworkPolicy does not admit the bundled Prometheus"
 fi
 reject "observability.enabled together with monitoring.enabled" --set observability.enabled=true --set monitoring.enabled=true
+
+echo "== ADR-014: transport security (T-14.4) =="
+# Parsed, not grepped: which workload mounts which certificate is a property of volumes and mounts
+# together, and a grep would pass a Secret that is declared but mounted somewhere else.
+# The render with the in-cluster database, so its certificate and hba are checked too.
+TLS_REPORT="$(printf '%s' "$DB_RENDERED" | python3 -c '
+import base64, sys, yaml
+
+docs = [d for d in yaml.safe_load_all(sys.stdin) if d]
+problems = []
+
+def workload(component):
+    for d in docs:
+        if d["kind"] in ("Deployment", "DaemonSet", "StatefulSet") and \
+           d["spec"]["template"]["metadata"]["labels"].get("app.kubernetes.io/component") == component:
+            return d["spec"]["template"]["spec"]
+
+def tls_secrets(spec):
+    """The -tls- Secrets a pod spec actually mounts into a container."""
+    mounted = {m["name"] for c in spec["containers"] for m in c.get("volumeMounts", [])}
+    return sorted({v["secret"]["secretName"].split("-tls-")[1] for v in spec.get("volumes", [])
+                   if "secret" in v and "-tls-" in v["secret"]["secretName"] and v["name"] in mounted})
+
+def env(spec):
+    return {e["name"]: e.get("value") for c in spec["containers"] for e in c.get("env", [])}
+
+# Each role mounts its own certificate and nothing else (least privilege for keys).
+expected = {"backend": ["client-cas", "server"], "agent": ["agent"], "frontend": ["frontend"],
+            "database": ["postgresql"]}
+for component, want in expected.items():
+    got = tls_secrets(workload(component))
+    if got != want:
+        problems.append(f"{component} mounts {got}, expected {want}")
+
+# Private keys: exactly the four leaf keys, only in kubernetes.io/tls Secrets, never a CA key,
+# never in a ConfigMap.
+keys = []
+for d in docs:
+    if d["kind"] == "ConfigMap" and "PRIVATE KEY" in yaml.safe_dump(d.get("data", {})):
+        problems.append(f"private key in ConfigMap {d['metadata']['name']}")
+    if d["kind"] == "Secret":
+        for k, v in (d.get("data") or {}).items():
+            if "PRIVATE KEY" in base64.b64decode(v).decode(errors="ignore"):
+                name = d["metadata"]["name"]
+                role = "dex" if name == "topology-dex-tls" else name.split("-tls-")[-1]
+                keys.append((role, k, d.get("type")))
+leaf = sorted((n, "tls.key", "kubernetes.io/tls") for n in ("agent", "dex", "frontend", "postgresql", "server"))
+if sorted(keys) != leaf:
+    problems.append(f"private keys found {sorted(keys)}, expected only the five leaf tls.key")
+
+# Transports.
+agent, backend, frontend = env(workload("agent")), env(workload("backend")), env(workload("frontend"))
+if not (agent.get("BACKEND_INGEST_URL") or "").startswith("https://") or ":8443/" not in agent["BACKEND_INGEST_URL"]:
+    problems.append(f"agent ingest URL is not https on the ingest listener: {agent.get('BACKEND_INGEST_URL')}")
+if not all(agent.get(k) for k in ("AGENT_TLS_CERT_FILE", "AGENT_TLS_KEY_FILE", "AGENT_TLS_CA_FILE")):
+    problems.append("agent is missing an AGENT_TLS_* setting")
+if not all(backend.get(k) for k in ("TLS_CERT_FILE", "TLS_KEY_FILE", "TLS_INGEST_CLIENT_CA_FILE", "TLS_API_CLIENT_CA_FILE")):
+    problems.append("backend is missing a TLS_* setting, so it would serve plain HTTP")
+if frontend.get("BACKEND_API_PORT") != "8444":
+    problems.append("frontend does not proxy to the API listener")
+
+# The database: TLS on, and plain TCP rejected by pg_hba (ADR-014 D-14.8).
+db = workload("database")
+args = " ".join(a for c in db["containers"] for a in c.get("args", []))
+if "ssl=on" not in args or "hba_file=" not in args or "ssl_min_protocol_version=TLSv1.3" not in args:
+    problems.append(f"PostgreSQL is not started with TLS 1.3 and the chart hba file: {args}")
+hba = next((d["data"]["pg_hba.conf"] for d in docs if d["kind"] == "ConfigMap" and d["metadata"]["name"].endswith("-postgresql-hba")), "")
+lines = [l.split() for l in hba.splitlines() if l.strip() and not l.lstrip().startswith("#")]
+if [l[0] for l in lines if l[0] != "local"] != ["hostssl", "hostssl", "host", "host"] or \
+   any(l[-1] != "reject" for l in lines if l[0] == "host"):
+    problems.append("pg_hba does not reject plain TCP after the TLS lines")
+def secret_value(d, key):
+    if key in (d.get("stringData") or {}):
+        return d["stringData"][key]
+    if key in (d.get("data") or {}):
+        return base64.b64decode(d["data"][key]).decode()
+dsn = next((secret_value(d, "database-url") for d in docs
+            if d["kind"] == "Secret" and secret_value(d, "database-url")), "")
+if "sslmode=verify-full" not in dsn:
+    problems.append("backend database URL does not require verify-full TLS")
+
+print("\n".join(problems) if problems else "OK")
+' 2>&1)"
+if [[ "$TLS_REPORT" == "OK" ]]; then
+  ok "each role mounts only its own certificate; only the five leaf keys exist; no CA key; all transports TLS"
+else
+  while IFS= read -r line; do bad "$line"; done <<<"$TLS_REPORT"
+fi
+
+# Network: each mTLS listener admits exactly its one client (ADR-014 D-14.3).
+NP_REPORT="$(render --set networkPolicy.enabled=true | python3 -c '
+import sys, yaml
+for doc in yaml.safe_load_all(sys.stdin):
+    if doc and doc.get("kind") == "NetworkPolicy" and doc["metadata"]["name"].endswith("-backend"):
+        for rule in doc["spec"]["ingress"]:
+            who = [list(p.get("podSelector", {}).get("matchLabels", {}).values()) for p in rule["from"]]
+            ports = sorted(p["port"] for p in rule["ports"])
+            print(f"{who}:{ports}")
+')"
+if grep -q "agent.*:\[8443\]" <<<"$NP_REPORT" && grep -q "frontend.*:\[8000, 8444\]" <<<"$NP_REPORT" \
+   && [[ $(grep -c "8443" <<<"$NP_REPORT") -eq 1 ]] && [[ $(grep -c "8444" <<<"$NP_REPORT") -eq 1 ]]; then
+  ok "NetworkPolicy: ingest port from agents only, API port from the frontend only"
+else
+  bad "NetworkPolicy ports per client are wrong: $NP_REPORT"
+fi
 
 echo "== T-7.3: values.schema.json rejects malformed values =="
 reject "empty clusterId"                     --set clusterId=""
