@@ -62,6 +62,21 @@ stringData:
     oauth2:
       skipApprovalScreen: true
       responseTypes: ["code"]
+      {{- if .Values.auth.cli.enabled }}
+      # Only the two grants in use (ADR-015 D-15.10). Enforced at /token only: Dex serves its
+      # device paths regardless, so nginx answers 404 for /dex/device*.
+      grantTypes: ["authorization_code", "refresh_token"]
+      {{- end }}
+    {{- if .Values.auth.cli.enabled }}
+    # A stolen ID token is good for an hour, a stolen refresh token for refreshHours. Dex-wide, so
+    # browser sign-ins get 1 h ID tokens too; oauth2-proxy never re-checks a stored session's.
+    # Refresh-token rotation stays on (Dex's default).
+    expiry:
+      idTokens: 1h
+      refreshTokens:
+        absoluteLifetime: {{ printf "%dh" (int .Values.auth.cli.refreshHours) | quote }}
+        validIfNotUsedFor: 8h
+    {{- end }}
     enablePasswordDB: true
     staticClients:
       - id: topology
@@ -69,6 +84,18 @@ stringData:
         secret: {{ $clientSecret | quote }}
         redirectURIs:
           - {{ printf "%s/oauth2/callback" $externalUrl | quote }}
+      {{- if .Values.auth.cli.enabled }}
+      # The CLI (ADR-015 D-15.7): public, so no secret, and PKCE S256 sent by the CLI. Listing
+      # exact redirect URIs turns off Dex's out-of-band, device-callback and any-loopback-port
+      # rules for this client; the Dex CSP's form-action names the same three origins.
+      - id: {{ include "topology.cliClientId" . | quote }}
+        name: Runtime Topology CLI
+        public: true
+        redirectURIs:
+          - http://127.0.0.1:38085/callback
+          - http://127.0.0.1:38086/callback
+          - http://127.0.0.1:38087/callback
+      {{- end }}
     staticPasswords:
       - email: {{ .Values.auth.dex.email | quote }}
         username: admin

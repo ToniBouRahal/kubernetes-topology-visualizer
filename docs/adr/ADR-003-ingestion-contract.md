@@ -5,7 +5,8 @@
 - **Parent:** ADR-001 §5.2 (identity), §5.3 (contract) · Source of truth §10
 - **Component path:** `contracts/`
 - **Owning phases:** Phase 0 (definition), Phase 2 (ingest + graph), Phase 3 (diff)
-- **Consumers:** ADR-002 (Go producer), ADR-004/005 (Python), ADR-006 (TypeScript)
+- **Consumers:** ADR-002 (Go producer), ADR-004/005 (Python), ADR-006 (TypeScript),
+  [ADR-015](ADR-015-cli-and-mcp-clients.md) (Go read client, `cli/`)
 
 ## 1. Why this is its own component
 
@@ -28,6 +29,12 @@ connections}` (`agent/main.go:41-47`) and the backend re-declares the same shape
 FastAPI generates `contracts/openapi.json`. It is committed. The TypeScript client is generated from
 it; Go structs are hand-written but validated against the committed example fixtures in CI. No
 component may hand-declare a payload type that exists in the contract (ADR-001 §5.6).
+
+*Second Go consumer:* the `cli/` module ([ADR-015](ADR-015-cli-and-mcp-clients.md) D-15.3)
+follows the Go rule here — hand-written structs for the five read responses, checked against
+`contracts/openapi.json` by a struct test and a fixture walker. `make cli-contract-check` runs them and `contracts-check`
+depends on it, so a contract change that breaks the CLI fails the same job as drift (T-3.6). The
+contract itself is unchanged by ADR-015.
 
 ### D-3.2 — Canonical node identity
 

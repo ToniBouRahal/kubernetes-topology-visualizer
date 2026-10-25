@@ -322,6 +322,30 @@ Threat model, decisions and what is declined (image signing, cert-manager as a r
 - [x] **S14-5** OIDC sign-in and bundled Dex — D-14.6, D-14.7
 - [x] **S14-6** Agent least privilege and namespace Pod Security — D-14.9, D-14.12
 - [x] **S14-7** Verification on the kind demo, security review (no findings), CI green on PR #5; `limitations.md` and the operator guide updated
+
+### ADR-015 — CLI and MCP clients, bearer-token sign-in (new `cli/` module, chart)
+
+One binary, `kubectl-topology`: read commands over the existing API (`namespaces`, `graph`,
+`deps`, `diff`, `edge`) printing the README's line format, and `kubectl topology mcp`, a local stdio
+MCP server with five read-only tools whose descriptions carry the measurement caveats. Sign-in is
+the authorisation-code flow with PKCE and one of three fixed loopback redirects against a public
+`topology-cli` client; oauth2-proxy accepts the resulting ID token (`--skip-jwt-bearer-tokens`,
+`--oidc-extra-audience`), so the request path, admission rules and audit log are the browser's.
+Off by default (`auth.cli.enabled`), on in the kind values. Whenever Dex is bundled, nginx
+now returns 404 on Dex's device-flow paths and gives Dex's pages a CSP whose `form-action` adds
+the three callback origins (amends D-14.10). Threat-model delta, token lifetimes,
+verification items and what is declined (write tools, an in-cluster MCP endpoint, device flow,
+per-user RBAC, new endpoints): [ADR-015](adr/ADR-015-cli-and-mcp-clients.md).
+
+- [x] **C15-1** ADR-015, index and plan entry; cross-references in ADR-003, ADR-007, ADR-008, ADR-014
+- [x] **C15-2** `cli/` module, pinned dependencies, hand-written read client with struct and fixture conformance tests in `contracts-check` — D-15.2, D-15.3, V-15.1, T-15.8
+- [x] **C15-3** Read commands, time handling, name resolution, shared renderer — D-15.4, T-15.1 – T-15.3
+- [x] **C15-4** Login, locked refresh, credential store, logout, auth-off and transport rules — D-15.8 – D-15.14, T-15.4 – T-15.6
+- [x] **C15-5** MCP server — D-15.5, T-15.7
+- [x] **C15-6** Chart and frontend image: `auth.cli.*`, oauth2-proxy bearer flags, Dex public client with three redirect URIs, expiry and grant types, nginx strips `Authorization`, 404 on `/dex/device*`, Dex CSP — D-15.6, D-15.7, D-15.8, D-15.10, T-15.9 · `verify-chart.sh` 87/87; `nginx -t` not yet run, exercised by C15-8
+- [ ] **C15-7** Make targets, CI job, `make audit` over `cli/` — D-15.15, V-15.6 · open: govulncheck reports the pinned toolchain's standard-library findings until the repo-wide Go bump (V-15.6)
+- [ ] **C15-8** Verification on kind (T-15.10 with a Chromium-driven CLI login, T-15.11, V-15.2 – V-15.5, V-15.7) and `/security-review`
+- [x] **C15-9** Docs: operator guide, README, `limitations.md` §6.3, §6.9 – §6.14, demo script
 ---
 
 ## Definition of Done cross-check

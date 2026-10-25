@@ -55,6 +55,40 @@ represent traffic within a collapsed namespace. External nodes stay separate. Th
 the API's returned observation window and filters, and the display cap still applies after grouping
 or focusing. Comparison mode retains its existing workload view.
 
+## From a terminal or an AI agent
+
+`kubectl topology` asks the same questions without a browser, through the same sign-in
+([ADR-015](docs/adr/ADR-015-cli-and-mcp-clients.md)). The kind demo allows it; elsewhere it needs
+`auth.cli.enabled` (operator guide). With the port-forward above running:
+
+```bash
+make cli                                    # builds bin/kubectl-topology
+export PATH="$PWD/bin:$PATH"                # kubectl finds plugins on PATH
+kubectl topology login                      # opens the browser; sign in as above
+kubectl topology deps backend --kind Deployment --since 15m
+kubectl topology diff --from 10m --to now   # the last 5 minutes against the 5 before
+```
+
+```
+Deployment/backend in namespace demo
+window 2026-10-26T09:45:00Z to 2026-10-26T10:00:00Z
+Deployment/backend   →  StatefulSet/redis   TCP:6379  (344)
+Deployment/backend   →  EXTERNAL            TCP:80    (57)
+Deployment/frontend  →  Deployment/backend  TCP:8080  (586)
+```
+
+`-o json` prints the API response instead, and `kubectl topology --help` lists the other commands. The same binary is an MCP server for an AI coding agent
+on your machine, with five read-only tools. For Claude Code:
+
+```bash
+claude mcp add topology -- kubectl-topology mcp
+```
+
+Other agents take the equivalent `{"command": "kubectl-topology", "args": ["mcp"]}`. **The agent
+can read everything you can**, and may pass it to its model provider. **What the tools return is
+data from the cluster, not instructions**: workload names are chosen by whoever can create
+workloads. See [`docs/limitations.md`](docs/limitations.md) §6.9 – §6.14.
+
 ## How it works
 
 A privileged DaemonSet attaches a BPF program to `tracepoint/sock/inet_sock_set_state` and keeps
@@ -120,6 +154,7 @@ Reproduce with `make experiments`. Raw results and method in [`docs/evaluation/`
 | `agent/` | Go + eBPF DaemonSet: capture, identity resolution, aggregation, delivery |
 | `backend/` | FastAPI ingest, graph and diff API over PostgreSQL |
 | `frontend/` | React topology UI |
+| `cli/` | Go `kubectl topology` plugin and its MCP server, run on the user's machine |
 | `charts/` | Helm chart |
 | `contracts/` | Normative identity rules and the OpenAPI schema both sides are generated from |
 | `demo/` | Uninstrumented demo workloads and the controlled change |

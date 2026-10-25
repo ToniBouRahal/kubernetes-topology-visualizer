@@ -27,6 +27,14 @@ navigation only, off until the chart is given a Grafana URL. `ADR-013` closes th
 cluster that has no Grafana at all: one chart flag bundles a plain Prometheus and Grafana, still
 off by default, so the kind demo can show both of the above working.
 
+`ADR-015` is an optional extension of `ADR-014`'s sign-in rather than of the observability work: a
+kubectl plugin, `kubectl-topology`, that reads the existing API from a terminal and, in the same
+binary, serves those reads to an AI coding agent over MCP (stdio, local, read-only). It signs in
+with an OIDC ID token from the same provider, which the existing oauth2-proxy accepts as a bearer
+credential, so a CLI request takes the browser's path and the same admission rules. Off by
+default; no backend or contract change. With Dex bundled, nginx closes Dex's device-flow paths and
+gives Dex's pages their own CSP (amends ADR-014 D-14.10).
+
 | ADR | Component | Repo path | ADR-001 source | Owning phases | Tracker |
 |---|---|---|---|---|---|
 | [ADR-002](ADR-002-ebpf-node-agent.md) | eBPF node agent (Go) | `agent/` | §5.1, §5.2 | 1, 2, 4 | §9 |
@@ -42,6 +50,7 @@ off by default, so the kind demo can show both of the above working.
 | [ADR-012](ADR-012-grafana-deep-links.md) | Grafana deep links from the details panel | `frontend/src/config.ts`, `frontend/src/features/details/`, `charts/…/templates/frontend-*.yaml` | §13, §5.6 | post-5 | §6 |
 | [ADR-013](ADR-013-bundled-observability.md) | Bundled Prometheus + Grafana, optional | `charts/…/Chart.yaml`, `charts/…/dashboards/`, `scripts/chart-deps.sh` | §4.2, §5.7 | post-5 | §6 |
 | [ADR-014](ADR-014-security-hardening.md) | Security hardening: OIDC sign-in, mutual TLS, least-privilege agent | `charts/topology-visualizer/`, `backend/app/`, `agent/internal/`, `frontend/default.conf.template`, CI | §6, §13 | post-5 | §6 |
+| [ADR-015](ADR-015-cli-and-mcp-clients.md) | CLI (`kubectl topology`) and MCP clients, bearer-token sign-in | `cli/`, `charts/…/templates/{frontend-deployment,auth}.yaml`, `frontend/default.conf.template`, `frontend/nginx/`, `Makefile`, CI | §5.5, §6, §13 | post-5 | §8 |
 
 **Progress tracking:** [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) is the master checklist —
 every task carries an ID like `P1-A2` (phase 1, agent, task 2). Each component ADR repeats its own

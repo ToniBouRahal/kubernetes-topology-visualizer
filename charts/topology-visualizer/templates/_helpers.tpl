@@ -157,6 +157,14 @@ look up, so it always generates.
 {{- end -}}
 
 {{/*
+The CLI's OIDC client (ADR-015 D-15.7): the operator's with an external provider, topology-cli
+with the bundled Dex. One definition, so Dex's client and oauth2-proxy's audience cannot differ.
+*/}}
+{{- define "topology.cliClientId" -}}
+{{- .Values.auth.cli.clientId | default "topology-cli" -}}
+{{- end -}}
+
+{{/*
 PostgreSQL host-based authentication (ADR-014 D-14.8). The first matching line wins, so plain TCP
 reaches the `reject` lines only after TLS has failed to match.
 */}}

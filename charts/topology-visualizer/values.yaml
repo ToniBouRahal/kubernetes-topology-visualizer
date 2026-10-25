@@ -399,6 +399,19 @@ auth:
   dex:
     enabled: false
     email: admin@topology.local
+  # The kubectl-topology CLI and its MCP server (ADR-015). oauth2-proxy also accepts the
+  # provider's ID token as `Authorization: Bearer`, for this client's audience and the browser's;
+  # nginx strips the header before the backend. Ignored when auth.enabled is false.
+  cli:
+    enabled: false
+    # The CLI's public (PKCE, no secret) client. Required with an external provider: register it
+    # with redirect URIs http://127.0.0.1:38085/callback, :38086 and :38087. With the bundled Dex,
+    # empty means topology-cli, which the chart registers.
+    clientId: ""
+    # Bundled Dex only: how long a CLI stays signed in without a new browser login. Dex's ID tokens
+    # become 1 h tokens when this block is on, for browser sign-ins too, which does not shorten
+    # a browser session (that is sessionHours).
+    refreshHours: 8
   proxy:
     image:
       repository: quay.io/oauth2-proxy/oauth2-proxy

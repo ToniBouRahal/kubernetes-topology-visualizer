@@ -573,6 +573,137 @@ else
   bad "NetworkPolicy ports per client are wrong: $NP_REPORT"
 fi
 
+echo "== ADR-015: CLI bearer tokens (T-15.9) =="
+# What the sign-in path is configured to accept, per render: oauth2-proxy's flags and env, and the
+# bundled Dex's parsed configuration. Parsed, not grepped: "exactly these redirect URIs" and
+# "exactly these two flags" are statements about whole lists.
+auth_facts() {
+  printf '%s' "$1" | python3 -c '
+import json, sys, yaml
+facts = {"args": None, "env": [], "dex": None}
+for d in yaml.safe_load_all(sys.stdin):
+    if not d:
+        continue
+    if d["kind"] == "Deployment":
+        for c in d["spec"]["template"]["spec"]["containers"]:
+            if c["name"] == "oauth2-proxy":
+                facts["args"] = c.get("args", [])
+                facts["env"] = [e["name"] for e in c.get("env", [])]
+    if d["kind"] == "Secret" and d["metadata"]["name"] == "topology-dex-config":
+        facts["dex"] = yaml.safe_load(d["stringData"]["config.yaml"])
+print(json.dumps(facts))'
+}
+EXT_SET=(--set auth.dex.enabled=false --set auth.oidc.issuerUrl=https://idp.example.com
+         --set auth.oidc.clientId=web --set auth.oidc.clientSecret.existingSecret=oidc)
+CLI_REPORT="$(
+  OFF="$(auth_facts "$(render --set auth.cli.enabled=false)")" \
+  ON="$(auth_facts "$(render --set auth.cli.enabled=true)")" \
+  NOAUTH="$(auth_facts "$(render --set auth.enabled=false --set auth.cli.enabled=true)")" \
+  EXT_OFF="$(auth_facts "$(render "${EXT_SET[@]}" --set auth.cli.enabled=false)")" \
+  EXT_ON="$(auth_facts "$(render "${EXT_SET[@]}" --set auth.cli.enabled=true --set auth.cli.clientId=cli-app)")" \
+  python3 -c '
+import json, os
+r = {k: json.loads(os.environ[k]) for k in ("OFF", "ON", "NOAUTH", "EXT_OFF", "EXT_ON")}
+problems = []
+
+def added(off, on):
+    """Flags present with the CLI on and absent with it off, in order."""
+    return [a for a in r[on]["args"] if a not in r[off]["args"]], [a for a in r[off]["args"] if a not in r[on]["args"]]
+
+# Default (auth.cli.enabled false, bundled Dex): nothing of the CLI.
+off, dex_off = r["OFF"], r["OFF"]["dex"]
+if any(a.startswith(("--skip-jwt-bearer-tokens", "--oidc-extra-audience", "--extra-jwt-issuers")) for a in off["args"]):
+    problems.append("CLI off still renders a bearer flag: %s" % off["args"])
+if [c["id"] for c in dex_off["staticClients"]] != ["topology"]:
+    problems.append("CLI off: Dex clients are %s, expected only topology" % [c["id"] for c in dex_off["staticClients"]])
+if "expiry" in dex_off or "grantTypes" in dex_off["oauth2"]:
+    problems.append("CLI off changes Dex token lifetimes or grant types")
+
+# On, bundled Dex: exactly the two flags; the public client; the expiry block; two grant types.
+plus, minus = added("OFF", "ON")
+if plus != ["--skip-jwt-bearer-tokens=true", "--oidc-extra-audience=topology-cli"] or minus:
+    problems.append(f"CLI on: oauth2-proxy flags +{plus} -{minus}, expected exactly the two bearer flags")
+dex_on = r["ON"]["dex"]
+clients = {c["id"]: c for c in dex_on["staticClients"]}
+cli = clients.get("topology-cli")
+want_cli = {"id": "topology-cli", "name": "Runtime Topology CLI", "public": True,
+            "redirectURIs": [f"http://127.0.0.1:{p}/callback" for p in (38085, 38086, 38087)]}
+if cli != want_cli:
+    problems.append(f"topology-cli client is {cli}, expected {want_cli}")
+# The secret is generated per render (no cluster to look it up in), so it is left out.
+browser = lambda c: {k: v for k, v in c.items() if k != "secret"}
+if sorted(clients) != ["topology", "topology-cli"] or browser(clients["topology"]) != browser(dex_off["staticClients"][0]):
+    problems.append("CLI on changed the browser client or added another one")
+want_expiry = {"idTokens": "1h", "refreshTokens": {"absoluteLifetime": "8h", "validIfNotUsedFor": "8h"}}
+if dex_on.get("expiry") != want_expiry:
+    problems.append("Dex expiry is %s, expected %s" % (dex_on.get("expiry"), want_expiry))
+if dex_on["oauth2"].get("grantTypes") != ["authorization_code", "refresh_token"]:
+    problems.append("Dex grantTypes are %s" % dex_on["oauth2"].get("grantTypes"))
+
+# On, external provider: the same two flags, with the operator s client as the audience.
+plus, minus = added("EXT_OFF", "EXT_ON")
+if plus != ["--skip-jwt-bearer-tokens=true", "--oidc-extra-audience=cli-app"] or minus or r["EXT_ON"]["dex"]:
+    problems.append("external provider: flags +%s -%s, Dex config rendered: %s" % (plus, minus, bool(r["EXT_ON"]["dex"])))
+
+# auth.enabled false: no proxy, no Dex, whatever auth.cli says (D-15.13).
+if r["NOAUTH"]["args"] is not None or r["NOAUTH"]["dex"] is not None:
+    problems.append("auth.enabled=false still renders oauth2-proxy or Dex")
+
+# In no mode is a token handed on: the browser never holds one (D-15.7).
+for mode, f in r.items():
+    for a in (f["args"] or []):
+        if a.startswith(("--pass-authorization-header", "--set-authorization-header", "--pass-access-token")):
+            problems.append(f"{mode}: oauth2-proxy has {a}")
+    for e in f["env"]:
+        if e in ("OAUTH2_PROXY_PASS_AUTHORIZATION_HEADER", "OAUTH2_PROXY_SET_AUTHORIZATION_HEADER", "OAUTH2_PROXY_PASS_ACCESS_TOKEN"):
+            problems.append(f"{mode}: oauth2-proxy has env {e}")
+
+print("\n".join(problems) if problems else "OK")
+' 2>&1)"
+if [[ "$CLI_REPORT" == "OK" ]]; then
+  ok "CLI off renders none of it; on renders exactly the two flags, the public client's three redirect URIs, expiry and grantTypes; auth off renders none; no mode passes a token on"
+else
+  while IFS= read -r line; do bad "$line"; done <<<"$CLI_REPORT"
+fi
+if render --set auth.cli.refreshHours=12 | grep -c 'absoluteLifetime: "12h"' >/dev/null; then
+  ok "auth.cli.refreshHours sets the refresh token's absolute lifetime"
+else
+  bad "auth.cli.refreshHours does not reach Dex's expiry block"
+fi
+reject "auth.cli.enabled with an external provider and no clientId" "${EXT_SET[@]}" --set auth.cli.enabled=true
+reject "auth.cli.refreshHours of 0"                                 --set auth.cli.refreshHours=0
+reject "auth.cli.clientId equal to the bundled Dex's browser client" --set auth.cli.clientId=topology
+
+# The frontend image's half (D-15.6, D-15.8): one image serves every mode, so these hold whatever
+# the values say. nginx itself is exercised by T-15.10 on kind.
+NGINX="$REPO_ROOT/frontend"
+API_BLOCK="$(awk '/location \/api\/ \{/,/^    \}/' "$NGINX/default.conf.template")"
+if grep -c 'proxy_set_header Authorization "";' >/dev/null <<<"$API_BLOCK"; then
+  ok "nginx strips Authorization on /api/ before the backend"
+else
+  bad "nginx /api/ does not strip the Authorization header"
+fi
+DEVICE_BLOCK="$(awk '/location \^~ \/dex\/device \{/,/^\}/' "$NGINX/nginx/dex-on.conf")"
+if grep -c 'return 404;' >/dev/null <<<"$DEVICE_BLOCK" && grep -c 'auth_request off;' >/dev/null <<<"$DEVICE_BLOCK"; then
+  ok "nginx answers 404 on /dex/device* (^~ prefix), session or not"
+else
+  bad "nginx does not close Dex's device paths with a ^~ 404"
+fi
+DEX_BLOCK="$(awk '/location \/dex\/ \{/,/^\}/' "$NGINX/nginx/dex-on.conf")"
+CSP_DIFF="$(diff <(grep -v '^#' "$NGINX/nginx/security-headers.conf") <(grep -v '^#' "$NGINX/nginx/security-headers-dex.conf") | grep '^[<>]')"
+WANT_DIFF="< $(grep "Content-Security-Policy" "$NGINX/nginx/security-headers.conf")
+> $(grep "Content-Security-Policy" "$NGINX/nginx/security-headers.conf" | sed "s|form-action 'self';|form-action 'self' http://127.0.0.1:38085 http://127.0.0.1:38086 http://127.0.0.1:38087;|")"
+if grep -c 'include /etc/nginx/snippets/security-headers-dex.conf;' >/dev/null <<<"$DEX_BLOCK" && [[ "$CSP_DIFF" == "$WANT_DIFF" ]]; then
+  ok "/dex/ has its own headers, differing from every other location's only by three loopback form-action origins"
+else
+  bad "Dex security headers are not the frontend's plus the three loopback form-action origins: $CSP_DIFF"
+fi
+if grep -c 'security-headers-dex' "$NGINX/default.conf.template" "$NGINX/nginx/auth-on.conf" | grep -vc ':0$' >/dev/null; then
+  bad "the Dex CSP is included outside location /dex/"
+else
+  ok "every other location keeps form-action 'self'"
+fi
+
 echo "== T-7.3: values.schema.json rejects malformed values =="
 reject "empty clusterId"                     --set clusterId=""
 reject "clusterId containing ':'"            --set clusterId="bad:id"

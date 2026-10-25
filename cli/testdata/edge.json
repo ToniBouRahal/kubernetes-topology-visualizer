@@ -1,0 +1,41 @@
+{
+  "edge": {
+    "id": "k8s:kind-topology:demo:Deployment:client|k8s:kind-topology:demo:Service:backend|TCP|8080",
+    "source_id": "k8s:kind-topology:demo:Deployment:client",
+    "target_id": "k8s:kind-topology:demo:Service:backend",
+    "protocol": "TCP",
+    "destination_port": 8080,
+    "connection_count": 30,
+    "failed_connection_count": 2,
+    "connect_latency_count": 0,
+    "connect_latency_sum_us": 0,
+    "bytes_sent": null,
+    "bytes_received": null,
+    "first_seen": "2026-08-10T11:29:51Z",
+    "last_seen": "2026-08-10T11:30:00Z"
+  },
+  "window": {
+    "start": "2026-08-10T11:00:00Z",
+    "end": "2026-08-10T12:00:00Z"
+  },
+  "source": {
+    "id": "k8s:kind-topology:demo:Deployment:client",
+    "kind": "Deployment",
+    "namespace": "demo",
+    "name": "client",
+    "label": "client",
+    "first_seen": "2026-08-10T10:29:51Z",
+    "last_seen": "2026-08-10T11:30:00Z",
+    "attributes": {}
+  },
+  "target": {
+    "id": "k8s:kind-topology:demo:Service:backend",
+    "kind": "Service",
+    "namespace": "demo",
+    "name": "backend",
+    "label": "backend",
+    "first_seen": "2026-08-10T10:29:51Z",
+    "last_seen": "2026-08-10T11:30:00Z",
+    "attributes": {}
+  }
+}

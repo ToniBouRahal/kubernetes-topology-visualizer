@@ -1,0 +1,93 @@
+{
+  "generated_at": "2026-08-10T12:01:00Z",
+  "baseline": {
+    "start": "2026-08-10T10:00:00Z",
+    "end": "2026-08-10T11:00:00Z"
+  },
+  "current": {
+    "start": "2026-08-10T11:00:00Z",
+    "end": "2026-08-10T12:00:00Z"
+  },
+  "threshold_percent": 20.0,
+  "filters": {
+    "namespaces": [],
+    "kind": null,
+    "query": null,
+    "include_external": true,
+    "include_unresolved": false
+  },
+  "include_unchanged": false,
+  "edges": [
+    {
+      "id": "k8s:kind-topology:demo:Deployment:backend|external:EXTERNAL|TCP|443",
+      "source_id": "k8s:kind-topology:demo:Deployment:backend",
+      "target_id": "external:EXTERNAL",
+      "protocol": "TCP",
+      "destination_port": 443,
+      "classification": "NEW",
+      "baseline_connection_count": 0,
+      "current_connection_count": 4,
+      "connection_delta": 4,
+      "connection_percent_delta": null,
+      "baseline_bytes_total": null,
+      "current_bytes_total": null,
+      "bytes_percent_delta": null,
+      "reason": "absent from the baseline period and observed 4 time(s) in the current period; a period with no observation counts as zero, not missing data"
+    },
+    {
+      "id": "k8s:kind-topology:demo:Deployment:backend|k8s:kind-topology:data:StatefulSet:legacy-db|TCP|5432",
+      "source_id": "k8s:kind-topology:demo:Deployment:backend",
+      "target_id": "k8s:kind-topology:data:StatefulSet:legacy-db",
+      "protocol": "TCP",
+      "destination_port": 5432,
+      "classification": "REMOVED",
+      "baseline_connection_count": 12,
+      "current_connection_count": 0,
+      "connection_delta": -12,
+      "connection_percent_delta": -100.0,
+      "baseline_bytes_total": null,
+      "current_bytes_total": null,
+      "bytes_percent_delta": null,
+      "reason": "observed 12 time(s) in the baseline period and absent from the current period"
+    },
+    {
+      "id": "k8s:kind-topology:demo:Deployment:backend|k8s:kind-topology:data:StatefulSet:redis|TCP|6379",
+      "source_id": "k8s:kind-topology:demo:Deployment:backend",
+      "target_id": "k8s:kind-topology:data:StatefulSet:redis",
+      "protocol": "TCP",
+      "destination_port": 6379,
+      "classification": "CHANGED",
+      "baseline_connection_count": 100,
+      "current_connection_count": 143,
+      "connection_delta": 43,
+      "connection_percent_delta": 43.0,
+      "baseline_bytes_total": null,
+      "current_bytes_total": null,
+      "bytes_percent_delta": null,
+      "reason": "connection count changed from 100 to 143 (+43.00%), at or beyond the 20% threshold"
+    },
+    {
+      "id": "k8s:kind-topology:demo:Deployment:client|k8s:kind-topology:demo:Service:backend|TCP|8080",
+      "source_id": "k8s:kind-topology:demo:Deployment:client",
+      "target_id": "k8s:kind-topology:demo:Service:backend",
+      "protocol": "TCP",
+      "destination_port": 8080,
+      "classification": "CHANGED",
+      "baseline_connection_count": 20,
+      "current_connection_count": 30,
+      "connection_delta": 10,
+      "connection_percent_delta": 50.0,
+      "baseline_bytes_total": null,
+      "current_bytes_total": null,
+      "bytes_percent_delta": null,
+      "reason": "connection count changed from 20 to 30 (+50.00%), at or beyond the 20% threshold"
+    }
+  ],
+  "summary": {
+    "new_count": 1,
+    "removed_count": 1,
+    "changed_count": 2,
+    "unchanged_count": 0,
+    "truncated": false
+  }
+}

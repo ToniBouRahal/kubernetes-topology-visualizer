@@ -9,6 +9,10 @@
   ADR-004 D-4.6 (listeners, headers), ADR-005 (database connections use TLS), ADR-006 (the UI sits
   behind a login), ADR-007 D-7.4 (security posture), D-7.5 (`tls.*`, `auth.*`), ADR-008 (CI
   security scanning)
+- **Amended by:** [ADR-015](ADR-015-cli-and-mcp-clients.md) — D-14.6 (oauth2-proxy also accepts a verified ID token as
+  a bearer credential; nginx strips it before the backend), D-14.7 (the bundled Dex gains a public
+  CLI client, a one-hour ID-token lifetime and two grant types; nginx closes its device-flow paths),
+  D-14.10 (Dex's pages get their own CSP, whose `form-action` adds three loopback callback origins)
 - **Component path:** `charts/topology-visualizer/`, `backend/app/`, `agent/internal/`,
   `frontend/default.conf.template`, `.github/workflows/ci.yml`
 - **Owning phase:** Post-Phase-5 extension
@@ -91,6 +95,12 @@ allowed user has one role, *viewer*. Session cookie: `Secure`, `HttpOnly`, `Same
 backend and written to the request log; the backend trusts that header only on the API listener,
 whose only client is nginx.
 
+> **Amended by [ADR-015](ADR-015-cli-and-mcp-clients.md) D-15.6, D-15.7.** With `auth.cli.enabled`, oauth2-proxy also accepts
+> an OIDC ID token as `Authorization: Bearer` (`--skip-jwt-bearer-tokens`, `--oidc-extra-audience`),
+> verified by the same provider and admitted by the same domain and group rules as a sign-in, so
+> the one *viewer* role is unchanged. nginx strips `Authorization` on `/api/` in every mode; the
+> backend never sees a token.
+
 **D-14.7 — A bundled Dex for the kind demo.** `auth.dex.enabled` (default `false`; `true` in the
 kind values) installs Dex as a subchart with one static user whose password is generated into a
 Secret. Dex is served under `/dex` through the frontend, so the demo still needs **one**
@@ -101,6 +111,12 @@ client secret and the sign-in code, so it is not left in the clear. Its chart al
 plain HTTP, with no switch to remove it; a NetworkPolicy admits only the frontend, on HTTPS
 (`limitations.md` §6.2). oauth2-proxy runs with `--approval-prompt=auto`: its default forces a
 consent screen on every sign-in, which Dex's `skipApprovalScreen` cannot override.
+
+> **Amended by [ADR-015](ADR-015-cli-and-mcp-clients.md) D-15.6, D-15.7, D-15.10.** With `auth.cli.enabled`, the bundled Dex
+> gains a public client, `topology-cli`, with exactly three loopback redirect URIs, ID tokens of
+> one hour (was 24 h), a refresh-token lifetime of `auth.cli.refreshHours`, and `grantTypes`
+> narrowed to `authorization_code` and `refresh_token`. Whenever Dex is bundled, nginx answers `404`
+> on `/dex/device*`, which Dex cannot switch off itself.
 
 **D-14.8 — PostgreSQL requires TLS.** The in-cluster database serves TLS with a `server`-CA
 certificate and accepts only `hostssl` connections; the backend connects with
@@ -122,6 +138,11 @@ allow `'unsafe-inline'` because React Flow positions nodes with inline styles; `
 'none'`), `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, a restrictive
 `Permissions-Policy`, `server_tokens off`, a request-rate limit on `/api/`. Backend: `/docs` and
 `/redoc` disabled.
+
+> **Amended by [ADR-015](ADR-015-cli-and-mcp-clients.md) D-15.8.** `location /dex/` includes `security-headers-dex.conf`,
+> identical to the server-level set except `form-action 'self' http://127.0.0.1:38085
+> http://127.0.0.1:38086 http://127.0.0.1:38087`, so Dex's `303` after the password form can reach
+> the CLI's callback. Every other page keeps `form-action 'self'`.
 
 **D-14.11 — Supply chain in CI.** `govulncheck`, `pip-audit`, `npm audit --omit=dev`, a Trivy scan
 of the three built images failing on fixable HIGH/CRITICAL findings, and a CycloneDX SBOM per image

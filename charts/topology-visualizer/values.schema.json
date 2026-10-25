@@ -423,6 +423,7 @@
         "oidc",
         "sessionHours",
         "dex",
+        "cli",
         "proxy"
       ],
       "properties": {
@@ -497,6 +498,32 @@
             }
           }
         },
+        "cli": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Bearer-token sign-in for the kubectl-topology CLI and its MCP server (ADR-015 D-15.6, D-15.7, D-15.10).",
+          "required": [
+            "enabled",
+            "clientId",
+            "refreshHours"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "clientId": {
+              "type": "string",
+              "pattern": "^[^\\s,]*$",
+              "description": "The CLI's public OIDC client. Required with an external provider; empty means topology-cli with the bundled Dex."
+            },
+            "refreshHours": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 168,
+              "description": "Bundled Dex only: the refresh token's absolute lifetime."
+            }
+          }
+        },
         "proxy": {
           "type": "object",
           "properties": {
@@ -508,7 +535,71 @@
             }
           }
         }
-      }
+      },
+      "allOf": [
+        {
+          "$comment": "With an external provider the operator registers the CLI's public client, so its ID is theirs to give: without it oauth2-proxy would admit bearer tokens for no audience but the browser's (ADR-015 D-15.7).",
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": true
+              },
+              "cli": {
+                "properties": {
+                  "enabled": {
+                    "const": true
+                  }
+                }
+              },
+              "dex": {
+                "properties": {
+                  "enabled": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cli": {
+                "properties": {
+                  "clientId": {
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "$comment": "The bundled Dex keys static clients by ID, so a CLI client named topology would replace the browser's confidential client with a public one whose only redirects are the CLI's loopback ports (ADR-015 D-15.7).",
+          "if": {
+            "properties": {
+              "dex": {
+                "properties": {
+                  "enabled": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cli": {
+                "properties": {
+                  "clientId": {
+                    "not": {
+                      "const": "topology"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   },
   "allOf": [

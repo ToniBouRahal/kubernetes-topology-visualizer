@@ -18,6 +18,7 @@ KUBECTL_VERSION := 1.31.1
 REPO_ROOT   := $(shell pwd)
 BACKEND     := $(REPO_ROOT)/backend
 AGENT       := $(REPO_ROOT)/agent
+CLI         := $(REPO_ROOT)/cli
 FRONTEND    := $(REPO_ROOT)/frontend
 CHART       := $(REPO_ROOT)/charts/topology-visualizer
 KIND_VALUES := $(CHART)/ci/kind-values.yaml
@@ -59,13 +60,13 @@ help: ## Show available targets
 verify: lint test contracts-check ## Everything CI runs
 
 .PHONY: lint
-lint: lint-go lint-python lint-frontend lint-helm ## Lint every component
+lint: lint-go lint-cli lint-python lint-frontend lint-helm ## Lint every component
 
 .PHONY: test
-test: test-go test-python test-frontend ## Unit + integration tests (no cluster, no root)
+test: test-go test-cli test-python test-frontend ## Unit + integration tests (no cluster, no root)
 
 .PHONY: test-unit
-test-unit: test-go test-python ## Fast tests only — no containers, no cluster
+test-unit: test-go test-cli test-python ## Fast tests only — no containers, no cluster
 
 # ── Go agent ────────────────────────────────────────────────────────────────────────────────
 
@@ -81,6 +82,36 @@ lint-go: ## go vet + golangci-lint
 .PHONY: test-go
 test-go: ## Agent unit tests
 	cd $(AGENT) && go test ./... -count=1
+
+# ── Go CLI and MCP server (ADR-015) ─────────────────────────────────────────────────────────
+
+# The version stamped into the binary; "dev" outside a git checkout.
+CLI_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+
+.PHONY: cli
+cli: ## Build bin/kubectl-topology for this machine; put it on PATH for `kubectl topology` (ADR-015 D-15.15)
+	cd $(CLI) && CGO_ENABLED=0 go build -trimpath \
+	  -ldflags "-s -w -X main.version=$(CLI_VERSION)" \
+	  -o $(REPO_ROOT)/bin/kubectl-topology ./cmd/kubectl-topology
+
+.PHONY: lint-cli
+lint-cli: ## go vet + golangci-lint over cli/
+	cd $(CLI) && go vet ./...
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+	  cd $(CLI) && golangci-lint run ./...; \
+	else \
+	  echo "  golangci-lint not on PATH — skipped (install: see docs/prerequisites.md)"; \
+	fi
+
+.PHONY: test-cli
+test-cli: ## CLI and MCP server unit tests
+	cd $(CLI) && go test ./... -count=1
+
+# Part of contracts-check: a contract change that breaks the CLI's hand-written structs fails the
+# same target that catches the contract drifting from the app (ADR-015 D-15.3, T-15.8).
+.PHONY: cli-contract-check
+cli-contract-check: ## The CLI's structs and response fixtures against contracts/openapi.json (T-15.8)
+	cd $(CLI) && go test ./internal/api -run '^TestContract' -count=1 -v
 
 BPF_BUILDER := topology-bpf-builder:$(GO_VERSION)
 
@@ -178,7 +209,7 @@ contracts: require-venv ## Regenerate contracts/openapi.json from the FastAPI ap
 	$(VENV_PY) scripts/export_openapi.py
 
 .PHONY: contracts-check
-contracts-check: require-venv ## Fail if the committed contract drifts from the app (T-3.6)
+contracts-check: require-venv cli-contract-check ## Fail if the committed contract drifts from the app or the CLI (T-3.6, T-15.8)
 	$(VENV_PY) scripts/export_openapi.py --check
 
 # ── Frontend ────────────────────────────────────────────────────────────────────────────────

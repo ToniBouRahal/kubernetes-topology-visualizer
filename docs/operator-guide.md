@@ -217,7 +217,9 @@ between components is TLS (mutual, where one side is ours), and the agent holds 
 instead of privilege.
 
 - **Sign-in on every path.** oauth2-proxy in the frontend pod; nginx asks it before every request.
-  A page without a session is sent to sign in, an API call gets `401`.
+  A page without a session is sent to sign in, an API call gets `401`. With `auth.cli.enabled`, an
+  ID token from the same provider is accepted as a bearer credential too
+  ([Reaching the API outside the UI](#reaching-the-api-outside-the-ui)).
 - **Mutual TLS inside the cluster.** Agent → backend and frontend → backend present client
   certificates from two different CAs, and each backend listener trusts only one of them. Backend →
   PostgreSQL is TLS with `verify-full`; PostgreSQL rejects any connection without TLS.
@@ -272,15 +274,119 @@ instead, set `tls.generate: false` and create Secrets with the same names and ke
 
 ### Reaching the API outside the UI
 
-The API answers only a client presenting the frontend's certificate, so reading it needs Secret
-access in the namespace — the same boundary as the rest of the release:
+People read the topology from a terminal with `kubectl topology`, a kubectl plugin in `cli/`
+([ADR-015](adr/ADR-015-cli-and-mcp-clients.md)). It signs in through the same identity provider
+as the browser and sends the resulting ID token as `Authorization: Bearer`. The request takes the
+browser's path: nginx, then oauth2-proxy, which verifies the token and applies the same
+`allowedEmailDomains` and `allowedGroups`, then mTLS to the backend. nginx removes the
+`Authorization` header before the backend, so the backend never sees a token. The request log
+records the user's e-mail as it does for the browser (`limitations.md` §6.7). The CLI runs on the
+user's machine. It is not deployed in the cluster and never talks to the Kubernetes API.
+
+It is off until the chart allows it:
+
+```bash
+helm upgrade topology charts/topology-visualizer -n topology --reuse-values \
+  --set auth.cli.enabled=true
+```
+
+| value | default | |
+|---|---|---|
+| `auth.cli.enabled` | `false` (`true` in the kind values) | oauth2-proxy accepts bearer ID tokens (`--skip-jwt-bearer-tokens`, `--oidc-extra-audience`). Ignored when `auth.enabled` is false. |
+| `auth.cli.clientId` | `""` | The CLI's public client. With the bundled Dex, empty means `topology-cli`, which the chart registers. **Required** with an external provider; may not be `topology` with the bundled Dex. |
+| `auth.cli.refreshHours` | `8` | Bundled Dex only: the refresh-token lifetime, i.e. how long a CLI stays signed in without opening the browser again (1 – 168). |
+
+Then, on the user's machine, with the same port-forward or URL the browser uses:
+
+```bash
+make cli                                   # builds bin/kubectl-topology; put it on PATH
+kubectl topology login --server https://topology.example.com
+kubectl topology deps backend -n shop --since 1h
+kubectl topology status
+kubectl topology logout --server https://topology.example.com
+```
+
+`--server` must be `auth.externalUrl` exactly: the issuer the tokens carry is built from it, so on
+kind it is `http://localhost:8080` (the default), not `127.0.0.1`. `login` opens the browser,
+listens on the first free of `127.0.0.1:38085`, `38086` and `38087` for the callback, and gives up
+after five minutes; it prints the URL when it cannot open a browser. The credentials are stored in
+`~/.config/kubectl-topology/credentials.json` (`~/Library/Application Support/…` on macOS), mode
+`0600`. The CLI refuses a file or directory that other users can read and prints the `chmod` that
+fixes it. With sign-in off (`auth.enabled: false`), the commands need no login, and `login` says
+the server does not require sign-in.
+
+Exit codes, for scripts: `0` success, including an empty result; `1` usage error or an ambiguous
+name; `2` not signed in, or the token was refused; `3` another API error; `4` the server or issuer
+could not be reached.
+
+The CLI sends a token, code or refresh token over `http://` only to a loopback host, which covers
+a port-forward. A plain-HTTP ingress or issuer is refused, so serve both over HTTPS. `--ca-file`
+adds a private CA for the server and the issuer. No flag turns TLS verification off.
+
+**An external provider.** Register a second client next to the browser one: public (also called
+"native" or "no secret"), authorisation-code flow with PKCE, redirect URIs exactly
+`http://127.0.0.1:38085/callback`, `http://127.0.0.1:38086/callback` and
+`http://127.0.0.1:38087/callback` (or the provider's rule for any loopback port). Set its ID as
+`auth.cli.clientId`, and pass the issuer and client ID once at login; they are saved with the
+credential:
+
+```bash
+helm upgrade topology charts/topology-visualizer -n topology --reuse-values \
+  --set auth.cli.enabled=true --set auth.cli.clientId=topology-cli
+kubectl topology login --server https://topology.example.com \
+  --issuer https://login.example.com --client-id topology-cli
+```
+
+The CLI requests `openid email profile offline_access`, plus `groups` when the provider's discovery
+document lists it. If admission depends on a claim that comes from another scope (whatever
+`auth.oidc.scopes` requests for the browser), pass `--scopes` with that scope included. A token
+without an e-mail, or without the groups `allowedGroups` needs, is refused with `401` like a
+browser sign-in would be. oauth2-proxy accepts ID tokens for exactly two audiences: the browser
+client and `auth.cli.clientId`. A token the same provider issued to any other client is refused.
+
+**Lifetimes.** With the bundled Dex and `auth.cli.enabled`, ID tokens last one hour (Dex's default
+is 24 hours) and the CLI refreshes them on its own. Refresh tokens last `auth.cli.refreshHours`,
+and expire sooner after eight hours unused. The one-hour lifetime applies to browser sign-ins too,
+but it does not shorten a browser session, which lasts `auth.sessionHours` as before. With an
+external provider the lifetimes are the provider's: keep ID tokens short, because they are what a
+stolen token is good for.
+
+**No revocation, and cutting a user off.** `kubectl topology logout` deletes the local credential
+and nothing else (`--all` deletes every server's credential). Neither Dex nor oauth2-proxy can
+revoke an ID token already issued, so a copied token stays valid until it expires: at most one hour
+with the bundled Dex (`limitations.md` §6.9). To cut a user off sooner, remove the user at the
+provider. With the bundled Dex, restart it: refresh tokens live only in its memory, so every CLI
+must sign in again (§6.10).
+
+```bash
+kubectl -n topology rollout restart deployment/topology-dex
+```
+
+**The MCP server.** `kubectl topology mcp` serves five read-only tools (`list_namespaces`,
+`get_topology`, `get_dependencies`, `diff_topology`, `get_edge`) over stdio to an AI agent on the
+user's machine. It reads the stored credential on every call and never opens a browser itself. When
+it reports that the user is not signed in, the user runs `kubectl topology login` once. Before you
+enable `auth.cli`, know two things and tell your users:
+
+- **The agent can read everything the user can**: which workloads talk to which, namespaces, ports,
+  and connection and failure counts. An agent backed by a hosted model may send all of it to the
+  model's provider. That map is the sensitive artefact ADR-014 protects.
+- **Tool output is cluster data, not instructions.** Workload and namespace names are chosen by
+  whoever can create workloads, and reach the agent's context verbatim (`limitations.md` §6.11).
+  Every tool description says so; an agent with write access to the user's code and shell should
+  not act on text that appears in a name.
+
+**Operators with Secret access** can still read the API directly as the frontend, which needs no
+sign-in and no `auth.cli`:
 
 ```bash
 make api-get API_PATH='/api/v1/graph?window=5m'   # the kind demo
 ```
 
-`scripts/lib/mtls.sh` is what that uses: it fetches the certificate from the Secret into a private
-temporary directory, port-forwards the API port, and verifies the backend by its Service name.
+`scripts/lib/mtls.sh` is what that uses: it fetches the frontend's client certificate from the
+Secret into a private temporary directory, port-forwards the API port, and verifies the backend by
+its Service name. That is one shared identity with no user in the log, which is why it is not the
+route for people.
 
 ### Checking it
 

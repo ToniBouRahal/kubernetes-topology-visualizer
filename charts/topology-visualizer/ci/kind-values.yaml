@@ -61,3 +61,6 @@ auth:
   externalUrl: http://localhost:8080
   dex:
     enabled: true
+  # `kubectl topology login` through the same port-forward (ADR-015 D-15.8).
+  cli:
+    enabled: true

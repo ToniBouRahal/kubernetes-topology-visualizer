@@ -3,6 +3,8 @@
 - **Status:** Accepted for implementation
 - **Date:** 2026-08-12
 - **Parent:** ADR-001 §7 (phases), §8 (test matrix), §9 (definition of done), §12 (instructions 4, 7, 9)
+- **Amended by:** [ADR-015](ADR-015-cli-and-mcp-clients.md) — D-8.2 (`cli`, `test-cli`, `lint-cli`, `cli-contract-check`, the
+  last part of `contracts-check`), D-8.3 (a Go CLI job; Contract drift gains Go)
 - **Component path:** `.github/workflows/`, `Makefile`, `*/tests/`, `docs/evaluation/`
 - **Owning phases:** all
 
@@ -55,12 +57,20 @@ verify       lint + test + contracts — what CI runs
 CI calls the same targets a developer calls. A CI job with its own inline command sequence drifts
 from local behaviour and eventually passes something a developer cannot reproduce.
 
+*Extended by [ADR-015](ADR-015-cli-and-mcp-clients.md) D-15.15:* `lint`, `test` and `test-unit`
+include the `cli/` module (`lint-cli`, `test-cli`), `contracts-check` runs `cli-contract-check`
+first, and `make audit` runs `govulncheck` over `cli/` as well as `agent/`.
+
 ### D-8.3 — CI jobs
 
 Go (build, vet, lint, unit) · Python (ruff, pyright, unit, integration with a PostgreSQL service) ·
 Frontend (typecheck, lint, unit/component, build) · Contracts (regenerate and fail on drift — ADR-003
 T-3.6) · Helm (lint, template, manifest schema validation) · Images (build all three; Phase 5 adds
 scan and triage).
+
+*Extended by [ADR-015](ADR-015-cli-and-mcp-clients.md) D-15.15:* a **Go CLI** job (vet,
+golangci-lint, unit tests, `make cli`) for the second Go module, and the Contracts job sets up Go
+so `make contracts-check` can run the CLI's conformance tests (T-15.8).
 
 Pin toolchain versions in CI to match the documented local prerequisites, including **Helm 4.2.3**
 (ADR-007). A CI/local Helm mismatch produces template output that lints in one place and not the

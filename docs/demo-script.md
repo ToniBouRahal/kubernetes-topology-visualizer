@@ -97,6 +97,23 @@ kubectl --context kind-topology delete pod -n demo -l app=frontend --wait=false
 
 The node stays. The graph does not fragment into per-pod entries.
 
+### Optional · The same answer from a terminal (2 min)
+
+Only if time allows. The kind values allow the CLI to sign in (ADR-015); keep the port-forward
+above running.
+
+```bash
+make cli && export PATH="$PWD/bin:$PATH"
+kubectl topology login                                   # the browser opens; same user and password
+kubectl topology deps backend --kind Deployment --since 15m
+```
+
+The terminal prints the lines the README opens with: `backend → StatefulSet/redis`,
+`backend → EXTERNAL`, and `frontend → backend`, with the counts the graph shows. The point to
+make: this goes through the same sign-in and the same rules as the browser, and the backend's log
+records the same user. It is a read, like everything else here. `kubectl topology mcp` gives an AI
+agent the same reads; say that it then sees the whole topology (`limitations.md` §6.11).
+
 ## 5 · Show a change appearing (3 min)
 
 ```bash

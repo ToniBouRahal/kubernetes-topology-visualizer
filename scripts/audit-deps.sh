@@ -2,7 +2,8 @@
 # Known-vulnerability audit of all three dependency trees (ADR-014 D-14.11).
 #
 # Each tool answers the narrowest honest question for its ecosystem:
-#   Go      govulncheck — only vulnerabilities the agent's code can actually reach, stdlib included
+#   Go      govulncheck — only vulnerabilities the agent's and the CLI's code can actually reach,
+#                         stdlib included, one module at a time (ADR-015 D-15.15)
 #   Python  pip-audit   — every package resolved into the backend's environment, dev tools included
 #   npm     npm audit   — the lockfile, dev dependencies included: Vite and its plugins build the
 #                         bundle that ships, so a compromised build tool is a compromised release
@@ -18,10 +19,12 @@ VENV_PY="${VENV_PY:-$REPO_ROOT/backend/.venv/bin/python}"
 
 failed=()
 
-echo "== Go: govulncheck $GOVULNCHECK_VERSION (agent) =="
-if ! (cd "$REPO_ROOT/agent" && go run "golang.org/x/vuln/cmd/govulncheck@$GOVULNCHECK_VERSION" ./...); then
-  failed+=("go")
-fi
+for module in agent cli; do
+  echo "== Go: govulncheck $GOVULNCHECK_VERSION ($module) =="
+  if ! (cd "$REPO_ROOT/$module" && go run "golang.org/x/vuln/cmd/govulncheck@$GOVULNCHECK_VERSION" ./...); then
+    failed+=("go:$module")
+  fi
+done
 
 echo "== Python: pip-audit $PIP_AUDIT_VERSION (backend environment) =="
 if [[ ! -x "$VENV_PY" ]]; then

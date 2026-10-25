@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-08-10T12:01:00Z",
+  "window": {
+    "start": "2026-08-10T08:00:00Z",
+    "end": "2026-08-10T09:00:00Z"
+  },
+  "filters": {
+    "namespaces": [],
+    "kind": null,
+    "query": null,
+    "include_external": true,
+    "include_unresolved": false
+  },
+  "nodes": [],
+  "edges": [],
+  "summary": {
+    "node_count": 0,
+    "edge_count": 0,
+    "total_connections": 0,
+    "truncated": false,
+    "truncation_reason": null
+  }
+}
