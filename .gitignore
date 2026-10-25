@@ -90,3 +90,4 @@ graphify-out/
 
 # Playwright sign-in session (e2e/global-setup.ts) — a live session cookie, never committed
 /frontend/e2e/.auth/
+.claude/settings.local.json
