@@ -419,9 +419,9 @@ The CLI refreshes when the stored ID token expires within 60 seconds, under the 
 process may have just done so); write the result before releasing. On a refresh failure it clears
 the entry's tokens **only if the stored refresh token still equals the one that failed**, then
 reports "run login". So a long-running MCP process and a CLI invocation sharing one file never sign
-each other out through rotation. Dex's in-memory storage means **a Dex restart signs every CLI
-out**, and, because its signing keys are regenerated too, is expected to invalidate outstanding ID
-tokens once oauth2-proxy refetches the JWKS (V-15.4). With an external provider, lifetimes are the
+each other out through rotation. Dex's in-memory storage means **a Dex restart forces every CLI to log in
+again at its next refresh**. It does not invalidate ID tokens already issued: measured on kind,
+oauth2-proxy kept accepting a pre-restart token, so the bound is the token's `exp` (V-15.4). With an external provider, lifetimes are the
 provider's; the operator guide says to keep ID tokens short.
 
 **D-15.11 — Credential storage.** One file, `$(os.UserConfigDir)/kubectl-topology/credentials.json`
@@ -607,6 +607,29 @@ Claims above that rest on reading source, to be confirmed before the tracker tic
   `agent/` reports the same IDs, so the fix is a repo-wide toolchain bump (both `go.mod` files,
   `GO_VERSION` in the Makefile and `ci.yml`, `docs/prerequisites.md`) in its own commit; go1.26.10
   (2026-10-19) is not yet two weeks old.
+- *Results on kind, 2026-10-26* (three-node `kind-topology`, chart with `auth.cli.enabled`):
+  - **V-15.1** met: the five tools serialize `readOnlyHint: true`, `openWorldHint: false` over
+    stdio, and stdout carries only the protocol.
+  - **V-15.2** met: a CLI ID token (`aud: topology-cli`) is admitted (`200`); a tampered signature,
+    no token and a third public client's token (`aud: other-cli`, added to the Dex config for the
+    test and removed after) are `401`. nginx sets `Authorization ""` on `/api/` and `/health/`,
+    and the backend's request log carries `user: admin@topology.local`.
+  - **V-15.3** met: with Dex `idTokens: 2m`, a browser session still read the API (`200`) three
+    minutes after sign-in.
+  - **V-15.4** restated: after a Dex restart a pre-restart ID token was still `200`; the next
+    refresh was refused and the CLI cleared its tokens with the login hint (exit 2).
+  - **V-15.5** half met: a Playwright-driven Chromium completed Dex login → 303 →
+    `http://127.0.0.1:38085/callback` under the Dex CSP. The negative half (blocked without it)
+    was not run.
+  - Also: `/dex/device`, `/dex/device/code`, `/dex/device/token`, `/dex/device/callback` and
+    `/dex/device/auth/verify_code` are `404`; `form-action` names the loopback origins on `/dex/`
+    only, `'self'` elsewhere; `nginx -t` passes in the running image; refresh issues a new ID token
+    and rotates the refresh token; T-15.11 met with `auth.oidc.allowedEmailDomains={example.com}`
+    (bearer `401`, browser callback `403`), rolled back after; `auth.spec.ts`,
+    `security-headers.spec.ts`, `topology.spec.ts` and `connection-outcomes.spec.ts` pass (19/19);
+    `demo-verify` 8/8.
+  - Seen, not caused by this ADR: Dex's login page has an inline script that `script-src 'self'`
+    blocks, as it already did under ADR-014; sign-in does not depend on it.
 - **V-15.7** With an external provider and `allowedGroups` set, a CLI token obtained with the
   default scopes carries the groups claim and is admitted (operator-guide procedure; the bundled
   Dex's static user has no groups, so the kind demo cannot show it).
@@ -662,11 +685,13 @@ Claims above that rest on reading source, to be confirmed before the tracker tic
   public client with three redirect URIs, expiry and grant types; kind values on; nginx strips
   `Authorization` on `/api/`, returns `404` on `/dex/device*`, Dex CSP snippet — D-15.6, D-15.7,
   D-15.8, D-15.10, T-15.9. · `verify-chart.sh` 87 passed, 0 failed; `helm lint` clean in every
-  mode. The nginx snippets have not been through `nginx -t` yet; C15-8 exercises them live.
+  mode. `nginx -t` passes in the running image (C15-8).
 - [ ] **C15-7** Make targets and the CI job; `make audit` covers `cli/` — D-15.15, V-15.6. · Targets,
   CI job and audit loop are in and pass locally (golangci-lint not installed, so CI is its first
   run). **Open on V-15.6:** govulncheck over `cli/` reports the pinned toolchain's ten
   standard-library findings; ticks with the repo-wide toolchain bump.
 - [ ] **C15-8** Verification on kind: T-15.10, T-15.11, V-15.2 – V-15.5, V-15.7 (procedure);
-  `/security-review` of the branch.
+  `/security-review` of the branch. · Run on kind 2026-10-26, results in §6: T-15.10, T-15.11,
+  V-15.2 – V-15.4 met (V-15.4 restated); **open:** V-15.5's negative half, V-15.7 (needs an
+  external provider), `/security-review`.
 - [x] **C15-9** Docs: operator guide, README, `limitations.md` §6.3 and §6.9 – §6.14, demo script.

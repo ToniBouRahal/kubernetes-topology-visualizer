@@ -356,7 +356,8 @@ and nothing else (`--all` deletes every server's credential). Neither Dex nor oa
 revoke an ID token already issued, so a copied token stays valid until it expires: at most one hour
 with the bundled Dex (`limitations.md` §6.9). To cut a user off sooner, remove the user at the
 provider. With the bundled Dex, restart it: refresh tokens live only in its memory, so every CLI
-must sign in again (§6.10).
+must sign in again at its next refresh. An ID token issued before the restart is still accepted
+until its `exp` (measured, §6.10), so a restart cuts a user off within the hour, not at once.
 
 ```bash
 kubectl -n topology rollout restart deployment/topology-dex

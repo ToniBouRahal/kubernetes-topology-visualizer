@@ -342,9 +342,9 @@ per-user RBAC, new endpoints): [ADR-015](adr/ADR-015-cli-and-mcp-clients.md).
 - [x] **C15-3** Read commands, time handling, name resolution, shared renderer — D-15.4, T-15.1 – T-15.3
 - [x] **C15-4** Login, locked refresh, credential store, logout, auth-off and transport rules — D-15.8 – D-15.14, T-15.4 – T-15.6
 - [x] **C15-5** MCP server — D-15.5, T-15.7
-- [x] **C15-6** Chart and frontend image: `auth.cli.*`, oauth2-proxy bearer flags, Dex public client with three redirect URIs, expiry and grant types, nginx strips `Authorization`, 404 on `/dex/device*`, Dex CSP — D-15.6, D-15.7, D-15.8, D-15.10, T-15.9 · `verify-chart.sh` 87/87; `nginx -t` not yet run, exercised by C15-8
+- [x] **C15-6** Chart and frontend image: `auth.cli.*`, oauth2-proxy bearer flags, Dex public client with three redirect URIs, expiry and grant types, nginx strips `Authorization`, 404 on `/dex/device*`, Dex CSP — D-15.6, D-15.7, D-15.8, D-15.10, T-15.9 · `verify-chart.sh` 87/87; `nginx -t` passes in the running image
 - [ ] **C15-7** Make targets, CI job, `make audit` over `cli/` — D-15.15, V-15.6 · open: govulncheck reports the pinned toolchain's standard-library findings until the repo-wide Go bump (V-15.6)
-- [ ] **C15-8** Verification on kind (T-15.10 with a Chromium-driven CLI login, T-15.11, V-15.2 – V-15.5, V-15.7) and `/security-review`
+- [ ] **C15-8** Verification on kind (T-15.10 with a Chromium-driven CLI login, T-15.11, V-15.2 – V-15.5, V-15.7) and `/security-review` · run 2026-10-26: T-15.10, T-15.11, V-15.2 – V-15.4 met; open: V-15.5 negative half, V-15.7, `/security-review`
 - [x] **C15-9** Docs: operator guide, README, `limitations.md` §6.3, §6.9 – §6.14, demo script
 ---
 

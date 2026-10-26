@@ -389,7 +389,7 @@ Lifting it means an upstream image rebuilt with a current Go, or building our ow
 
 **§6.9 – §6.14** cover the command-line and MCP clients (ADR-015): what the bearer-token sign-in
 for `kubectl topology` and its MCP server does not do. The cluster checks of ADR-015 (T-15.10,
-T-15.11, V-15.2 – V-15.5) have not been run yet, so an entry that depends on one says *argued*.
+T-15.11, V-15.2 – V-15.5) were run on kind on 2026-10-26; an entry that depends on one says so.
 
 ### 6.9 A bearer token cannot be revoked before it expires — **inherent to the provider, bounded**
 
@@ -402,16 +402,20 @@ also accepted as a bearer token (oauth2-proxy always admits its own client ID), 
 never holds it: the session cookie is encrypted and no setting hands the token to the page.
 
 Cutting a user off sooner is the provider's job: remove the user (the bundled Dex has one static
-user), or restart Dex (§6.10). A stolen credentials file holds a refresh token as well, good for up
+user), or restart Dex, which stops refreshes at once but lets an issued ID token run to its `exp`
+(§6.10). A stolen credentials file holds a refresh token as well, good for up
 to `auth.cli.refreshHours` (8 by default) unless one of those happens first.
 
-### 6.10 A Dex restart signs every CLI out — **argued from the source, not yet measured**
+### 6.10 A Dex restart forces a new login at the next refresh, not at once — **measured**
 
 The bundled Dex keeps refresh tokens, and its signing keys, in memory. After a restart no stored
-refresh token works, so every CLI and MCP server must run `kubectl topology login` again; they say
-so. Because the signing keys are regenerated too, outstanding ID tokens are expected to stop
-verifying once oauth2-proxy refetches Dex's keys. When that refetch happens has not been measured
-(ADR-015 V-15.4); until it is, read the bound as §6.9's: until the token's `exp`.
+refresh token works: the CLI's next refresh is refused, it clears the stored tokens and says
+`run "kubectl topology login"` (exit 2). Measured on kind (ADR-015 V-15.4).
+
+What a restart does **not** do is invalidate ID tokens already issued. oauth2-proxy keeps the
+signing keys it fetched before the restart, and an ID token issued before it was still accepted
+three times over the following fifteen seconds. So a restart is not an instant cut-off: the bound
+is §6.9's, the token's `exp` — at most one hour with the bundled Dex.
 
 ### 6.11 The MCP server gives an AI agent the whole topology, and feeds it cluster-chosen names — **by design, stated**
 
