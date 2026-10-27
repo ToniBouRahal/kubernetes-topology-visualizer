@@ -35,13 +35,16 @@ server {
 
     include /etc/nginx/snippets/security-headers.conf;
 
-    # Sign-in and the bundled Dex (ADR-014 D-14.6, D-14.7), each switched by one variable so a
+    # Sign-in and the bundled Dex or Keycloak (ADR-014 D-14.6, D-14.7, ADR-017), each switched by one variable so a
     # single image serves every mode. auth-on puts every location below behind auth_request.
     set $auth_email "";
     set $dex_upstream "https://${DEX_HOST}:${DEX_PORT}";
     set $dex_host "${DEX_HOST}";
+    set $keycloak_upstream "https://${KEYCLOAK_HOST}:${KEYCLOAK_PORT}";
+    set $keycloak_host "${KEYCLOAK_HOST}";
     include /etc/nginx/snippets/auth-${AUTH_MODE}.conf;
     include /etc/nginx/snippets/dex-${DEX_MODE}.conf;
+    include /etc/nginx/snippets/keycloak-${KEYCLOAK_MODE}.conf;
 
     # Hashed assets are immutable. index.html must never be cached, or a deploy serves a stale
     # shell pointing at assets that no longer exist.

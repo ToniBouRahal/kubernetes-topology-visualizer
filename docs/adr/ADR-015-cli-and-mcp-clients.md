@@ -14,6 +14,8 @@
   `form-action` adds three fixed loopback callback origins), ADR-007 D-7.5 (the `auth.cli.*` block),
   ADR-008 D-8.2 (one more CI job and Make targets), ADR-001 §5.8 (one more top-level directory,
   `cli/`)
+- **Amended by:** [ADR-017](ADR-017-keycloak-identity-broker.md) — D-15.9 (with no `--issuer`, the CLI
+  probes `<server>/keycloak/realms/topology`, then `<server>/dex`)
 - **Does not amend:** ADR-003 (the contract is unchanged; the CLI's Go structs are hand-written and
   checked against the contract, as D-3.1 already prescribes for Go), ADR-004 (the backend learns
   nothing about tokens), ADR-002, ADR-005, ADR-006

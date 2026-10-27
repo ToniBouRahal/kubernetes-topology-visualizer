@@ -70,8 +70,9 @@ kubectl --context kind-topology -n topology port-forward svc/topology-visualizer
 ```
 
 Open `http://localhost:8080`. You land on a sign-in page, which is the first thing to point out:
-nothing about this cluster's topology is visible without an account (ADR-014). Sign in as
-`admin@topology.local`; the password was generated at install:
+nothing about this cluster's topology is visible without an account (ADR-014). The page is the
+bundled Keycloak's (ADR-017), which can also offer Google or Entra ID buttons when configured; the
+demo has none. Sign in as `admin@topology.local`; the password was generated at install:
 
 ```bash
 kubectl --context kind-topology -n topology get secret topology-visualizer-auth \
@@ -104,7 +105,7 @@ above running.
 
 ```bash
 make cli && export PATH="$PWD/bin:$PATH"
-kubectl topology login                                   # the browser opens; same user and password
+kubectl topology login                                   # finds Keycloak; the browser opens; same user and password
 kubectl topology deps backend --kind Deployment --since 15m
 ```
 

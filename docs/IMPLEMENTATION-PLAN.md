@@ -367,6 +367,22 @@ and `kubectl topology graph -o mermaid`, both checked against one golden file. N
 - [x] **A16-8** Docs: operator guide, limitations §4.6 – §4.8, README
 - [ ] **A16-9** Verification on kind: `make demo-canary` raises `CANARY_CONTACT` in the UI, API, log and gauge
 
+### ADR-017 — bundled Keycloak identity broker (chart, frontend nginx, CLI, new `keycloak/` image)
+
+A second bundled sign-in provider, mutually exclusive with Dex: Keycloak with an ephemeral store
+and a realm rendered from values, brokering to Google, one Microsoft Entra ID tenant, and any other
+OIDC provider. Served under `/keycloak` through the frontend behind an nginx allowlist; PKCE S256
+required and brute-force lockout on. The CLI probes Keycloak then Dex for its default issuer:
+[ADR-017](adr/ADR-017-keycloak-identity-broker.md).
+
+- [x] **K17-1** ADR-017, index and plan entry, amendment notes in ADR-014 and ADR-015
+- [x] **K17-2** `keycloak/Dockerfile`, `make image-keycloak`, pinning and scan scripts
+- [x] **K17-3** Chart: values, schema, realm, Deployment, Service, PKI, NetworkPolicy, oauth2-proxy args — T-17.1 – T-17.5
+- [x] **K17-4** Frontend nginx allowlist and Keycloak CSP
+- [x] **K17-5** CLI issuer probe — T-17.6
+- [x] **K17-6** Docs: operator guide, limitations, demo script, README
+- [x] **K17-7** Verification on kind — T-17.7 – T-17.11
+- [ ] **K17-8** A real Google and Entra ID sign-in (needs the owner's app registrations)
 ---
 
 ## Definition of Done cross-check

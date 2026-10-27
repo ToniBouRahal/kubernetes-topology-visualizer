@@ -31,6 +31,10 @@ kubectl -n topology get secret topology-visualizer-auth -o jsonpath='{.data.demo
 
 Everything is behind that sign-in, all traffic between components is mutual TLS, and the eBPF agent
 runs on two capabilities rather than `privileged` — see [ADR-014](docs/adr/ADR-014-security-hardening.md).
+The sign-in page is a bundled Keycloak, which can broker to Google, Microsoft Entra ID or any other
+OIDC provider so people use the accounts they already have — see
+[the operator guide](docs/operator-guide.md#the-bundled-keycloak-sign-in-with-google-entra-id-or-another-oidc-provider)
+and [ADR-017](docs/adr/ADR-017-keycloak-identity-broker.md).
 
 [`docs/demo-script.md`](docs/demo-script.md) is a fifteen-minute walkthrough.
 
@@ -92,10 +96,6 @@ can read everything you can**, and may pass it to its model provider. **What the
 data from the cluster, not instructions**: workload names are chosen by whoever can create
 workloads. See [`docs/limitations.md`](docs/limitations.md) §6.9 – §6.14.
 
-## How it works
-
-A privileged DaemonSet attaches a BPF program to `tracepoint/sock/inet_sock_set_state` and keeps
-only *active opens* — `AF_INET`, TCP, and outcomes leaving `SYN_SENT`:
 ## Anomalies, canaries and export
 
 The backend compares the selected window with the 24 hours before it and lists what stands out:
@@ -107,6 +107,10 @@ backend log and as a Prometheus gauge for your own alerting — nothing is sent 
 **Export diagram** saves the graph on screen as Mermaid text, which renders in GitHub and most
 documentation tools. See [ADR-016](docs/adr/ADR-016-anomalies-canaries-diagram-export.md).
 
+## How it works
+
+A privileged DaemonSet attaches a BPF program to `tracepoint/sock/inet_sock_set_state` and keeps
+only *active opens* — `AF_INET`, TCP, and outcomes leaving `SYN_SENT`:
 `ESTABLISHED` counts as success; `CLOSE` counts as failed/aborted setup. Accepted server sockets
 are excluded. A bounded map records setup start times so successful events can carry measured
 TCP establishment duration. Addresses are resolved to

@@ -239,6 +239,11 @@ image-backend: ## Build the backend image and side-load it into kind
 	docker build -t topology-backend:dev backend
 	kind load docker-image topology-backend:dev --name $(KIND_CLUSTER)
 
+.PHONY: image-keycloak
+image-keycloak: ## Build the bundled Keycloak (optimized, read-only root) and side-load it into kind (ADR-017 D-17.2)
+	docker build -t topology-keycloak:dev keycloak
+	kind load docker-image topology-keycloak:dev --name $(KIND_CLUSTER)
+
 # ── Helm / Kubernetes (ADR-007) ─────────────────────────────────────────────────────────────
 
 .PHONY: verify-privacy
@@ -394,12 +399,13 @@ agent-edges: ## Print the service-level edges the agents currently report
 # demo-down for why that matters.
 
 .PHONY: images
-images: ## Build all three images and side-load them into kind
+images: ## Build all four images and side-load them into kind
 	docker build -t topology-agent:dev $(AGENT)
 	docker build -t topology-backend:dev backend
 	docker build -t topology-frontend:dev $(FRONTEND)
+	docker build -t topology-keycloak:dev keycloak
 	kind load docker-image topology-agent:dev topology-backend:dev topology-frontend:dev \
-	  --name $(KIND_CLUSTER)
+	  topology-keycloak:dev --name $(KIND_CLUSTER)
 
 .PHONY: demo-up
 demo-up: ## Cluster + images + install + demo workloads, ready to observe
@@ -456,12 +462,6 @@ demo-change: ## Apply the controlled topology change (a new dependency appears)
 	@echo "waiting $(DEMO_SETTLE)s for the new edge to be observed..."
 	@sleep $(DEMO_SETTLE)
 
-.PHONY: demo-verify
-demo-verify: ## Assert the expected edges through the API (T-7.10, T-7.11)
-	@KIND_CONTEXT=$(KIND_CONTEXT) NAMESPACE=$(NAMESPACE) RELEASE=$(RELEASE) \
-	  bash scripts/demo-verify.sh
-
-.PHONY: demo-observability
 .PHONY: demo-canary
 demo-canary: ## Deploy a canary and touch it; the API then reports CANARY_CONTACT (ADR-016)
 	-$(KUBECTL) delete job intruder -n demo --ignore-not-found --now
@@ -473,6 +473,12 @@ demo-canary: ## Deploy a canary and touch it; the API then reports CANARY_CONTAC
 	@echo "the backend's WARNING lines for it:"
 	@$(KUBECTL) -n $(NAMESPACE) logs deploy/$(RELEASE)-visualizer-backend --since=5m | grep -i 'canary contacted' | tail -3 || true
 
+.PHONY: demo-verify
+demo-verify: ## Assert the expected edges through the API (T-7.10, T-7.11)
+	@KIND_CONTEXT=$(KIND_CONTEXT) NAMESPACE=$(NAMESPACE) RELEASE=$(RELEASE) \
+	  bash scripts/demo-verify.sh
+
+.PHONY: demo-observability
 demo-observability: chart-deps ## Add the bundled Prometheus + Grafana to a running demo (ADR-013)
 	@# `helm upgrade --reuse-values` keeps the generated database password and everything else
 	@# demo-up set; only the two flags change. The Grafana URL is the port-forward printed below —

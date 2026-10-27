@@ -25,10 +25,13 @@ ENV BACKEND_HOST=topology-topology-visualizer-backend \
     DEX_MODE=off \
     DEX_HOST=topology-dex \
     DEX_PORT=5554 \
+    KEYCLOAK_MODE=off \
+    KEYCLOAK_HOST=topology-visualizer-keycloak \
+    KEYCLOAK_PORT=8443 \
     # Substitute ONLY BACKEND_*; nginx's own $host/$request_id/$uri must survive envsubst.
     # BACKEND_* plus the resolver the image derives from /etc/resolv.conf. nginx's own
     # $host/$uri/$backend variables must NOT be substituted.
-    NGINX_ENVSUBST_FILTER="(BACKEND_|AUTH_MODE|DEX_|NGINX_LOCAL_RESOLVERS)"
+    NGINX_ENVSUBST_FILTER="(BACKEND_|AUTH_MODE|DEX_|KEYCLOAK_|NGINX_LOCAL_RESOLVERS)"
 
 COPY --from=builder /build/dist /usr/share/nginx/html
 COPY default.conf.template /etc/nginx/templates/default.conf.template

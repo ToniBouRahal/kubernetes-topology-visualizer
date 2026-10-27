@@ -100,7 +100,7 @@ func (c *Commands) parse(fs *flag.FlagSet, args []string) (ok bool, code int) {
 func (c *Commands) Login(ctx context.Context, args []string) int {
 	fs := c.flags("login", "login [--server URL] [--issuer URL] [--client-id ID] [--scopes S] [--ca-file PEM]")
 	server := fs.String("server", DefaultServer, "topology UI URL; must equal the chart's auth.externalUrl")
-	issuer := fs.String("issuer", "", "OIDC issuer URL (default <server>/dex, the bundled Dex)")
+	issuer := fs.String("issuer", "", "OIDC issuer URL (default: the first of <server>/keycloak/realms/topology and <server>/dex that answers discovery)")
 	clientID := fs.String("client-id", DefaultClientID, "OIDC public client ID")
 	scopes := fs.String("scopes", "", "scopes to request, space- or comma-separated (default \"openid email profile offline_access\", plus groups when the provider supports it)")
 	caFile := fs.String("ca-file", "", "PEM CA to trust for an https server or issuer with a private certificate")

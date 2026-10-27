@@ -13,6 +13,9 @@
   a bearer credential; nginx strips it before the backend), D-14.7 (the bundled Dex gains a public
   CLI client, a one-hour ID-token lifetime and two grant types; nginx closes its device-flow paths),
   D-14.10 (Dex's pages get their own CSP, whose `form-action` adds three loopback callback origins)
+  · [ADR-017](ADR-017-keycloak-identity-broker.md) — D-14.2 (the `server` CA also signs Keycloak's
+  certificate), D-14.7 (a bundled Keycloak, alternative to Dex, brokering to upstream providers),
+  D-14.10 (Keycloak's pages get their own CSP)
 - **Component path:** `charts/topology-visualizer/`, `backend/app/`, `agent/internal/`,
   `frontend/default.conf.template`, `.github/workflows/ci.yml`
 - **Owning phase:** Post-Phase-5 extension

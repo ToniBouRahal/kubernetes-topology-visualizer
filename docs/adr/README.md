@@ -42,6 +42,11 @@ is a finding) and a **Mermaid export** of the graph on screen. Nothing calls out
 findings are an API response, WARNING log lines and Prometheus gauges for the operator's own
 alerting. Two additive contract changes (`GraphNode.canary`, `GET /api/v1/anomalies`).
 
+`ADR-017` replaces nothing and adds a second bundled sign-in provider: **Keycloak as an identity
+broker**, so people sign in with Google, a pinned Microsoft Entra ID tenant, or any other OIDC
+provider, through one issuer that both the browser and the CLI trust. Alongside Dex, never with
+it; the kind demo moves to it. State is ephemeral and the realm is rendered from values; PKCE and
+password-guessing lockout are enforced by the provider, closing two of ADR-015's recorded gaps.
 
 | ADR | Component | Repo path | ADR-001 source | Owning phases | Tracker |
 |---|---|---|---|---|---|
@@ -60,6 +65,7 @@ alerting. Two additive contract changes (`GraphNode.canary`, `GET /api/v1/anomal
 | [ADR-014](ADR-014-security-hardening.md) | Security hardening: OIDC sign-in, mutual TLS, least-privilege agent | `charts/topology-visualizer/`, `backend/app/`, `agent/internal/`, `frontend/default.conf.template`, CI | §6, §13 | post-5 | §6 |
 | [ADR-015](ADR-015-cli-and-mcp-clients.md) | CLI (`kubectl topology`) and MCP clients, bearer-token sign-in | `cli/`, `charts/…/templates/{frontend-deployment,auth}.yaml`, `frontend/default.conf.template`, `frontend/nginx/`, `Makefile`, CI | §5.5, §6, §13 | post-5 | §8 |
 | [ADR-016](ADR-016-anomalies-canaries-diagram-export.md) | Rule-based anomalies, canary workloads, Mermaid diagram export | `backend/app/domain/anomalies.py`, `backend/app/api/`, `frontend/src/features/{anomalies,export}/`, `cli/internal/`, `charts/…/values*.yaml`, `demo/demo-canary.yaml` | §6, §13 | post-5 | §6 |
+| [ADR-017](ADR-017-keycloak-identity-broker.md) | Bundled Keycloak identity broker: SSO with Google, Microsoft Entra ID, other OIDC | `keycloak/`, `charts/…/templates/{keycloak,auth,pki,networkpolicies,frontend-deployment}.yaml`, `frontend/nginx/`, `cli/internal/auth/` | §6, §13 | post-5 | §6 |
 
 **Progress tracking:** [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) is the master checklist —
 every task carries an ID like `P1-A2` (phase 1, agent, task 2). Each component ADR repeats its own

@@ -340,7 +340,7 @@ Honest gaps rather than known-bad behaviour.
 
 ---
 
-## 6. Security (ADR-014, ADR-015)
+## 6. Security (ADR-014, ADR-015, ADR-017)
 
 What the hardening does not do, measured where it could be.
 
@@ -465,14 +465,19 @@ relationships were left out and to narrow the query (namespace, kind, name or a 
 backend's own truncation is reported in the same words. The command-line output is not capped;
 `-o json` returns the API response unchanged.
 
-### 6.13 Password guessing on the bundled Dex is not rate-limited — **unchanged since ADR-014, now recorded**
+### 6.13 Password guessing on the bundled Dex is not rate-limited — **unchanged since ADR-014, closed for Keycloak by ADR-017**
 
 nginx rate-limits `/api/` only. `/dex/`, where the login form and the token endpoint live, has no
 `limit_req`, and Dex's password database has no lockout. Anyone who can reach the UI can try
 passwords against the one static user at whatever rate the network allows. The generated password
 is long and random, which is the mitigation; the bundled Dex remains a demo convenience (§6.2).
 
-### 6.14 PKCE is enforced by the CLI, not by Dex — **inherent to Dex v2.45.1, accepted**
+This still holds for Dex. It does not hold for the bundled Keycloak (ADR-017), whose realm has
+brute-force detection on: after five wrong passwords the user is locked out for a period that grows
+by 60 s per further failure, up to 15 minutes, never permanently. *Measured on kind (T-17.9):* after
+six wrong passwords the correct one was refused too, and accepted again about two minutes later.
+
+### 6.14 PKCE is enforced by the CLI, not by Dex — **inherent to Dex v2.45.1, accepted; closed for Keycloak by ADR-017**
 
 The CLI always sends an `S256` challenge, so a code from a sign-in it started is useless without its
 verifier. Dex does not require a challenge, though: an authorisation URL crafted without one, and
@@ -480,3 +485,44 @@ completed by a user who was tricked into opening it, yields a code that whoever 
 the callback port can redeem. The callback ports are on the user's own machine
 (`127.0.0.1:38085` – `38087`), so the attacker is another local process or user there. Accepted as
 a residual risk.
+
+This still holds for Dex. The bundled Keycloak (ADR-017) requires an `S256` challenge on both of its
+clients, so an authorisation request without one gets no code. *Measured on kind (T-17.9,
+`e2e/keycloak.spec.ts`):* both clients answer a challenge-less request with `invalid_request`,
+never a sign-in page.
+
+**§6.15 – §6.18** cover the bundled Keycloak identity broker (ADR-017).
+
+### 6.15 A Keycloak restart signs everyone out — **by design, the owner's choice**
+
+Keycloak's state lives in a file database on an `emptyDir`, and the realm is imported from values
+on every start. A restart of the pod — a rollout, a rescheduled pod — ends every session, browser
+and CLI alike, as a Dex restart does (§6.10); brokered users are re-created at their next sign-in.
+There is no admin account and no console, so nothing configured by hand could be lost: the
+configuration is values. Keeping state in the bundled PostgreSQL would survive restarts, at the
+cost of coupling sign-in to the database and making a console the source of truth; the owner chose
+ephemeral state. As with Dex, a restart does not invalidate ID tokens already issued (§6.9).
+
+### 6.16 Upstream providers are reached over the Internet, unrestricted — **stated**
+
+Google, Entra ID and any other upstream provider are called from the Keycloak pod. The chart has no
+egress NetworkPolicy, for Keycloak or anything else, so nothing restricts where that pod connects.
+An air-gapped cluster cannot reach the providers at all; there, only the demo user can sign in.
+
+### 6.17 Brokered e-mail addresses are trusted as verified — **by design, bounded**
+
+oauth2-proxy refuses an ID token whose `email_verified` is not `true`, so every upstream provider is
+configured with `trustEmail` on: Keycloak marks the e-mail the provider returns as verified without
+checking it again. The trust is only as good as each provider and its pinning: a Google sign-in can
+be limited to one Workspace domain (`hostedDomain`); Entra ID is pinned to one tenant and its e-mail
+is the user principal name, in a domain the tenant has verified, not the user-editable `email`
+claim; a generic OIDC provider is pinned to its issuer and nothing more. `allowedEmailDomains`
+applies on top of all of them. A Google provider without `hostedDomain`, or a generic one that does
+not verify addresses, should be paired with `allowedEmailDomains`.
+
+### 6.18 No group-based admission with the bundled Keycloak — **deferred**
+
+`auth.oidc.allowedGroups` is refused when the bundled Keycloak is enabled: the realm has no groups
+and its users are ephemeral, so the setting would admit nobody. Admission is by e-mail domain only.
+Mapping Entra ID groups into the token would need persistent users or per-sign-in group sync; it was
+considered and deferred (ADR-017 §4).

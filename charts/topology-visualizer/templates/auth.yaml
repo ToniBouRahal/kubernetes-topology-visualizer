@@ -1,24 +1,26 @@
 {{- /*
-Sign-in secrets and the bundled Dex's configuration (ADR-014 D-14.6, D-14.7).
+Sign-in secrets and the bundled Dex's configuration (ADR-014 D-14.6, D-14.7). The bundled
+Keycloak's realm is in keycloak.yaml (ADR-017).
 
-<fullname>-auth holds what the chart generates: the session-cookie key, and with the bundled Dex
-its client secret, the demo user's password and that password's bcrypt hash. All are generated
-once and kept across upgrades (lookup), so an upgrade does not sign everyone out or change the
-demo password. The hash is stored too, rather than recomputed: bcrypt salts, so recomputing it
-would change Dex's configuration — and restart Dex — on every upgrade.
+<fullname>-auth holds what the chart generates: the session-cookie key, and with a bundled
+provider its client secret and the demo user's password — plus, for Dex, that password's bcrypt
+hash (Keycloak hashes it itself on import). All are generated once and kept across upgrades
+("topology.authSecrets" in _helpers.tpl), so an upgrade does not sign everyone out or change the
+demo password.
 */ -}}
 {{- if .Values.auth.enabled }}
 {{- $full := include "topology.fullname" . }}
-{{- $existing := (lookup "v1" "Secret" .Release.Namespace (printf "%s-auth" $full)).data | default dict }}
-{{- $cookie := index $existing "cookie-secret" | default (randAlphaNum 32 | b64enc) | b64dec }}
-{{- $clientSecret := index $existing "client-secret" | default (randAlphaNum 40 | b64enc) | b64dec }}
-{{- $password := index $existing "demo-password" | default (randAlphaNum 20 | b64enc) | b64dec }}
-{{- $hash := index $existing "demo-password-hash" | default (bcrypt $password | b64enc) | b64dec }}
+{{- include "topology.authSecrets" . }}
+{{- $cookie := .Values.__authSecrets.cookie }}
+{{- $clientSecret := .Values.__authSecrets.client }}
+{{- $password := .Values.__authSecrets.password }}
+{{- $hash := .Values.__authSecrets.hash }}
 {{- if not .Values.auth.externalUrl }}
 {{- fail "auth.externalUrl is required when auth.enabled: the URL people open the UI at, e.g. https://topology.example.com" }}
 {{- end }}
-{{- if and (not .Values.auth.dex.enabled) (or (not .Values.auth.oidc.issuerUrl) (not .Values.auth.oidc.clientId) (not .Values.auth.oidc.clientSecret.existingSecret)) }}
-{{- fail "auth.oidc.issuerUrl, auth.oidc.clientId and auth.oidc.clientSecret.existingSecret are required when auth.enabled without the bundled Dex (auth.dex.enabled)" }}
+{{- $bundled := or .Values.auth.dex.enabled .Values.auth.keycloak.enabled }}
+{{- if and (not $bundled) (or (not .Values.auth.oidc.issuerUrl) (not .Values.auth.oidc.clientId) (not .Values.auth.oidc.clientSecret.existingSecret)) }}
+{{- fail "auth.oidc.issuerUrl, auth.oidc.clientId and auth.oidc.clientSecret.existingSecret are required when auth.enabled without a bundled provider (auth.dex.enabled or auth.keycloak.enabled)" }}
 {{- end }}
 apiVersion: v1
 kind: Secret
@@ -31,9 +33,11 @@ type: Opaque
 data:
   # oauth2-proxy's session-cookie key: exactly 32 bytes, which selects AES-256.
   cookie-secret: {{ $cookie | b64enc | quote }}
-  {{- if .Values.auth.dex.enabled }}
+  {{- if $bundled }}
   client-secret: {{ $clientSecret | b64enc | quote }}
   demo-password: {{ $password | b64enc | quote }}
+  {{- end }}
+  {{- if .Values.auth.dex.enabled }}
   demo-password-hash: {{ $hash | b64enc | quote }}
   {{- end }}
 {{- if .Values.auth.dex.enabled }}

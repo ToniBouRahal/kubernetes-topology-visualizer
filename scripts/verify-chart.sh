@@ -539,9 +539,9 @@ for d in docs:
                 name = d["metadata"]["name"]
                 role = "dex" if name == "topology-dex-tls" else name.split("-tls-")[-1]
                 keys.append((role, k, d.get("type")))
-leaf = sorted((n, "tls.key", "kubernetes.io/tls") for n in ("agent", "dex", "frontend", "postgresql", "server"))
+leaf = sorted((n, "tls.key", "kubernetes.io/tls") for n in ("agent", "dex", "frontend", "keycloak", "postgresql", "server"))
 if sorted(keys) != leaf:
-    problems.append(f"private keys found {sorted(keys)}, expected only the five leaf tls.key")
+    problems.append(f"private keys found {sorted(keys)}, expected only the six leaf tls.key")
 
 # Transports.
 agent, backend, frontend = env(workload("agent")), env(workload("backend")), env(workload("frontend"))
@@ -619,12 +619,14 @@ for d in yaml.safe_load_all(sys.stdin):
         facts["dex"] = yaml.safe_load(d["stringData"]["config.yaml"])
 print(json.dumps(facts))'
 }
-EXT_SET=(--set auth.dex.enabled=false --set auth.oidc.issuerUrl=https://idp.example.com
+# Dex explicitly: the kind values bundle Keycloak since ADR-017, which has its own section below.
+DEX_SET=(--set auth.dex.enabled=true --set auth.keycloak.enabled=false)
+EXT_SET=(--set auth.dex.enabled=false --set auth.keycloak.enabled=false --set auth.oidc.issuerUrl=https://idp.example.com
          --set auth.oidc.clientId=web --set auth.oidc.clientSecret.existingSecret=oidc)
 CLI_REPORT="$(
-  OFF="$(auth_facts "$(render --set auth.cli.enabled=false)")" \
-  ON="$(auth_facts "$(render --set auth.cli.enabled=true)")" \
-  NOAUTH="$(auth_facts "$(render --set auth.enabled=false --set auth.cli.enabled=true)")" \
+  OFF="$(auth_facts "$(render "${DEX_SET[@]}" --set auth.cli.enabled=false)")" \
+  ON="$(auth_facts "$(render "${DEX_SET[@]}" --set auth.cli.enabled=true)")" \
+  NOAUTH="$(auth_facts "$(render "${DEX_SET[@]}" --set auth.enabled=false --set auth.cli.enabled=true)")" \
   EXT_OFF="$(auth_facts "$(render "${EXT_SET[@]}" --set auth.cli.enabled=false)")" \
   EXT_ON="$(auth_facts "$(render "${EXT_SET[@]}" --set auth.cli.enabled=true --set auth.cli.clientId=cli-app)")" \
   python3 -c '
@@ -691,14 +693,14 @@ if [[ "$CLI_REPORT" == "OK" ]]; then
 else
   while IFS= read -r line; do bad "$line"; done <<<"$CLI_REPORT"
 fi
-if render --set auth.cli.refreshHours=12 | grep -c 'absoluteLifetime: "12h"' >/dev/null; then
+if render "${DEX_SET[@]}" --set auth.cli.refreshHours=12 | grep -c 'absoluteLifetime: "12h"' >/dev/null; then
   ok "auth.cli.refreshHours sets the refresh token's absolute lifetime"
 else
   bad "auth.cli.refreshHours does not reach Dex's expiry block"
 fi
 reject "auth.cli.enabled with an external provider and no clientId" "${EXT_SET[@]}" --set auth.cli.enabled=true
 reject "auth.cli.refreshHours of 0"                                 --set auth.cli.refreshHours=0
-reject "auth.cli.clientId equal to the bundled Dex's browser client" --set auth.cli.clientId=topology
+reject "auth.cli.clientId equal to the bundled Dex's browser client" "${DEX_SET[@]}" --set auth.cli.clientId=topology
 
 # The frontend image's half (D-15.6, D-15.8): one image serves every mode, so these hold whatever
 # the values say. nginx itself is exercised by T-15.10 on kind.
@@ -728,6 +730,178 @@ if grep -c 'security-headers-dex' "$NGINX/default.conf.template" "$NGINX/nginx/a
   bad "the Dex CSP is included outside location /dex/"
 else
   ok "every other location keeps form-action 'self'"
+fi
+
+echo "== ADR-017: bundled Keycloak (T-17.1 – T-17.5) =="
+# The kind values bundle Keycloak. Rendered with the CLI on and every kind of upstream provider, so
+# the realm, oauth2-proxy and the pod are each checked whole, as parsed documents.
+KC_SET=(--set auth.cli.enabled=true
+        --set auth.keycloak.identityProviders.google.enabled=true --set auth.keycloak.identityProviders.google.clientId=g-id
+        --set auth.keycloak.identityProviders.google.clientSecret.existingSecret=idp-google --set auth.keycloak.identityProviders.google.hostedDomain=example.com
+        --set auth.keycloak.identityProviders.microsoft.enabled=true --set auth.keycloak.identityProviders.microsoft.clientId=m-id
+        --set auth.keycloak.identityProviders.microsoft.tenantId=0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0
+        --set auth.keycloak.identityProviders.microsoft.clientSecret.existingSecret=idp-microsoft
+        --set 'auth.keycloak.identityProviders.oidc[0].alias=corp-sso' --set 'auth.keycloak.identityProviders.oidc[0].issuer=https://sso.example.com'
+        --set 'auth.keycloak.identityProviders.oidc[0].authorizationUrl=https://sso.example.com/authorize'
+        --set 'auth.keycloak.identityProviders.oidc[0].tokenUrl=https://sso.example.com/token'
+        --set 'auth.keycloak.identityProviders.oidc[0].jwksUrl=https://sso.example.com/keys'
+        --set 'auth.keycloak.identityProviders.oidc[0].clientId=c-id'
+        --set 'auth.keycloak.identityProviders.oidc[0].clientSecret.existingSecret=idp-corp')
+KC_REPORT="$(
+  FULL="$(render "${KC_SET[@]}")" PLAIN="$(render)" python3 -c '
+import base64, json, os, yaml
+problems = []
+
+def load(name):
+    return [d for d in yaml.safe_load_all(os.environ[name]) if d]
+
+def realm_of(docs):
+    for d in docs:
+        if d["kind"] == "Secret" and d["metadata"]["name"].endswith("-keycloak-realm"):
+            return json.loads(base64.b64decode(d["data"]["topology-realm.json"]))
+
+full, plain = load("FULL"), load("PLAIN")
+realm = realm_of(full)
+auth = next(d for d in full if d["kind"] == "Secret" and d["metadata"]["name"].endswith("-auth"))
+generated = {k: base64.b64decode(v).decode() for k, v in auth["data"].items()}
+
+# T-17.2: the clients, the realm policy, and no plaintext upstream secret.
+clients = {c["clientId"]: c for c in realm["clients"]}
+if sorted(clients) != ["topology", "topology-cli"]:
+    problems.append(f"realm clients are {sorted(clients)}")
+for cid, c in clients.items():
+    a = c["attributes"]
+    if a.get("pkce.code.challenge.method") != "S256":
+        problems.append(f"{cid}: PKCE S256 is not required")
+    if a.get("oauth2.device.authorization.grant.enabled") != "false" or a.get("oidc.ciba.grant.enabled") != "false":
+        problems.append(f"{cid}: device or CIBA grant not off")
+    if not c["standardFlowEnabled"] or c["implicitFlowEnabled"] or c["directAccessGrantsEnabled"] or c["serviceAccountsEnabled"]:
+        problems.append(f"{cid}: a flow other than the standard one is enabled")
+    want_optional = ["offline_access"] if cid == "topology-cli" else []
+    if c["optionalClientScopes"] != want_optional or sorted(c["defaultClientScopes"]) != ["basic", "email", "profile"]:
+        problems.append(f"{cid}: scopes are {c['defaultClientScopes']} + optional {c['optionalClientScopes']}")
+if clients["topology"]["redirectUris"] != ["http://localhost:8080/oauth2/callback"] or clients["topology"]["publicClient"]:
+    problems.append("browser client is not confidential with exactly the oauth2-proxy callback")
+if clients["topology"]["secret"] != generated["client-secret"]:
+    problems.append("browser client secret differs from the one oauth2-proxy reads from <fullname>-auth")
+want_cli = [f"http://127.0.0.1:{p}/callback" for p in (38085, 38086, 38087)]
+if clients["topology-cli"]["redirectUris"] != want_cli or not clients["topology-cli"]["publicClient"]:
+    problems.append("CLI client is not public with exactly the three loopback redirects")
+policy = {"bruteForceProtected": True, "permanentLockout": False, "failureFactor": 5, "accessTokenLifespan": 3600,
+          "ssoSessionIdleTimeout": 28800, "ssoSessionMaxLifespan": 8 * 3600, "revokeRefreshToken": True,
+          "offlineSessionIdleTimeout": 28800, "offlineSessionMaxLifespanEnabled": True, "offlineSessionMaxLifespan": 8 * 3600,
+          "refreshTokenMaxReuse": 0, "registrationAllowed": False, "resetPasswordAllowed": False}
+for k, v in policy.items():
+    if realm.get(k) != v:
+        problems.append(f"realm {k} is {realm.get(k)!r}, expected {v!r}")
+mappings = realm["scopeMappings"]
+if mappings != [{"client": "topology-cli", "roles": ["offline_access"]}]:
+    problems.append(f"realm scope mappings are {mappings}, expected only offline_access for the CLI")
+user = realm["users"][0]
+if not user["emailVerified"] or user["credentials"][0]["value"] != generated["demo-password"]:
+    problems.append("demo user is unverified, or its password is not the generated demo-password")
+idp_secrets = {i["alias"]: i["config"]["clientSecret"] for i in realm["identityProviders"]}
+if idp_secrets != {"google": "${KC_IDP_GOOGLE_SECRET}", "microsoft": "${KC_IDP_MICROSOFT_SECRET}", "corp-sso": "${KC_IDP_CORP_SSO_SECRET}"}:
+    problems.append(f"upstream secrets are not env placeholders: {idp_secrets}")
+
+# T-17.3: each provider pinned as D-17.5 says; none rendered unless configured.
+idps = {i["alias"]: i for i in realm["identityProviders"]}
+if idps["google"]["providerId"] != "google" or idps["google"]["config"].get("hostedDomain") != "example.com":
+    problems.append("google is not the built-in provider with its hosted domain")
+ms = idps["microsoft"]
+tenant = "https://login.microsoftonline.com/0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0"
+if ms["providerId"] != "oidc" or ms["config"]["issuer"] != tenant + "/v2.0" or not all(
+        ms["config"][k].startswith(tenant + "/") for k in ("authorizationUrl", "tokenUrl", "jwksUrl")):
+    problems.append("microsoft is not the generic OIDC provider pinned to the tenant")
+if [(m["identityProviderAlias"], m["config"]["claim"], m["config"]["user.attribute"]) for m in realm["identityProviderMappers"]] \
+        != [("microsoft", "preferred_username", "email")]:
+    problems.append("the Entra e-mail does not come from preferred_username, or other mappers exist")
+for alias, i in idps.items():
+    if not i["trustEmail"] or i["config"]["syncMode"] != "FORCE" or (i["providerId"] == "oidc" and i["config"]["validateSignature"] != "true"):
+        problems.append(f"{alias}: trustEmail/FORCE/signature validation not as D-17.5")
+if realm_of(plain)["identityProviders"]:
+    problems.append("upstream providers render with none configured")
+
+# T-17.4: oauth2-proxy with Keycloak — split endpoints, provider CA, the CLI flags of D-15.6.
+proxy = next(c for d in full if d["kind"] == "Deployment" and d["metadata"]["name"].endswith("-frontend")
+             for c in d["spec"]["template"]["spec"]["containers"] if c["name"] == "oauth2-proxy")
+args = proxy["args"]
+inc = "https://topology-visualizer-keycloak.default.svc.cluster.local:8443/keycloak/realms/topology/protocol/openid-connect"
+for want in ("--oidc-issuer-url=http://localhost:8080/keycloak/realms/topology", "--skip-oidc-discovery=true",
+             "--login-url=http://localhost:8080/keycloak/realms/topology/protocol/openid-connect/auth",
+             f"--redeem-url={inc}/token", f"--oidc-jwks-url={inc}/certs", "--provider-ca-file=/etc/oauth2-proxy/tls/ca.crt",
+             "--skip-jwt-bearer-tokens=true", "--oidc-extra-audience=topology-cli", "--client-id=topology",
+             f"--backend-logout-url={inc}/logout?id_token_hint={{id_token}}"):
+    if want not in args:
+        problems.append(f"oauth2-proxy lacks {want}")
+if any("dex" in a for a in args):
+    problems.append("oauth2-proxy still names Dex with Keycloak bundled")
+
+# T-17.5: the pod. Read-only, non-root, nothing added; its own certificate only; secrets by reference.
+kc = next(d for d in full if d["kind"] == "Deployment" and d["metadata"]["name"].endswith("-keycloak"))
+spec = kc["spec"]["template"]["spec"]
+c = spec["containers"][0]
+sc = c["securityContext"]
+if not (sc["readOnlyRootFilesystem"] and not sc["allowPrivilegeEscalation"] and sc["capabilities"] == {"drop": ["ALL"]}
+        and spec["securityContext"]["runAsNonRoot"] and spec["automountServiceAccountToken"] is False):
+    problems.append("keycloak container is not read-only, non-root, capability-free, tokenless")
+secrets = sorted(v["secret"]["secretName"] for v in spec["volumes"] if "secret" in v)
+if secrets != ["topology-visualizer-keycloak-realm", "topology-visualizer-tls-keycloak"]:
+    problems.append(f"keycloak mounts Secrets {secrets}")
+if not all("valueFrom" in e and "value" not in e for e in c.get("env", [])) or len(c.get("env", [])) != 3:
+    problems.append("upstream secrets do not reach keycloak by secretKeyRef, one per provider")
+if "--http-enabled=false" not in c["args"] or "--hostname=http://localhost:8080/keycloak" not in c["args"]:
+    problems.append("keycloak serves plain HTTP or the wrong hostname")
+pol = [d for d in full if d["kind"] == "NetworkPolicy" and d["metadata"]["name"].endswith("-keycloak")]
+if pol and pol[0]["spec"]["ingress"][0]["ports"] != [{"protocol": "TCP", "port": 8443}]:
+    problems.append("keycloak NetworkPolicy admits more than 8443")
+if any(d["metadata"]["name"] == "topology-dex-config" for d in full):
+    problems.append("Dex configuration rendered with Keycloak bundled")
+
+print("\n".join(problems) if problems else "OK")
+' 2>&1)"
+if [[ "$KC_REPORT" == "OK" ]]; then
+  ok "realm, upstream providers, oauth2-proxy and the Keycloak pod are exactly as ADR-017 D-17.4 – D-17.9 say"
+else
+  while IFS= read -r line; do bad "$line"; done <<<"$KC_REPORT"
+fi
+if render --set networkPolicy.enabled=true | grep -c 'name: topology-visualizer-keycloak$' >/dev/null; then
+  ok "a NetworkPolicy fronts Keycloak when policies are on"
+else
+  bad "no NetworkPolicy for Keycloak"
+fi
+reject "Dex and Keycloak bundled together (T-17.1)"  --set auth.dex.enabled=true
+reject "allowedGroups with the bundled Keycloak (T-17.1)" --set 'auth.oidc.allowedGroups[0]=ops'
+reject "Entra tenant 'common' (T-17.1)" --set auth.keycloak.identityProviders.microsoft.enabled=true \
+  --set auth.keycloak.identityProviders.microsoft.tenantId=common --set auth.keycloak.identityProviders.microsoft.clientId=m \
+  --set auth.keycloak.identityProviders.microsoft.clientSecret.existingSecret=s
+reject "Entra tenant given as a domain, which never matches the token issuer" \
+  --set auth.keycloak.identityProviders.microsoft.enabled=true --set auth.keycloak.identityProviders.microsoft.tenantId=contoso.com \
+  --set auth.keycloak.identityProviders.microsoft.clientId=m --set auth.keycloak.identityProviders.microsoft.clientSecret.existingSecret=s
+reject "Google enabled with no client secret" --set auth.keycloak.identityProviders.google.enabled=true \
+  --set auth.keycloak.identityProviders.google.clientId=g
+reject "an oidc provider over plain HTTP" --set 'auth.keycloak.identityProviders.oidc[0].alias=x' \
+  --set 'auth.keycloak.identityProviders.oidc[0].issuer=http://x' --set 'auth.keycloak.identityProviders.oidc[0].authorizationUrl=https://x/a' \
+  --set 'auth.keycloak.identityProviders.oidc[0].tokenUrl=https://x/t' --set 'auth.keycloak.identityProviders.oidc[0].jwksUrl=https://x/k' \
+  --set 'auth.keycloak.identityProviders.oidc[0].clientId=c' --set 'auth.keycloak.identityProviders.oidc[0].clientSecret.existingSecret=s'
+reject "an oidc provider reusing the alias google" --set 'auth.keycloak.identityProviders.oidc[0].alias=google'
+reject "auth.cli.clientId equal to Keycloak's browser client" --set auth.cli.clientId=topology
+
+# The frontend image's half (D-17.6, D-17.7): an allowlist, and the Keycloak CSP only under it.
+KC_NGINX="$NGINX/nginx/keycloak-on.conf"
+proxied="$(grep -oE 'location \^~ [^ ]+ \{' "$KC_NGINX" | awk '{print $3}' | while read -r loc; do
+  awk -v l="location ^~ $loc {" 'index($0, l) == 1 {f=1} f && /keycloak-proxy.conf/ {print l; exit} f && /^\}/ {exit}' "$KC_NGINX"; done | awk '{print $3}' | sort | tr '\n' ' ')"
+if [[ "$proxied" == "/keycloak/realms/topology/ /keycloak/resources/ " ]] && grep -c '^location \^~ /keycloak/ {' "$KC_NGINX" >/dev/null \
+   && [[ "$(grep -c 'return 404;' "$KC_NGINX")" -eq 7 ]] && [[ "$(grep -c 'auth_request off;' "$KC_NGINX")" -eq 7 ]]; then
+  ok "nginx proxies only the realm and theme assets under /keycloak; seven ^~ refusals, none a sign-in redirect"
+else
+  bad "the /keycloak allowlist is not exactly the realm and resources plus seven refusals (proxied: $proxied)"
+fi
+KC_CSP_DIFF="$(diff <(grep -v '^#' "$NGINX/nginx/security-headers-dex.conf") <(grep -v '^#' "$NGINX/nginx/security-headers-keycloak.conf") | grep '^[<>]')"
+if [[ -z "$KC_CSP_DIFF" ]] && grep -c 'proxy_hide_header Content-Security-Policy;' "$NGINX/nginx/keycloak-proxy.conf" >/dev/null; then
+  ok "Keycloak pages get the Dex CSP (three loopback form-action origins) and Keycloak's own CSP is hidden"
+else
+  bad "Keycloak headers differ from the Dex set, or Keycloak's own CSP is not hidden: $KC_CSP_DIFF"
 fi
 
 echo "== T-7.3: values.schema.json rejects malformed values =="

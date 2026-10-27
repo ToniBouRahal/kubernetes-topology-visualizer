@@ -14,12 +14,14 @@ import (
 	"time"
 )
 
-// fakeOIDC is the topology server and its bundled Dex in one httptest server: /api/v1/namespaces
-// answers 401 (or 200 with authOff), /dex/* is a minimal provider that enforces PKCE S256 the
-// way the CLI relies on and rotates refresh tokens like Dex.
+// fakeOIDC is the topology server and its bundled provider in one httptest server:
+// /api/v1/namespaces answers 401 (or 200 with authOff), <path>/* (/dex by default) is a minimal
+// provider that enforces PKCE S256 the way the CLI relies on and rotates refresh tokens like Dex.
 type fakeOIDC struct {
-	t   *testing.T
-	srv *httptest.Server
+	t    *testing.T
+	srv  *httptest.Server
+	mux  *http.ServeMux // tests add handlers, such as the other provider's path
+	path string
 
 	mu              sync.Mutex
 	authOff         bool
@@ -37,6 +39,7 @@ type fakeOIDC struct {
 	refreshToken  string                 // the one currently valid
 	refreshes     int
 	tokenRequests int
+	discoveries   int
 	serial        int
 }
 
@@ -44,21 +47,24 @@ type authRequest struct {
 	challenge, clientID, redirectURI, nonce string
 }
 
-func newFakeOIDC(t *testing.T) *fakeOIDC {
+func newFakeOIDC(t *testing.T) *fakeOIDC { return newFakeOIDCAt(t, "/dex") }
+
+// newFakeOIDCAt serves the provider under path, e.g. /keycloak/realms/topology.
+func newFakeOIDCAt(t *testing.T, path string) *fakeOIDC {
 	t.Helper()
-	f := &fakeOIDC{t: t, email: "admin@example.com", lifetime: time.Hour, pending: map[string]authRequest{},
+	f := &fakeOIDC{t: t, path: path, email: "admin@example.com", lifetime: time.Hour, pending: map[string]authRequest{},
 		scopesSupported: []string{"openid", "email", "profile", "offline_access"}}
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/namespaces", f.namespaces)
-	mux.HandleFunc("/dex/.well-known/openid-configuration", f.discovery)
-	mux.HandleFunc("/dex/auth", f.authorize)
-	mux.HandleFunc("/dex/token", f.token)
-	f.srv = httptest.NewServer(mux)
+	f.mux = http.NewServeMux()
+	f.mux.HandleFunc("/api/v1/namespaces", f.namespaces)
+	f.mux.HandleFunc(path+"/.well-known/openid-configuration", f.discovery)
+	f.mux.HandleFunc(path+"/auth", f.authorize)
+	f.mux.HandleFunc(path+"/token", f.token)
+	f.srv = httptest.NewServer(f.mux)
 	t.Cleanup(f.srv.Close)
 	return f
 }
 
-func (f *fakeOIDC) issuer() string { return f.srv.URL + "/dex" }
+func (f *fakeOIDC) issuer() string { return f.srv.URL + f.path }
 
 func (f *fakeOIDC) namespaces(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
@@ -77,6 +83,7 @@ func (f *fakeOIDC) namespaces(w http.ResponseWriter, r *http.Request) {
 func (f *fakeOIDC) discovery(w http.ResponseWriter, _ *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.discoveries++
 	tokenURL := f.issuer() + "/token"
 	if f.tokenEndpoint != "" {
 		tokenURL = f.tokenEndpoint

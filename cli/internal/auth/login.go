@@ -37,7 +37,7 @@ const (
 // Timeout and OpenBrowser exist so tests can drive the flow.
 type SignInOptions struct {
 	Server   string
-	Issuer   string // default <Server>/dex
+	Issuer   string // default: probed, <Server>/keycloak/realms/topology then <Server>/dex (ADR-017 D-17.8)
 	ClientID string // default topology-cli
 	Scopes   []string
 	CAFile   string
@@ -68,9 +68,6 @@ func SignIn(ctx context.Context, store *Store, o SignInOptions) (*SignInResult, 
 		return nil, err
 	}
 	issuer := strings.TrimRight(o.Issuer, "/")
-	if issuer == "" {
-		issuer = server + "/dex"
-	}
 	clientID := o.ClientID
 	if clientID == "" {
 		clientID = DefaultClientID
@@ -108,7 +105,12 @@ func SignIn(ctx context.Context, store *Store, o SignInOptions) (*SignInResult, 
 	if err := CheckSecretURL(server); err != nil {
 		return nil, fmt.Errorf("server: %w", err)
 	}
-	disc, err := discover(ctx, client, issuer)
+	var disc *discovery
+	if issuer == "" {
+		issuer, disc, err = probeIssuer(ctx, client, server)
+	} else {
+		disc, err = discover(ctx, client, issuer)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -217,6 +219,36 @@ func requiresSignIn(ctx context.Context, client *http.Client, server string) (bo
 		return false, fmt.Errorf("%s answered %s to GET /api/v1/namespaces; is --server the topology UI URL?",
 			server, resp.Status)
 	}
+}
+
+// defaultIssuerPaths are the bundled providers' issuer paths under the server, probed in order when
+// login has no --issuer (ADR-017 D-17.8): Keycloak first, then Dex.
+var defaultIssuerPaths = []string{"/keycloak/realms/topology", "/dex"}
+
+// probeIssuer returns the first default issuer whose discovery document is valid and names that
+// issuer (ADR-017 D-17.8). Redirects are not followed: in Dex mode the Keycloak path answers with
+// oauth2-proxy's sign-in redirect, which must read as "not here" rather than be chased to a
+// sign-in page or a host the CLI cannot reach. A connection failure stops the probe at once, as
+// does a document that would send a secret over plain HTTP.
+func probeIssuer(ctx context.Context, client *http.Client, server string) (string, *discovery, error) {
+	probe := *client
+	probe.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	candidates := make([]string, len(defaultIssuerPaths))
+	failures := make([]string, len(defaultIssuerPaths))
+	for i, path := range defaultIssuerPaths {
+		candidates[i] = server + path
+		disc, err := discover(ctx, &probe, candidates[i])
+		if err == nil {
+			return candidates[i], disc, nil
+		}
+		var ce *ConnectionError
+		if errors.As(err, &ce) || errors.Is(err, ErrInsecureTransport) {
+			return "", nil, err
+		}
+		failures[i] = err.Error()
+	}
+	return "", nil, fmt.Errorf("found no OIDC issuer at %s (%s); pass --issuer",
+		strings.Join(candidates, " or "), strings.Join(failures, "; "))
 }
 
 // listenLoopback binds the first free port on 127.0.0.1 — never a wildcard address, so nothing

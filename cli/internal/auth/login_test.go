@@ -3,6 +3,7 @@ package auth
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"net/url"
@@ -310,5 +311,123 @@ func TestLoginUsageErrors(t *testing.T) {
 		if code := c.Login(context.Background(), args); code != exitUsage {
 			t.Errorf("%v: exit %d, want %d; stderr %q", args, code, exitUsage, errOut.String())
 		}
+	}
+}
+
+// T-17.6 — with no --issuer, login probes <server>/keycloak/realms/topology, then <server>/dex
+// (ADR-017 D-17.8).
+
+const keycloakPath = "/keycloak/realms/topology"
+
+func storedIssuer(t *testing.T, store *Store, server string) string {
+	t.Helper()
+	file, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := file.Servers[server]
+	if e == nil {
+		t.Fatalf("nothing stored for %s", server)
+	}
+	return e.Issuer
+}
+
+func TestProbeChoosesKeycloak(t *testing.T) {
+	requireFreePorts(t)
+	f := newFakeOIDCAt(t, keycloakPath)
+	dexHits := 0
+	f.mux.HandleFunc("/dex/", func(w http.ResponseWriter, _ *http.Request) { dexHits++; http.NotFound(w, nil) })
+	store := testStore(t)
+	if _, err := signIn(t, f, store, SignInOptions{}); err != nil {
+		t.Fatalf("SignIn: %v", err)
+	}
+	if got := storedIssuer(t, store, f.srv.URL); got != f.srv.URL+keycloakPath {
+		t.Fatalf("stored issuer = %q, want the Keycloak realm", got)
+	}
+	if dexHits != 0 {
+		t.Fatalf("Dex was probed %d times after Keycloak answered", dexHits)
+	}
+}
+
+func TestProbeFallsBackToDex(t *testing.T) {
+	requireFreePorts(t)
+	for name, keycloak := range map[string]http.HandlerFunc{
+		// oauth2-proxy's answer in Dex mode: the path is behind sign-in. It redirects to a
+		// plain-HTTP, non-loopback host the probe must not follow.
+		"redirect": func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "http://sign-in.invalid/oauth2/start", http.StatusFound)
+		},
+		"not found": http.NotFound,
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFakeOIDC(t)
+			f.mux.HandleFunc(keycloakPath+"/", keycloak)
+			store := testStore(t)
+			if _, err := signIn(t, f, store, SignInOptions{}); err != nil {
+				t.Fatalf("SignIn: %v", err)
+			}
+			if got := storedIssuer(t, store, f.srv.URL); got != f.issuer() {
+				t.Fatalf("stored issuer = %q, want %q", got, f.issuer())
+			}
+		})
+	}
+}
+
+func TestProbeFindsNeither(t *testing.T) {
+	f := newFakeOIDCAt(t, "/elsewhere")
+	f.mux.HandleFunc("/dex/", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("<html>")) })
+	_, err := signIn(t, f, testStore(t), SignInOptions{
+		OpenBrowser: func(string) error { t.Error("a browser was opened"); return nil }})
+	if err == nil {
+		t.Fatal("SignIn succeeded with no provider at either default path")
+	}
+	for _, want := range []string{f.srv.URL + keycloakPath, f.srv.URL + "/dex", "--issuer"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not mention %q", err, want)
+		}
+	}
+	var ce *ConnectionError
+	if errors.As(err, &ce) {
+		t.Fatalf("error %v is a connection error; want a plain one (exit 3, not 4)", err)
+	}
+}
+
+func TestProbeStopsOnConnectionError(t *testing.T) {
+	f := newFakeOIDC(t)
+	// The server answers /api/v1/namespaces but the connection drops on the Keycloak path.
+	f.mux.HandleFunc(keycloakPath+"/", func(w http.ResponseWriter, _ *http.Request) {
+		conn, _, err := w.(http.Hijacker).Hijack()
+		if err == nil {
+			_ = conn.Close()
+		}
+	})
+	_, err := signIn(t, f, testStore(t), SignInOptions{
+		OpenBrowser: func(string) error { t.Error("a browser was opened"); return nil }})
+	var ce *ConnectionError
+	if !errors.As(err, &ce) {
+		t.Fatalf("err = %v, want a *ConnectionError", err)
+	}
+	if f.discoveries != 0 {
+		t.Fatalf("Dex was probed after a connection error on the Keycloak path")
+	}
+}
+
+func TestExplicitIssuerSkipsProbe(t *testing.T) {
+	requireFreePorts(t)
+	f := newFakeOIDC(t)
+	keycloakHits := 0
+	f.mux.HandleFunc(keycloakPath+"/", func(w http.ResponseWriter, _ *http.Request) {
+		keycloakHits++
+		http.NotFound(w, nil)
+	})
+	store := testStore(t)
+	if _, err := signIn(t, f, store, SignInOptions{Issuer: f.issuer() + "/"}); err != nil {
+		t.Fatalf("SignIn: %v", err)
+	}
+	if keycloakHits != 0 {
+		t.Fatalf("the Keycloak path was probed %d times despite --issuer", keycloakHits)
+	}
+	if got := storedIssuer(t, store, f.srv.URL); got != f.issuer() {
+		t.Fatalf("stored issuer = %q, want %q", got, f.issuer())
 	}
 }

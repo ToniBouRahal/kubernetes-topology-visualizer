@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Vulnerability scan and SBOM for the three built images and the database image (ADR-014 D-14.11).
+# Vulnerability scan and SBOM for the four built images and the database image (ADR-014 D-14.11).
 #
 #   bash scripts/scan-images.sh [tag] [sbom-dir]      default tag: dev (what `make images` builds)
 #
@@ -38,7 +38,7 @@ print(ref + "@" + i["digest"] if i.get("digest") else ref)
 ' "$REPO_ROOT/charts/topology-visualizer/values.yaml")"
 
 failed=()
-for entry in "agent=topology-agent:$TAG" "backend=topology-backend:$TAG" "frontend=topology-frontend:$TAG" "postgresql=$DB_IMAGE"; do
+for entry in "agent=topology-agent:$TAG" "backend=topology-backend:$TAG" "frontend=topology-frontend:$TAG" "keycloak=topology-keycloak:$TAG" "postgresql=$DB_IMAGE"; do
   name="${entry%%=*}"
   image="${entry#*=}"
   echo "== $image =="

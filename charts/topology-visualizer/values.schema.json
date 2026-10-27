@@ -438,13 +438,14 @@
     "auth": {
       "type": "object",
       "additionalProperties": false,
-      "description": "OIDC sign-in in front of the UI and API (ADR-014 D-14.6, D-14.7).",
+      "description": "OIDC sign-in in front of the UI and API (ADR-014 D-14.6, D-14.7, ADR-017).",
       "required": [
         "enabled",
         "externalUrl",
         "oidc",
         "sessionHours",
         "dex",
+        "keycloak",
         "cli",
         "proxy"
       ],
@@ -536,13 +537,13 @@
             "clientId": {
               "type": "string",
               "pattern": "^[^\\s,]*$",
-              "description": "The CLI's public OIDC client. Required with an external provider; empty means topology-cli with the bundled Dex."
+              "description": "The CLI's public OIDC client. Required with an external provider; empty means topology-cli with the bundled Dex or Keycloak."
             },
             "refreshHours": {
               "type": "integer",
               "minimum": 1,
               "maximum": 168,
-              "description": "Bundled Dex only: the refresh token's absolute lifetime."
+              "description": "Bundled Dex or Keycloak only: the refresh token's absolute lifetime."
             }
           }
         },
@@ -551,6 +552,224 @@
           "properties": {
             "image": {
               "$ref": "#/$defs/image"
+            },
+            "resources": {
+              "type": "object"
+            }
+          }
+        },
+        "keycloak": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The bundled Keycloak identity broker (ADR-017). Never with dex.enabled.",
+          "required": [
+            "enabled",
+            "image",
+            "demoUser",
+            "identityProviders"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "image": {
+              "$ref": "#/$defs/image"
+            },
+            "demoUser": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "email": {
+                  "type": "string",
+                  "pattern": "^[^@\\s]+@[^@\\s]+$"
+                }
+              }
+            },
+            "identityProviders": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "google": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "clientId": {
+                      "type": "string"
+                    },
+                    "clientSecret": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "existingSecret": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    },
+                    "hostedDomain": {
+                      "type": "string",
+                      "pattern": "^$|^[A-Za-z0-9.-]+$"
+                    }
+                  },
+                  "if": {
+                    "properties": {
+                      "enabled": {
+                        "const": true
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "clientId": {
+                        "minLength": 1
+                      },
+                      "clientSecret": {
+                        "properties": {
+                          "existingSecret": {
+                            "minLength": 1
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "microsoft": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "$comment": "One tenant only (ADR-017 D-17.5): the multi-tenant endpoints would admit any Entra tenant or a personal Microsoft account.",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "tenantId": {
+                      "type": "string",
+                      "pattern": "^$|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "description": "The Directory (tenant) ID, a GUID: Entra's v2 tokens name it in `iss`, so a domain would fail the issuer check, and common/organizations/consumers would admit other tenants (ADR-017 D-17.5)."
+                    },
+                    "clientId": {
+                      "type": "string"
+                    },
+                    "clientSecret": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "existingSecret": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  },
+                  "if": {
+                    "properties": {
+                      "enabled": {
+                        "const": true
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "tenantId": {
+                        "minLength": 1
+                      },
+                      "clientId": {
+                        "minLength": 1
+                      },
+                      "clientSecret": {
+                        "properties": {
+                          "existingSecret": {
+                            "minLength": 1
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "oidc": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "alias",
+                      "issuer",
+                      "authorizationUrl",
+                      "tokenUrl",
+                      "jwksUrl",
+                      "clientId",
+                      "clientSecret"
+                    ],
+                    "properties": {
+                      "alias": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9][a-z0-9-]{0,30}$",
+                        "not": {
+                          "enum": [
+                            "google",
+                            "microsoft"
+                          ]
+                        }
+                      },
+                      "displayName": {
+                        "type": "string"
+                      },
+                      "issuer": {
+                        "type": "string",
+                        "pattern": "^https://[^\\s]+$"
+                      },
+                      "authorizationUrl": {
+                        "type": "string",
+                        "pattern": "^https://[^\\s]+$"
+                      },
+                      "tokenUrl": {
+                        "type": "string",
+                        "pattern": "^https://[^\\s]+$"
+                      },
+                      "jwksUrl": {
+                        "type": "string",
+                        "pattern": "^https://[^\\s]+$"
+                      },
+                      "clientId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "clientSecret": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "existingSecret"
+                        ],
+                        "properties": {
+                          "existingSecret": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "key": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      },
+                      "scopes": {
+                        "type": "string",
+                        "pattern": "openid"
+                      }
+                    }
+                  }
+                }
+              }
             },
             "resources": {
               "type": "object"
@@ -579,6 +798,13 @@
                     "const": false
                   }
                 }
+              },
+              "keycloak": {
+                "properties": {
+                  "enabled": {
+                    "const": false
+                  }
+                }
               }
             }
           },
@@ -595,7 +821,7 @@
           }
         },
         {
-          "$comment": "The bundled Dex keys static clients by ID, so a CLI client named topology would replace the browser's confidential client with a public one whose only redirects are the CLI's loopback ports (ADR-015 D-15.7).",
+          "$comment": "The bundled provider keys clients by ID, so a CLI client named topology would replace the browser's confidential client with a public one whose only redirects are the CLI's loopback ports (ADR-015 D-15.7).",
           "if": {
             "properties": {
               "dex": {
@@ -615,6 +841,88 @@
                     "not": {
                       "const": "topology"
                     }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "keycloak": {
+                "properties": {
+                  "enabled": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cli": {
+                "properties": {
+                  "clientId": {
+                    "not": {
+                      "const": "topology"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "$comment": "One bundled provider at most (ADR-017 D-17.1): both would claim the browser's client and the frontend's sign-in path.",
+          "not": {
+            "properties": {
+              "dex": {
+                "properties": {
+                  "enabled": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              },
+              "keycloak": {
+                "properties": {
+                  "enabled": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            },
+            "required": [
+              "dex",
+              "keycloak"
+            ]
+          }
+        },
+        {
+          "$comment": "The bundled Keycloak's realm has no groups and its users are ephemeral, so allowedGroups would admit nobody (ADR-017 D-17.5).",
+          "if": {
+            "properties": {
+              "keycloak": {
+                "properties": {
+                  "enabled": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "oidc": {
+                "properties": {
+                  "allowedGroups": {
+                    "maxItems": 0
                   }
                 }
               }
