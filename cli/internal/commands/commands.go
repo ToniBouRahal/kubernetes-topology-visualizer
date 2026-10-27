@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -63,6 +64,7 @@ var Commands = []Command{
 	{"graph", "print every observed relationship in a window", runGraph},
 	{"deps", "print what one workload talks to, and what talks to it", runDeps},
 	{"diff", "compare two equal-length periods", runDiff},
+	{"anomalies", "print rule-based anomalies in a window against the period before it", runAnomalies},
 	{"edge", "print one relationship by its ID", runEdge},
 	{"mcp", "serve these reads to an AI agent as MCP tools over stdio", runMCP},
 }
@@ -93,11 +95,23 @@ func (c *common) register(fs *flag.FlagSet) {
 	fs.StringVar(&c.output, "o", "text", "output format: text or json (the API response unchanged)")
 }
 
-func (c *common) validate() error {
-	if c.output != "text" && c.output != "json" {
-		return fmt.Errorf("-o %q: want text or json", c.output)
+// validate checks -o. text and json suit every command; extra names formats only some commands
+// can produce (graph's mermaid, ADR-016 D-16.7), so asking another command for one is a usage
+// error naming what it does accept rather than a silent fallback to text.
+func (c *common) validate(extra ...string) error {
+	allowed := append([]string{"text", "json"}, extra...)
+	if !slices.Contains(allowed, c.output) {
+		return fmt.Errorf("-o %q: want %s", c.output, orList(allowed))
 	}
 	return nil
+}
+
+// orList is "text or json", "text, json or mermaid".
+func orList(words []string) string {
+	if len(words) < 2 {
+		return strings.Join(words, "")
+	}
+	return strings.Join(words[:len(words)-1], ", ") + " or " + words[len(words)-1]
 }
 
 func newFlagSet(env Env, name, usage string) *flag.FlagSet {

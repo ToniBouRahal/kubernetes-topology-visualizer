@@ -13,6 +13,7 @@ export function FilterPanel({
   onClear,
   extra,
   nodeList,
+  anomalies,
 }: {
   namespaces: string[];
   selectedNamespaces: string[];
@@ -26,12 +27,15 @@ export function FilterPanel({
   extra?: React.ReactNode;
   /** Keyboard-navigable node list — the accessible equivalent of clicking the canvas. */
   nodeList?: React.ReactNode;
+  /** Rule-based findings for the shown window (ADR-016), above the filters they depend on. */
+  anomalies?: React.ReactNode;
 }) {
   const filtering = selectedNamespaces.length > 0 || search !== "" || !includeExternal;
 
   return (
     <aside className="panel panel--left" aria-label="Filters">
       {extra}
+      {anomalies}
       <section className="panel__section">
         <label className="label" htmlFor="search">
           Search
@@ -90,6 +94,7 @@ export function FilterPanel({
       <section className="panel__section panel__section--legend">
         <p className="panel__hint">
           Colour shows namespace. Edge thickness shows <b>successful TCP establishments</b>. Dashed amber edges include failed/aborted attempts.
+          A double red ring marks a canary: a decoy nothing should connect to.
           Mean TCP setup measures successful establishment time. Failure counts cover measured observations;
           older data may be unmeasured.
         </p>

@@ -97,6 +97,40 @@ curl -s localhost:9090/metrics
 The backend exposes `/health/live` and `/health/ready`. Readiness reflects migrations *and* storage,
 so it drops to 503 during a database outage and recovers without a restart.
 
+### Anomalies and canaries (ADR-016)
+
+The backend checks the last 5 minutes against the 24 hours before them once a minute, with five
+fixed rules, and reports what it finds three ways — none of which leaves the cluster:
+
+- the **Anomalies** list in the UI and `kubectl topology anomalies` (both read
+  `GET /api/v1/anomalies`, for whatever window is selected);
+- a `WARNING` log line, `anomaly detected`, when a finding first appears (not every minute it lasts);
+- the gauge `topology_backend_active_anomalies{type="…"}` on the backend's `/metrics`, one series
+  per rule, zero included.
+
+| `type` | severity | means |
+|---|---|---|
+| `canary_contact` | critical | something connected to a workload named in `backend.canaries` |
+| `new_external_egress` | critical | a workload reached outside the cluster on a port it did not use in the baseline |
+| `new_edge` | warning | a relationship absent from the baseline |
+| `failure_spike` | critical | ≥ 20 % of ≥ 10 attempts failed, ≥ 20 points above the baseline |
+| `slow_setup` | warning | mean TCP setup ≥ 3× the baseline and ≥ 1 ms slower |
+
+To be told rather than look, alert on the gauge with your own Prometheus, for example
+`max(topology_backend_active_anomalies{type=~"canary_contact|new_external_egress"}) > 0`, or on the
+log line in your log pipeline. This tool sends no notifications itself.
+
+**Canaries** are decoys: a plausible-looking workload nothing legitimate calls. Name them in
+`backend.canaries` as `namespace/name` (any kind) or `namespace/Kind/name`. Every connection
+attempt to one adds to `topology_backend_canary_connections_total` the moment it is ingested, logs
+`canary contacted` with the caller, and is marked on the graph. `make demo-canary` deploys one on
+the kind demo and touches it.
+
+`backend.anomalies.baselineHours` (default 24) and `backend.anomalies.minAttempts` (default 10)
+are the two values worth tuning. A longer baseline costs a longer query, once per request and once
+per minute. For the first day after an install the baseline is short and relationships that simply
+have not recurred yet show as new — see `limitations.md` §4.6 – §4.8.
+
 ### Prometheus and Grafana (optional)
 
 The port-forward above is the zero-dependency way to read the metrics, and it stays the default.

@@ -121,6 +121,13 @@ describe("WCAG AA text contrast", () => {
     }
   });
 
+  it("the canary ring and band text read on the canvas — ADR-016 D-16.4", () => {
+    // The ring is a graphical object (3:1), but the band's "canary ·" is text set in the same
+    // token, so the stricter text ratio is the one that binds.
+    const ratio = contrast(token("--canary"), token("--ink"));
+    expect(ratio, `--canary on --ink = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+  });
+
   it("regression: the palette is the light one ADR-010 specifies, not the console it replaced", () => {
     // Named explicitly because a revert would restore dark tokens that pass every ratio above
     // while making --on-fill labels, the blueprint grid, and the edge strokes wrong at once.

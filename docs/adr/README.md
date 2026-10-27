@@ -35,6 +35,14 @@ credential, so a CLI request takes the browser's path and the same admission rul
 default; no backend or contract change. With Dex bundled, nginx closes Dex's device-flow paths and
 gives Dex's pages their own CSP (amends ADR-014 D-14.10).
 
+`ADR-016` takes ADR-001 §13's deferred "anomaly detection" into scope as **deterministic rules
+only** — new relationships, new external egress, failure spikes, slower TCP setup — each a stated
+threshold against the preceding period, plus **canary workloads** (decoys any connection to which
+is a finding) and a **Mermaid export** of the graph on screen. Nothing calls out of the cluster:
+findings are an API response, WARNING log lines and Prometheus gauges for the operator's own
+alerting. Two additive contract changes (`GraphNode.canary`, `GET /api/v1/anomalies`).
+
+
 | ADR | Component | Repo path | ADR-001 source | Owning phases | Tracker |
 |---|---|---|---|---|---|
 | [ADR-002](ADR-002-ebpf-node-agent.md) | eBPF node agent (Go) | `agent/` | §5.1, §5.2 | 1, 2, 4 | §9 |
@@ -51,6 +59,7 @@ gives Dex's pages their own CSP (amends ADR-014 D-14.10).
 | [ADR-013](ADR-013-bundled-observability.md) | Bundled Prometheus + Grafana, optional | `charts/…/Chart.yaml`, `charts/…/dashboards/`, `scripts/chart-deps.sh` | §4.2, §5.7 | post-5 | §6 |
 | [ADR-014](ADR-014-security-hardening.md) | Security hardening: OIDC sign-in, mutual TLS, least-privilege agent | `charts/topology-visualizer/`, `backend/app/`, `agent/internal/`, `frontend/default.conf.template`, CI | §6, §13 | post-5 | §6 |
 | [ADR-015](ADR-015-cli-and-mcp-clients.md) | CLI (`kubectl topology`) and MCP clients, bearer-token sign-in | `cli/`, `charts/…/templates/{frontend-deployment,auth}.yaml`, `frontend/default.conf.template`, `frontend/nginx/`, `Makefile`, CI | §5.5, §6, §13 | post-5 | §8 |
+| [ADR-016](ADR-016-anomalies-canaries-diagram-export.md) | Rule-based anomalies, canary workloads, Mermaid diagram export | `backend/app/domain/anomalies.py`, `backend/app/api/`, `frontend/src/features/{anomalies,export}/`, `cli/internal/`, `charts/…/values*.yaml`, `demo/demo-canary.yaml` | §6, §13 | post-5 | §6 |
 
 **Progress tracking:** [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) is the master checklist —
 every task carries an ID like `P1-A2` (phase 1, agent, task 2). Each component ADR repeats its own

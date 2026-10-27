@@ -30,8 +30,15 @@ function TopologyNodeComponent({ data }: { data: TopologyNodeData }) {
   const external = isExternal(node.kind);
   const diameter = nodeDiameter(degree);
 
+  // A canary is marked by a stroke of its own, never by a hue: every hue on the canvas belongs to
+  // namespace (encoding.ts), and the word in the band keeps the mark readable in greyscale
+  // (ADR-016 D-16.4).
+  const canary = !group && node.canary === true;
+
   const label = group ? group.namespace : node.label;
-  const band = group ? `${group.workloads} workloads · expand` : namespaceLabel(node);
+  const band = group
+    ? `${group.workloads} workloads · expand`
+    : `${canary ? "canary · " : ""}${namespaceLabel(node)}`;
 
   // The circle grows with degree, not with the length of the name, so a long name steps the type
   // down instead of fragmenting across lines. The thresholds are what fits the MINIMUM diameter —
@@ -40,14 +47,14 @@ function TopologyNodeComponent({ data }: { data: TopologyNodeData }) {
 
   return (
     <div
-      className={`topology-node${selected ? " topology-node--selected" : ""}`}
+      className={`topology-node${selected ? " topology-node--selected" : ""}${canary ? " topology-node--canary" : ""}`}
       style={{ width: diameter, height: diameter + NODE_LABEL_BAND }}
       // The accessible name carries what the circle carries, in words: a screen reader sees
       // neither the fill nor the diameter. Degree is stated because it is now an encoding.
       aria-label={
         group
           ? `Namespace ${group.namespace}, ${group.workloads} workloads, talks to ${degree} components`
-          : `${node.name} in ${namespaceLabel(node)}, talks to ${degree} components`
+          : `${node.name} in ${namespaceLabel(node)}${canary ? ", canary" : ""}, talks to ${degree} components`
       }
     >
       <Handle type="target" position={Position.Left} className="topology-handle" />

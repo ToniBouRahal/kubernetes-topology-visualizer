@@ -23,6 +23,11 @@ class Metrics:
     graph_queries: int = 0
     diff_queries: int = 0
     retention_deletions: int = 0
+    # ADR-016 D-16.5: attempts (successful + failed) whose target is a canary, counted at ingest.
+    canary_connections: int = 0
+    # ADR-016 D-16.3: what the evaluator found on its last pass, per type. Seeded by the app with
+    # every type at zero, so an alert expression never meets a missing series.
+    active_anomalies: dict[str, int] = field(default_factory=dict)
 
     # Query durations, kept as a running sum and count so an average is derivable without
     # carrying a histogram implementation.
@@ -49,6 +54,14 @@ class Metrics:
     def record_diff_query(self) -> None:
         with self._lock:
             self.diff_queries += 1
+
+    def record_canary_contact(self, attempts: int) -> None:
+        with self._lock:
+            self.canary_connections += attempts
+
+    def set_active_anomalies(self, counts: dict[str, int]) -> None:
+        with self._lock:
+            self.active_anomalies = dict(counts)
 
     def record_retention(self, deleted: int) -> None:
         with self._lock:
@@ -101,16 +114,29 @@ class Metrics:
                     round(self.graph_query_seconds_total, 6),
                 ),
                 (
+                    "topology_backend_canary_connections_total",
+                    "Connection attempts to a canary workload, counted at ingest",
+                    "counter",
+                    self.canary_connections,
+                ),
+                (
                     "topology_backend_stored_edge_buckets",
                     "Edge buckets currently stored",
                     "gauge",
                     stored_buckets,
                 ),
             ]
+            anomalies = sorted(self.active_anomalies.items())
 
         lines: list[str] = []
         for name, help_text, metric_type, value in samples:
             lines.append(f"# HELP {name} {help_text}")
             lines.append(f"# TYPE {name} {metric_type}")
             lines.append(f"{name} {value}")
+        if anomalies:
+            name = "topology_backend_active_anomalies"
+            lines.append(f"# HELP {name} Anomalies found by the last evaluation, by rule")
+            lines.append(f"# TYPE {name} gauge")
+            # Type names are a fixed Literal set, never user input, so no label escaping needed.
+            lines.extend(f'{name}{{type="{kind.lower()}"}} {count}' for kind, count in anomalies)
         return "\n".join(lines) + "\n"

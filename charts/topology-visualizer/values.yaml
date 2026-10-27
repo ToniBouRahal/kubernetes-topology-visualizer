@@ -76,6 +76,21 @@ backend:
   diffChangeThresholdPercent: 20
   corsAllowedOrigins: "http://localhost:5173,http://localhost:8080"
 
+  # Canary workloads (ADR-016 D-16.4): decoys nothing legitimate ever connects to, so any inbound
+  # connection is an anomaly, counted at ingest and logged. `namespace/name` matches any kind;
+  # `namespace/Kind/name` one kind. Matched on node fields, never by parsing ids. Empty: none.
+  canaries: []
+
+  # Rule-based anomalies (ADR-016 D-16.1). Thresholds, not learned values — every anomaly states
+  # the numbers it compared. Nothing is sent anywhere: findings are an API response, a WARNING log
+  # line and the topology_backend_active_anomalies gauges, for your own alerting to pick up.
+  anomalies:
+    # The period before a window that the window is compared against. Costs one query of this
+    # length per anomaly request and per evaluation (once a minute).
+    baselineHours: 24
+    # Fewer attempts (or timing samples) than this never raise a failure or setup-time anomaly.
+    minAttempts: 10
+
   resources:
     requests:
       cpu: 100m

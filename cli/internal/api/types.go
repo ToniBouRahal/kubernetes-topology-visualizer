@@ -21,6 +21,8 @@ type GraphNode struct {
 	Label     string    `json:"label"`
 	FirstSeen time.Time `json:"first_seen"`
 	LastSeen  time.Time `json:"last_seen"`
+	// Canary marks a decoy named in the chart's backend.canaries (ADR-016 D-16.4).
+	Canary bool `json:"canary"`
 }
 
 // GraphEdge is one aggregated relationship in a window.
@@ -113,6 +115,48 @@ type DiffResponse struct {
 	Current  TimeWindow  `json:"current"`
 	Edges    []DiffEdge  `json:"edges"`
 	Summary  DiffSummary `json:"summary"`
+}
+
+// Anomaly severities (ADR-016 D-16.1).
+const (
+	SeverityCritical = "critical"
+	SeverityWarning  = "warning"
+)
+
+// Anomaly is one rule that fired for one edge; an edge appears once per rule (ADR-016 D-16.1).
+type Anomaly struct {
+	ID                            string   `json:"id"`
+	EdgeID                        string   `json:"edge_id"`
+	Type                          string   `json:"type"`
+	Severity                      string   `json:"severity"`
+	SourceID                      string   `json:"source_id"`
+	TargetID                      string   `json:"target_id"`
+	Protocol                      string   `json:"protocol"`
+	DestinationPort               int      `json:"destination_port"`
+	CurrentConnectionCount        int64    `json:"current_connection_count"`
+	CurrentFailedConnectionCount  *int64   `json:"current_failed_connection_count"`
+	BaselineConnectionCount       int64    `json:"baseline_connection_count"`
+	BaselineFailedConnectionCount *int64   `json:"baseline_failed_connection_count"`
+	CurrentMeanSetupUS            *float64 `json:"current_mean_setup_us"`
+	BaselineMeanSetupUS           *float64 `json:"baseline_mean_setup_us"`
+	Reason                        string   `json:"reason"`
+}
+
+// AnomalySummary: BaselineObserved false means the novelty rules were not applied (D-16.2).
+type AnomalySummary struct {
+	CriticalCount    int  `json:"critical_count"`
+	WarningCount     int  `json:"warning_count"`
+	BaselineObserved bool `json:"baseline_observed"`
+	Truncated        bool `json:"truncated"`
+}
+
+// AnomalyResponse carries the nodes its anomalies refer to, so names never come from an ID.
+type AnomalyResponse struct {
+	Window    TimeWindow     `json:"window"`
+	Baseline  TimeWindow     `json:"baseline"`
+	Anomalies []Anomaly      `json:"anomalies"`
+	Nodes     []GraphNode    `json:"nodes"`
+	Summary   AnomalySummary `json:"summary"`
 }
 
 // ErrorResponse is the backend's error body (4xx/5xx other than FastAPI's own 422s).

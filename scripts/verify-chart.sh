@@ -378,6 +378,32 @@ fi
 reject "Grafana url without an http(s) scheme" --set frontend.grafana.url='grafana.example.com'
 reject "Grafana url with a javascript: scheme" --set frontend.grafana.url='javascript:alert(1)'
 
+echo "== ADR-016: canaries and anomalies (T-16.9) =="
+# The chart default (no values file) has no canaries: the variable is present and empty, which the
+# backend reads as "none". The kind values arm the decoy `make demo-canary` deploys.
+CHART_DEFAULT="$(helm template "$RELEASE" "$CHART" --set auth.enabled=false 2>/dev/null)"
+if grep -q 'CANARY_WORKLOADS: ""' <<<"$CHART_DEFAULT" && grep -q 'ANOMALY_BASELINE_HOURS: "24"' <<<"$CHART_DEFAULT"; then
+  ok "no canaries and a 24 h anomaly baseline in the chart default"
+else
+  bad "chart-default CANARY_WORKLOADS / ANOMALY_BASELINE_HOURS missing or wrong"
+fi
+if grep -q 'CANARY_WORKLOADS: "demo/legacy-admin"' <<<"$RENDERED"; then
+  ok "the kind values arm the demo canary"
+else
+  bad "the kind values do not name demo/legacy-admin as a canary"
+fi
+CANARY_RENDERED="$(render --set 'backend.canaries[0]=demo/legacy-admin' --set 'backend.canaries[1]=data/StatefulSet/vault' --set backend.anomalies.baselineHours=6)"
+if grep -q 'CANARY_WORKLOADS: "demo/legacy-admin,data/StatefulSet/vault"' <<<"$CANARY_RENDERED" \
+  && grep -q 'ANOMALY_BASELINE_HOURS: "6"' <<<"$CANARY_RENDERED"; then
+  ok "backend.canaries and backend.anomalies.* reach the backend ConfigMap"
+else
+  bad "backend.canaries / backend.anomalies.* did not reach the backend ConfigMap"
+fi
+reject "canary without a namespace"     --set 'backend.canaries[0]=legacy-admin'
+reject "canary with an unknown kind"    --set 'backend.canaries[0]=demo/ReplicaSet/legacy-admin'
+reject "canary containing a comma"      --set 'backend.canaries[0]=demo/a\,b'
+reject "zero-hour anomaly baseline"     --set backend.anomalies.baselineHours=0
+
 echo "== ADR-013: bundled observability =="
 # T-13.1 — off by default, and off means nothing: no subchart resources, no scrape annotations.
 if grep -qiE 'app.kubernetes.io/name: (prometheus|grafana|kube-state-metrics)' <<<"$RENDERED"; then

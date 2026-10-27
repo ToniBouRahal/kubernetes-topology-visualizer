@@ -133,6 +133,28 @@
           "type": "number",
           "minimum": 0
         },
+        "canaries": {
+          "type": "array",
+          "description": "namespace/name or namespace/Kind/name (ADR-016 D-16.4).",
+          "items": {
+            "type": "string",
+            "pattern": "^[^/,\\s]+(/(Service|Deployment|StatefulSet|DaemonSet|Job|Pod))?/[^/,\\s]+$"
+          }
+        },
+        "anomalies": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "baselineHours": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "minAttempts": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
         "corsAllowedOrigins": {
           "type": "string",
           "minLength": 1,

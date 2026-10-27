@@ -15,9 +15,12 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from fastapi.responses import PlainTextResponse
 
 from app.api.dependencies import ClockDep, RepositoryDep
+from app.domain import anomalies as anomaly_rules
 from app.domain import diff, graph
 from app.domain import window as win
+from app.domain.anomalies import NO_CANARIES, CanarySet
 from app.domain.models import (
+    AnomalyResponse,
     DiffResponse,
     EdgeDetail,
     EffectiveFilters,
@@ -55,6 +58,10 @@ def _resolve(*, window, start, end, clock) -> ResolvedWindow:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
+
+
+def _canaries(request: Request) -> CanarySet:
+    return getattr(request.app.state, "canaries", NO_CANARIES)
 
 
 def _to_edge_filters(effective: EffectiveFilters) -> EdgeFilters:
@@ -162,6 +169,8 @@ async def ingest_batch(
     )
 
     request.app.state.metrics.record_ingest(deduplicated=outcome is IngestOutcome.ALREADY_INGESTED)
+    if outcome is IngestOutcome.INGESTED:
+        _count_canary_contacts(batch, _canaries(request), request.app.state.metrics)
 
     logging.getLogger("api.ingest").info(
         "batch ingested",
@@ -178,6 +187,29 @@ async def ingest_batch(
         status=outcome.value,
         edges_accepted=len(batch.edges) if outcome is IngestOutcome.INGESTED else 0,
     )
+
+
+def _count_canary_contacts(batch: IngestBatch, canaries: CanarySet, metrics) -> None:
+    """ADR-016 D-16.5: count and log contact at the earliest point the backend knows of it.
+
+    Only a newly stored batch reaches here, so an agent retry never counts twice.
+    """
+    log = logging.getLogger("api.canary")
+    for edge in batch.edges:
+        target = edge.target
+        if not canaries.matches(target.namespace, target.kind, target.name):
+            continue
+        attempts = edge.connection_count + (edge.failed_connection_count or 0)
+        metrics.record_canary_contact(attempts)
+        log.warning(
+            "canary contacted",
+            extra={
+                "canary": f"{target.namespace}/{target.kind}/{target.name}",
+                "source": f"{edge.source.namespace}/{edge.source.kind}/{edge.source.name}",
+                "destination_port": edge.destination_port,
+                "attempts": attempts,
+            },
+        )
 
 
 # ── Graph ───────────────────────────────────────────────────────────────────────────────────
@@ -232,6 +264,7 @@ async def get_graph(
         generated_at=clock(),
         max_nodes=settings.graph_max_nodes,
         max_edges=settings.graph_max_edges,
+        canaries=_canaries(request),
     )
     request.app.state.metrics.record_graph_query(time.perf_counter() - started)
     return assembled
@@ -322,6 +355,7 @@ async def get_node(
     window: Annotated[WindowPreset | None, Query()] = None,
     from_: Annotated[datetime | None, Query(alias="from")] = None,
     to: Annotated[datetime | None, Query()] = None,
+    request: Request = None,  # noqa: RUF013
     repository: RepositoryDep = None,  # noqa: RUF013
     clock: ClockDep = None,  # noqa: RUF013
 ) -> NodeDetail:
@@ -332,7 +366,9 @@ async def get_node(
         {e.source_id for e in edges} | {e.target_id for e in edges} | {node_id}
     )
 
-    detail = graph.node_detail(node_id=node_id, edges=edges, nodes=nodes, window=resolved)
+    detail = graph.node_detail(
+        node_id=node_id, edges=edges, nodes=nodes, window=resolved, canaries=_canaries(request)
+    )
     if detail is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -351,6 +387,7 @@ async def get_edge(
     window: Annotated[WindowPreset | None, Query()] = None,
     from_: Annotated[datetime | None, Query(alias="from")] = None,
     to: Annotated[datetime | None, Query()] = None,
+    request: Request = None,  # noqa: RUF013
     repository: RepositoryDep = None,  # noqa: RUF013
     clock: ClockDep = None,  # noqa: RUF013
 ) -> EdgeDetail:
@@ -374,11 +411,105 @@ async def get_edge(
         return EdgeDetail(
             edge=graph._to_edge(aggregate),
             window=resolved.as_model(),
-            source=graph._to_node(source),
-            target=graph._to_node(target),
+            source=graph._to_node(source, _canaries(request)),
+            target=graph._to_node(target, _canaries(request)),
         )
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail=f"no edge {edge_id!r} observed in this window",
+    )
+
+
+# ── Anomalies (ADR-016) ─────────────────────────────────────────────────────────────────────
+
+
+async def evaluate_anomalies(
+    *,
+    repository,
+    canaries: CanarySet,
+    window: ResolvedWindow,
+    filters: EffectiveFilters,
+    generated_at: datetime,
+) -> AnomalyResponse:
+    """Shared by the route and the background evaluator, so both apply exactly the same rules."""
+    baseline_window = ResolvedWindow(
+        start=window.start - timedelta(hours=settings.anomaly_baseline_hours), end=window.start
+    )
+    edge_filters = _to_edge_filters(filters)
+    current = await repository.query_edges(window, edge_filters)
+    baseline = await repository.query_edges(baseline_window, edge_filters)
+    stored = await repository.nodes_for(
+        {e.source_id for e in current} | {e.target_id for e in current}
+    )
+
+    found, observed = anomaly_rules.detect(
+        current_edges=current,
+        baseline_edges=baseline,
+        canary_targets={
+            nid for nid, n in stored.items() if canaries.matches(n.namespace, n.kind, n.name)
+        },
+        window=window,
+        baseline_window=baseline_window,
+        thresholds=anomaly_rules.Thresholds(
+            min_attempts=settings.anomaly_min_attempts,
+            failure_ratio=settings.anomaly_failure_ratio,
+            setup_factor=settings.anomaly_setup_factor,
+        ),
+    )
+    return anomaly_rules.respond(
+        anomalies=found,
+        baseline_observed=observed,
+        nodes=[graph._to_node(n, canaries) for n in stored.values()],
+        window=window,
+        baseline_window=baseline_window,
+        filters=filters,
+        generated_at=generated_at,
+        max_anomalies=settings.graph_max_edges,
+    )
+
+
+@api_router.get(
+    "/anomalies",
+    response_model=AnomalyResponse,
+    responses={422: {"model": ErrorResponse}, 503: {"model": ErrorResponse}},
+)
+async def get_anomalies(
+    window: Annotated[
+        WindowPreset | None, Query(description="Preset window. Mutually exclusive with from/to.")
+    ] = None,
+    from_: Annotated[
+        datetime | None, Query(alias="from", description="RFC 3339 UTC, inclusive.")
+    ] = None,
+    to: Annotated[datetime | None, Query(description="RFC 3339 UTC, exclusive.")] = None,
+    namespace: Annotated[list[str] | None, Query(description="Repeatable.")] = None,
+    kind: Annotated[NodeKind | None, Query()] = None,
+    query: Annotated[
+        str | None, Query(description="Case-insensitive substring match on label.")
+    ] = None,
+    include_external: Annotated[bool, Query()] = True,
+    include_unresolved: Annotated[bool, Query()] = False,
+    request: Request = None,  # noqa: RUF013
+    repository: RepositoryDep = None,  # noqa: RUF013
+    clock: ClockDep = None,  # noqa: RUF013
+) -> AnomalyResponse:
+    """Rule-based anomalies in one window against the period just before it (ADR-016 D-16.1).
+
+    The baseline is `ANOMALY_BASELINE_HOURS` long and ends where the window starts. Every rule is
+    a stated threshold; each anomaly's `reason` gives the numbers compared.
+    """
+    resolved = _resolve(window=window, start=from_, end=to, clock=clock)
+    effective = EffectiveFilters(
+        namespaces=sorted(namespace or []),
+        kind=kind,
+        query=query,
+        include_external=include_external,
+        include_unresolved=include_unresolved,
+    )
+    return await evaluate_anomalies(
+        repository=repository,
+        canaries=_canaries(request),
+        window=resolved,
+        filters=effective,
+        generated_at=clock(),
     )

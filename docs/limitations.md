@@ -301,6 +301,31 @@ works with any shipper. Standalone pods are matched exactly. A `Service` node �
 emits when the workload behind it is unknown or ambiguous — gets no link at all, because there is
 nothing correct to link to.
 
+### 4.6 Anomalies are thresholds, not detection — **by design, stated**
+
+The five rules of ADR-016 compare a window with the period just before it, each against a fixed
+threshold that the anomaly's reason quotes. What they miss is what any threshold misses: a slow
+ramp that never crosses one, a failure ratio that rises from 5 % to 24 % (under the 20-point rise),
+a slowdown under 1 ms, and anything below ten attempts. A relationship seen once in the last day
+is not "new", however unusual. Nothing is learned and nothing is predicted; ADR-001 §13 deferred
+that, and with one-minute buckets and days of history there would be little to learn from.
+
+### 4.7 A partly filled baseline reports old relationships as new — **argued**
+
+The novelty rules are switched off only when the baseline holds *no* edges (D-16.2). For the first
+day after an install, or after a namespace starts being observed, the baseline exists but is
+short, and a relationship that simply has not happened since the install began is reported as
+`NEW_EDGE`. The same happens when the baseline reaches back past retention. Lowering
+`backend.anomalies.baselineHours` shortens the period this lasts, at the cost of a shorter memory.
+
+### 4.8 Canaries are visible to every viewer, and only inbound contact counts — **by design**
+
+Anyone who can sign in can see which nodes are marked canary; hiding that would need per-user
+authorisation, which ADR-014 defers. Contact is counted from the TCP connections the agent sees, so
+it inherits every capture limit above — host-network callers (§2.3), IPv6, and a caller's very first
+connections (§2.1) are invisible here too. A canary that opens connections itself is drawn as a
+canary but raises nothing (D-16.6).
+
 ---
 
 ## 5. Not yet observed

@@ -77,7 +77,10 @@ Deployment/backend   →  EXTERNAL            TCP:80    (57)
 Deployment/frontend  →  Deployment/backend  TCP:8080  (586)
 ```
 
-`-o json` prints the API response instead, and `kubectl topology --help` lists the other commands. The same binary is an MCP server for an AI coding agent
+`-o json` prints the API response instead, and `kubectl topology --help` lists the other commands.
+`kubectl topology anomalies --since 15m` lists rule-based findings, and `kubectl topology graph -o
+mermaid` writes the graph as a Mermaid diagram — the same text the UI's **Export diagram** button
+downloads. The same binary is an MCP server for an AI coding agent
 on your machine, with five read-only tools. For Claude Code:
 
 ```bash
@@ -93,6 +96,17 @@ workloads. See [`docs/limitations.md`](docs/limitations.md) §6.9 – §6.14.
 
 A privileged DaemonSet attaches a BPF program to `tracepoint/sock/inet_sock_set_state` and keeps
 only *active opens* — `AF_INET`, TCP, and outcomes leaving `SYN_SENT`:
+## Anomalies, canaries and export
+
+The backend compares the selected window with the 24 hours before it and lists what stands out:
+a relationship never seen before, new traffic leaving the cluster, a jump in failed connections,
+or TCP setup suddenly much slower. Each is a fixed threshold, and each finding says the numbers it
+compared. A **canary** is a decoy workload named in `backend.canaries`; any connection to it is a
+finding the moment it arrives (`make demo-canary` shows one). Findings appear in the UI, in the
+backend log and as a Prometheus gauge for your own alerting — nothing is sent outside the cluster.
+**Export diagram** saves the graph on screen as Mermaid text, which renders in GitHub and most
+documentation tools. See [ADR-016](docs/adr/ADR-016-anomalies-canaries-diagram-export.md).
+
 `ESTABLISHED` counts as success; `CLOSE` counts as failed/aborted setup. Accepted server sockets
 are excluded. A bounded map records setup start times so successful events can carry measured
 TCP establishment duration. Addresses are resolved to

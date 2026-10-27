@@ -151,3 +151,72 @@ func TestEdgeAndNamespaces(t *testing.T) {
 	assertLines(t, Namespaces(load[api.NamespaceList](t, "namespaces.json")),
 		"window 2026-08-10T11:00:00Z to 2026-08-10T12:00:00Z", "data", "demo")
 }
+
+// T-16.7 (ADR-016 D-16.8): the Go export equals the golden file the browser's export is also
+// tested against.
+func TestMermaidMatchesTheGoldenFile(t *testing.T) {
+	g := load[api.GraphResponse](t, "graph.export.json")
+	want, err := os.ReadFile(filepath.Join("..", "..", "testdata", "graph.export.mmd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := Mermaid(g); got != string(want) {
+		t.Errorf("Mermaid differs from graph.export.mmd\n got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// T-16.7: no label can close its quotes, open a link or an edge label, or start a new line.
+func TestMermaidEscapesHostileLabels(t *testing.T) {
+	ns := "x\"]\nclick"
+	g := &api.GraphResponse{
+		Nodes: []api.GraphNode{
+			{ID: "a", Kind: "Pod", Namespace: &ns, Name: "a", Label: "a\"]|`<b>&#quot;\r\nn2-->n1"},
+		},
+	}
+	got := Mermaid(g)
+	for _, bad := range []string{`a"]`, "|`", "<b>", "&#", "\nn2-->", "\nclick"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("hostile sequence %q survived:\n%s", bad, got)
+		}
+	}
+	if !strings.Contains(got, `a#quot;]#124;#96;#lt;b#gt;#amp;#35;quot;  n2--#gt;n1<br/>Pod`) {
+		t.Errorf("unexpected escaping:\n%s", got)
+	}
+}
+
+func TestMermaidSaysWhenTheServerTruncated(t *testing.T) {
+	g := load[api.GraphResponse](t, "graph.export.json")
+	g.Summary.Truncated = true
+	if lines := strings.Split(Mermaid(g), "\n"); lines[2] != "%% Truncated by the server; this is not the whole graph." {
+		t.Errorf("line 3 = %q", lines[2])
+	}
+}
+
+// ADR-016 D-16.3: critical rows first, each followed by its reason.
+func TestAnomaliesRowsAndReasons(t *testing.T) {
+	r := load[api.AnomalyResponse](t, "anomalies.json")
+	assertLines(t, Anomalies(r, Options{}),
+		"window 2026-08-10T11:00:00Z to 2026-08-10T12:00:00Z",
+		"baseline 2026-08-09T11:00:00Z to 2026-08-10T11:00:00Z",
+		"1 critical, 2 warning",
+		"critical  CANARY_CONTACT  Deployment/backend   →  Deployment/legacy-admin  TCP:22",
+		"    3 connection attempt(s) to a canary workload; nothing legitimate connects to one",
+		"warning   NEW_EDGE        Deployment/backend   →  Deployment/legacy-admin  TCP:22",
+		"    not observed in the previous 24 h",
+		"warning   NEW_EDGE        Deployment/reporter  →  Deployment/payment       TCP:6380",
+		"    not observed in the previous 24 h",
+	)
+}
+
+// ADR-016 D-16.2: an empty baseline is stated, and an empty result says so.
+func TestAnomaliesWithoutABaseline(t *testing.T) {
+	r := load[api.AnomalyResponse](t, "anomalies.json")
+	r.Anomalies, r.Summary = nil, api.AnomalySummary{}
+	assertLines(t, Anomalies(r, Options{}),
+		"window 2026-08-10T11:00:00Z to 2026-08-10T12:00:00Z",
+		"baseline 2026-08-09T11:00:00Z to 2026-08-10T11:00:00Z",
+		"0 critical, 0 warning",
+		"no baseline yet: new-relationship rules are off",
+		"no anomalies in this window",
+	)
+}

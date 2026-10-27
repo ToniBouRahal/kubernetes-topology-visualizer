@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/fyp/kubernetes-topology-visualizer/cli/internal/api"
 	"github.com/fyp/kubernetes-topology-visualizer/cli/internal/query"
@@ -18,8 +19,9 @@ func runGraph(ctx context.Context, env Env, args []string) int {
 		noExternal, unresolv bool
 	)
 	fs := newFlagSet(env, "graph",
-		"graph [-n NS]... [--kind K] [--query Q] [--since D | --from T --to T] [--no-external] [--unresolved]")
+		"graph [-n NS]... [--kind K] [--query Q] [--since D | --from T --to T] [--no-external] [--unresolved] [-o text|json|mermaid]")
 	c.register(fs)
+	fs.Lookup("o").Usage = "output format: text, json (the API response unchanged), or mermaid (a diagram)"
 	fs.Var(&namespaces, "n", "namespace (repeatable)")
 	fs.StringVar(&kind, "kind", "", "only nodes of this kind")
 	fs.StringVar(&q, "query", "", "case-insensitive substring of a node name")
@@ -35,7 +37,7 @@ func runGraph(ctx context.Context, env Env, args []string) int {
 	if len(pos) > 0 {
 		return usageError(env, errors.New("graph takes no arguments; use --query to filter by name"))
 	}
-	if err := c.validate(); err != nil {
+	if err := c.validate("mermaid"); err != nil {
 		return usageError(env, err)
 	}
 	gq := api.GraphQuery{Namespaces: namespaces, Query: q, ExcludeExternal: noExternal, IncludeUnresolved: unresolv}
@@ -54,6 +56,11 @@ func runGraph(ctx context.Context, env Env, args []string) int {
 	resp, raw, err := client.Graph(ctx, gq)
 	if err != nil {
 		return apiFailure(env, client.Server(), err)
+	}
+	if c.output == "mermaid" {
+		// Built from the response, so it carries the window and filters asked for (D-16.7).
+		fmt.Fprint(env.Stdout, render.Mermaid(resp))
+		return ExitOK
 	}
 	return emit(env, c.output, raw, render.Graph(resp, render.Options{}))
 }

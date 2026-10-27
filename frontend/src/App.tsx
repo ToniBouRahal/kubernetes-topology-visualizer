@@ -5,6 +5,7 @@ import type { GraphQuery, NodeDetail, WindowPreset } from "./api/types";
 import { WINDOW_PRESETS } from "./api/types";
 import { Header, type Mode } from "./components/Header";
 import {
+  CanaryBanner,
   EmptyState,
   ErrorBanner,
   LoadingState,
@@ -13,7 +14,10 @@ import {
 } from "./components/States";
 import { WindowStrip } from "./components/WindowStrip";
 import { useUiConfig } from "./config";
+import { AnomalyList, anomalyEnds } from "./features/anomalies/AnomalyList";
+import { useAnomalies } from "./features/anomalies/useAnomalies";
 import { DetailsPanel } from "./features/details/DetailsPanel";
+import { downloadMermaid } from "./features/export/mermaid";
 import { FilterPanel } from "./features/filters/FilterPanel";
 import { CompareCanvas } from "./features/graph/CompareCanvas";
 import { NodeList } from "./features/graph/NodeList";
@@ -104,6 +108,18 @@ export default function App() {
   const { graph, initialLoading, refreshing, error, lastUpdated, refresh } = useGraph(query, {
     paused: paused || mode !== "live",
   });
+
+  // Same window and filters as the graph, refreshed with it; off in compare mode (ADR-016 D-16.3).
+  const anomalies = useAnomalies(mode === "compare" ? null : query, lastUpdated);
+  const canaryContacts = useMemo(
+    () =>
+      anomalies
+        ? anomalies.anomalies
+            .filter((a) => a.type === "CANARY_CONTACT")
+            .map((a) => anomalyEnds(anomalies, a))
+        : [],
+    [anomalies],
+  );
 
   // A pair of periods the backend would reject is not requested at all. Letting it through would
   // spend a round trip to be told what is already known locally, and would leave the PREVIOUS
@@ -253,6 +269,7 @@ export default function App() {
         windowPreset={preset}
         onWindowChange={(value) => setPreset(value as WindowPreset)}
         presets={WINDOW_PRESETS}
+        onExport={graph && mode !== "compare" ? () => downloadMermaid(graph) : undefined}
       />
 
       {mode !== "compare" && graph && (
@@ -282,6 +299,11 @@ export default function App() {
           includeExternal={includeExternal}
           onToggleExternal={() => setIncludeExternal((v) => !v)}
           onClear={clearFilters}
+          anomalies={
+            mode !== "compare" ? (
+              <AnomalyList response={anomalies} onSelect={setSelectedId} />
+            ) : null
+          }
           nodeList={
             mode !== "compare" && graph ? (
               <NodeList
@@ -343,8 +365,12 @@ export default function App() {
             </>
           ) : (
           <>
-          {(error || (graph?.summary.truncated && graph.summary.truncation_reason) || renderCap) && (
+          {(error ||
+            canaryContacts.length > 0 ||
+            (graph?.summary.truncated && graph.summary.truncation_reason) ||
+            renderCap) && (
             <div className="banner-stack">
+              {canaryContacts.length > 0 && <CanaryBanner contacts={canaryContacts} />}
               {error && <ErrorBanner message={error} onRetry={refresh} />}
               {graph?.summary.truncated && graph.summary.truncation_reason && (
                 <TruncationBanner reason={graph.summary.truncation_reason} />

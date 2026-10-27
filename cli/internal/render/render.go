@@ -9,6 +9,7 @@ package render
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -168,6 +169,56 @@ func Edge(r *api.EdgeDetail, o Options) Text {
 		Rows:   align([][]string{row}),
 		Notes:  []string{"first seen " + stamp(e.FirstSeen) + ", last seen " + stamp(e.LastSeen)},
 	}
+}
+
+// Anomalies renders GET /api/v1/anomalies (ADR-016 D-16.3): one aligned row per anomaly,
+// critical first in the server's order within each severity, each followed by its reason. The
+// reason is what makes a finding checkable, so it is printed rather than left to -o json.
+func Anomalies(r *api.AnomalyResponse, o Options) Text {
+	names := newNamer(r.Nodes)
+	s := r.Summary
+	t := Text{Header: []string{
+		windowLine(r.Window),
+		"baseline " + period(r.Baseline),
+		fmt.Sprintf("%d critical, %d warning", s.CriticalCount, s.WarningCount),
+	}}
+	if !s.BaselineObserved {
+		t.Header = append(t.Header, "no baseline yet: new-relationship rules are off")
+	}
+	if s.Truncated {
+		t.Header = append(t.Header, "truncated by the server")
+	}
+
+	// Severity first, so the rows that matter are at the top however long the list is; the
+	// server's own order (edge key, then rule) is kept within each severity.
+	ordered := slices.Clone(r.Anomalies)
+	slices.SortStableFunc(ordered, func(a, b api.Anomaly) int {
+		return severityRank(a.Severity) - severityRank(b.Severity)
+	})
+
+	rows := make([][]string, 0, len(ordered))
+	for _, a := range ordered {
+		row := []string{a.Severity, a.Type, names.of(a.SourceID, a.SourceID), arrow,
+			names.of(a.TargetID, a.TargetID), port(a.Protocol, a.DestinationPort)}
+		if o.IDs {
+			row = append(row, "id="+a.EdgeID)
+		}
+		rows = append(rows, row)
+	}
+	for i, aligned := range align(rows) {
+		t.Rows = append(t.Rows, aligned, "    "+ordered[i].Reason)
+	}
+	if len(t.Rows) == 0 {
+		t.Notes = []string{"no anomalies in this window"}
+	}
+	return t
+}
+
+func severityRank(s string) int {
+	if s == api.SeverityCritical {
+		return 0
+	}
+	return 1
 }
 
 func windowLine(w api.TimeWindow) string { return "window " + period(w) }

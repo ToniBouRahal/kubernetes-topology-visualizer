@@ -19,7 +19,10 @@ from app.api import errors
 from app.api.dependencies import utc_now
 from app.api.logging import RequestContextMiddleware, configure_logging
 from app.api.metrics import Metrics
-from app.api.routes import api_router, health_router
+from app.api.routes import api_router, evaluate_anomalies, health_router
+from app.domain.anomalies import ANOMALY_TYPES, CanarySet
+from app.domain.models import EffectiveFilters
+from app.domain.window import ResolvedWindow
 from app.persistence.memory import InMemoryRepository
 from app.persistence.protocol import TopologyRepository
 from app.settings import settings
@@ -73,12 +76,14 @@ async def lifespan(app: FastAPI):
             app.state.repository = InMemoryRepository(cluster_id=settings.cluster_id)
 
     retention = asyncio.create_task(_retention_loop(app))
+    evaluator = asyncio.create_task(_anomaly_loop(app))
     try:
         yield
     finally:
-        retention.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await retention
+        for task in (retention, evaluator):
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
         if owned is not None:
             await owned.close()
 
@@ -128,6 +133,61 @@ async def _retention_loop(app: FastAPI) -> None:
             log.exception("retention pass failed")
 
 
+async def evaluate_once(app: FastAPI, previous: set[str]) -> set[str]:
+    """One evaluator pass (ADR-016 D-16.3): set the gauges, log what is newly active.
+
+    Returns the ids now active, which the next pass compares against so a standing anomaly is
+    logged once when it appears rather than once a minute for as long as it lasts.
+    """
+    now = app.state.clock()
+    window = ResolvedWindow(
+        start=now - timedelta(minutes=settings.anomaly_evaluation_window_minutes), end=now
+    )
+    result = await evaluate_anomalies(
+        repository=app.state.repository,
+        canaries=app.state.canaries,
+        window=window,
+        filters=EffectiveFilters(),
+        generated_at=now,
+    )
+    counts = dict.fromkeys(ANOMALY_TYPES, 0)
+    for anomaly in result.anomalies:
+        counts[anomaly.type] += 1
+    app.state.metrics.set_active_anomalies(counts)
+
+    labels = {n.id: n.label for n in result.nodes}
+    log = logging.getLogger("app.anomalies")
+    for anomaly in result.anomalies:
+        if anomaly.id in previous:
+            continue
+        log.warning(
+            "anomaly detected",
+            extra={
+                "type": anomaly.type,
+                "severity": anomaly.severity,
+                "source": labels.get(anomaly.source_id, anomaly.source_id),
+                "target": labels.get(anomaly.target_id, anomaly.target_id),
+                "destination_port": anomaly.destination_port,
+                "reason": anomaly.reason,
+            },
+        )
+    return {a.id for a in result.anomalies}
+
+
+async def _anomaly_loop(app: FastAPI) -> None:
+    """Evaluate the recent window periodically. Never takes the API down on failure."""
+    log = logging.getLogger("app.anomalies")
+    active: set[str] = set()
+    while True:
+        await asyncio.sleep(settings.anomaly_evaluation_seconds)
+        try:
+            active = await evaluate_once(app, active)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("anomaly evaluation failed")
+
+
 def create_app(repository: TopologyRepository | None = None) -> FastAPI:
     """Build the application.
 
@@ -168,6 +228,10 @@ def create_app(repository: TopologyRepository | None = None) -> FastAPI:
     app.state.injected_repository = repository is not None
     app.state.clock = utc_now
     app.state.metrics = Metrics()
+    app.state.metrics.set_active_anomalies(dict.fromkeys(ANOMALY_TYPES, 0))
+    # Parsed at start-up so a malformed CANARY_WORKLOADS stops the process rather than silently
+    # watching nothing (ADR-016 D-16.4).
+    app.state.canaries = CanarySet.parse(settings.canary_workloads)
 
     # Registered after the routers exist so handler lookup covers every route.
     errors.register(app)

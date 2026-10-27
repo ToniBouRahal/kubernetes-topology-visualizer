@@ -346,6 +346,27 @@ per-user RBAC, new endpoints): [ADR-015](adr/ADR-015-cli-and-mcp-clients.md).
 - [ ] **C15-7** Make targets, CI job, `make audit` over `cli/` — D-15.15, V-15.6 · open: govulncheck reports the pinned toolchain's standard-library findings until the repo-wide Go bump (V-15.6)
 - [ ] **C15-8** Verification on kind (T-15.10 with a Chromium-driven CLI login, T-15.11, V-15.2 – V-15.5, V-15.7) and `/security-review` · run 2026-10-26: T-15.10, T-15.11, V-15.2 – V-15.4 met; open: V-15.5 negative half, V-15.7, `/security-review`
 - [x] **C15-9** Docs: operator guide, README, `limitations.md` §6.3, §6.9 – §6.14, demo script
+
+### ADR-016 — rule-based anomalies, canaries, diagram export (backend, frontend, CLI, chart)
+
+ADR-001 §13's deferred anomaly detection, as five deterministic rules against the preceding
+period (`CANARY_CONTACT`, `NEW_EXTERNAL_EGRESS`, `NEW_EDGE`, `FAILURE_SPIKE`, `SLOW_SETUP`), served
+by `GET /api/v1/anomalies` and a once-a-minute evaluator that sets
+`topology_backend_active_anomalies{type}` and logs new findings. Canary workloads named in
+`backend.canaries` are counted at ingest. The graph on screen exports as Mermaid from the browser
+and `kubectl topology graph -o mermaid`, both checked against one golden file. No external calls:
+[ADR-016](adr/ADR-016-anomalies-canaries-diagram-export.md).
+
+- [x] **A16-1** ADR-016, index and plan entry
+- [x] **A16-2** Backend: canary matching, `GraphNode.canary`, ingest counter — D-16.4 – D-16.6, T-16.4, T-16.5
+- [x] **A16-3** Backend: `anomalies.detect`, route, evaluator, gauges — D-16.1 – D-16.3, T-16.1 – T-16.3, T-16.6
+- [x] **A16-4** Contract regenerated; TS client; CLI structs and fixtures
+- [x] **A16-5** Frontend: anomaly panel, canary marking, Mermaid export — D-16.7, T-16.7, T-16.8
+- [x] **A16-6** CLI: `graph -o mermaid`, `anomalies` — D-16.8, T-16.7
+- [x] **A16-7** Chart values, schema, ConfigMap; `make demo-canary` — T-16.9 · `verify-chart.sh` 93/93
+- [x] **A16-8** Docs: operator guide, limitations §4.6 – §4.8, README
+- [ ] **A16-9** Verification on kind: `make demo-canary` raises `CANARY_CONTACT` in the UI, API, log and gauge
+
 ---
 
 ## Definition of Done cross-check

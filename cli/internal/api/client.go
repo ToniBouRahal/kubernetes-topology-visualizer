@@ -151,6 +151,16 @@ func (c *Client) Namespaces(ctx context.Context, w Window) (*NamespaceList, []by
 }
 
 func (c *Client) Graph(ctx context.Context, q GraphQuery) (*GraphResponse, []byte, error) {
+	return get[GraphResponse](ctx, c, "/api/v1/graph", q.values())
+}
+
+// Anomalies reads GET /api/v1/anomalies, which takes the graph's window and filters (ADR-016
+// D-16.3).
+func (c *Client) Anomalies(ctx context.Context, q GraphQuery) (*AnomalyResponse, []byte, error) {
+	return get[AnomalyResponse](ctx, c, "/api/v1/anomalies", q.values())
+}
+
+func (q GraphQuery) values() url.Values {
 	v := url.Values{}
 	q.Window.encode(v)
 	for _, ns := range q.Namespaces {
@@ -168,7 +178,7 @@ func (c *Client) Graph(ctx context.Context, q GraphQuery) (*GraphResponse, []byt
 	if q.IncludeUnresolved {
 		v.Set("include_unresolved", "true")
 	}
-	return get[GraphResponse](ctx, c, "/api/v1/graph", v)
+	return v
 }
 
 // Node reads one node's dependencies. id is passed through verbatim, path-escaped only.

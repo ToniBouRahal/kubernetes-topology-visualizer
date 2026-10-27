@@ -22,19 +22,22 @@ const contractPath = "../../../contracts/openapi.json"
 
 // structSchemas maps every response struct to its component schema.
 var structSchemas = map[reflect.Type]string{
-	reflect.TypeFor[TimeWindow]():     "TimeWindow",
-	reflect.TypeFor[GraphNode]():      "GraphNode",
-	reflect.TypeFor[GraphEdge]():      "GraphEdge",
-	reflect.TypeFor[GraphSummary]():   "GraphSummary",
-	reflect.TypeFor[GraphResponse]():  "GraphResponse",
-	reflect.TypeFor[NamespaceList]():  "NamespaceList",
-	reflect.TypeFor[NodeDependency](): "NodeDependency",
-	reflect.TypeFor[NodeDetail]():     "NodeDetail",
-	reflect.TypeFor[EdgeDetail]():     "EdgeDetail",
-	reflect.TypeFor[DiffEdge]():       "DiffEdge",
-	reflect.TypeFor[DiffSummary]():    "DiffSummary",
-	reflect.TypeFor[DiffResponse]():   "DiffResponse",
-	reflect.TypeFor[ErrorResponse]():  "ErrorResponse",
+	reflect.TypeFor[TimeWindow]():      "TimeWindow",
+	reflect.TypeFor[GraphNode]():       "GraphNode",
+	reflect.TypeFor[GraphEdge]():       "GraphEdge",
+	reflect.TypeFor[GraphSummary]():    "GraphSummary",
+	reflect.TypeFor[GraphResponse]():   "GraphResponse",
+	reflect.TypeFor[NamespaceList]():   "NamespaceList",
+	reflect.TypeFor[NodeDependency]():  "NodeDependency",
+	reflect.TypeFor[NodeDetail]():      "NodeDetail",
+	reflect.TypeFor[EdgeDetail]():      "EdgeDetail",
+	reflect.TypeFor[DiffEdge]():        "DiffEdge",
+	reflect.TypeFor[DiffSummary]():     "DiffSummary",
+	reflect.TypeFor[DiffResponse]():    "DiffResponse",
+	reflect.TypeFor[ErrorResponse]():   "ErrorResponse",
+	reflect.TypeFor[Anomaly]():         "Anomaly",
+	reflect.TypeFor[AnomalySummary]():  "AnomalySummary",
+	reflect.TypeFor[AnomalyResponse](): "AnomalyResponse",
 }
 
 // fixtureSchemas maps every file in cli/testdata to the schema of the response it captured.
@@ -47,6 +50,8 @@ var fixtureSchemas = map[string]string{
 	"edge.json":                    "EdgeDetail",
 	"edge.not-found.json":          "ErrorResponse",
 	"diff.json":                    "DiffResponse",
+	"anomalies.json":               "AnomalyResponse",
+	"graph.export.json":            "GraphResponse",
 }
 
 type schema = map[string]any
@@ -539,14 +544,15 @@ func TestContractSchemasUseOnlyKnownKeywords(t *testing.T) {
 	}
 }
 
-// T-15.8 / D-15.16: the client has the five reads and no ingest method.
+// T-15.8 / D-15.16: the client has the reads and no ingest method. ADR-016 D-16.3 added the
+// sixth read, Anomalies — still a GET over the browser's path, nothing that writes.
 func TestContractClientHasNoIngestMethod(t *testing.T) {
 	var methods []string
 	ct := reflect.TypeFor[*Client]()
 	for i := range ct.NumMethod() {
 		methods = append(methods, ct.Method(i).Name)
 	}
-	want := []string{"Diff", "Edge", "Graph", "Namespaces", "Node", "Server"}
+	want := []string{"Anomalies", "Diff", "Edge", "Graph", "Namespaces", "Node", "Server"}
 	if !slices.Equal(methods, want) {
 		t.Errorf("Client methods %v, want exactly %v", methods, want)
 	}

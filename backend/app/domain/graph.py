@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from app.domain.anomalies import NO_CANARIES, CanarySet
 from app.domain.models import (
     EffectiveFilters,
     GraphEdge,
@@ -33,6 +34,7 @@ def assemble(
     generated_at: datetime,
     max_nodes: int,
     max_edges: int,
+    canaries: CanarySet = NO_CANARIES,
 ) -> GraphResponse:
     """Build a graph response from window-scoped aggregates.
 
@@ -53,7 +55,7 @@ def assemble(
                 seen.add(node_id)
                 referenced.append(node_id)
 
-    graph_nodes = [_to_node(nodes[nid]) for nid in referenced if nid in nodes]
+    graph_nodes = [_to_node(nodes[nid], canaries) for nid in referenced if nid in nodes]
     graph_nodes.sort(key=lambda n: n.id)
 
     graph_edges = [_to_edge(e) for e in kept]
@@ -118,7 +120,7 @@ def _truncate(
     return kept, reason
 
 
-def _to_node(stored: StoredNode) -> GraphNode:
+def _to_node(stored: StoredNode, canaries: CanarySet = NO_CANARIES) -> GraphNode:
     # kind is echoed from storage. The external node is the one entry whose wire kind ("Pod")
     # differs from how the UI presents it, which is why the UI keys on the id, not the kind.
     kind = "External" if stored.id == EXTERNAL_NODE_ID else stored.kind
@@ -131,6 +133,7 @@ def _to_node(stored: StoredNode) -> GraphNode:
         first_seen=stored.first_seen,
         last_seen=stored.last_seen,
         attributes=stored.attributes,
+        canary=canaries.matches(stored.namespace, stored.kind, stored.name),
     )
 
 
@@ -163,6 +166,7 @@ def node_detail(
     edges: list[EdgeAggregate],
     nodes: dict[str, StoredNode],
     window: ResolvedWindow,
+    canaries: CanarySet = NO_CANARIES,
 ) -> NodeDetail | None:
     """Assemble one node's incoming and outgoing dependencies within the window."""
     stored = nodes.get(node_id)
@@ -184,7 +188,7 @@ def node_detail(
     outgoing.sort(key=lambda d: (d.node_id, d.destination_port))
 
     return NodeDetail(
-        node=_to_node(stored),
+        node=_to_node(stored, canaries),
         window=window.as_model(),
         incoming=incoming,
         outgoing=outgoing,

@@ -462,6 +462,17 @@ demo-verify: ## Assert the expected edges through the API (T-7.10, T-7.11)
 	  bash scripts/demo-verify.sh
 
 .PHONY: demo-observability
+.PHONY: demo-canary
+demo-canary: ## Deploy a canary and touch it; the API then reports CANARY_CONTACT (ADR-016)
+	-$(KUBECTL) delete job intruder -n demo --ignore-not-found --now
+	$(KUBECTL) apply -f demo/demo-canary.yaml
+	$(KUBECTL) -n demo rollout status deploy/legacy-admin --timeout=180s
+	$(KUBECTL) wait --for=condition=complete job/intruder -n demo --timeout=180s
+	@echo "waiting $(DEMO_SETTLE)s for the contact to be observed..."
+	@sleep $(DEMO_SETTLE)
+	@echo "the backend's WARNING lines for it:"
+	@$(KUBECTL) -n $(NAMESPACE) logs deploy/$(RELEASE)-visualizer-backend --since=5m | grep -i 'canary contacted' | tail -3 || true
+
 demo-observability: chart-deps ## Add the bundled Prometheus + Grafana to a running demo (ADR-013)
 	@# `helm upgrade --reuse-values` keeps the generated database password and everything else
 	@# demo-up set; only the two flags change. The Grafana URL is the port-forward printed below —

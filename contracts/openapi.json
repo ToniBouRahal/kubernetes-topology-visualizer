@@ -1,6 +1,204 @@
 {
   "components": {
     "schemas": {
+      "Anomaly": {
+        "description": "One rule that fired for one edge. An edge may appear once per rule (D-16.1).",
+        "properties": {
+          "baseline_connection_count": {
+            "title": "Baseline Connection Count",
+            "type": "integer"
+          },
+          "baseline_failed_connection_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Failed Connection Count"
+          },
+          "baseline_mean_setup_us": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Mean Setup Us"
+          },
+          "current_connection_count": {
+            "title": "Current Connection Count",
+            "type": "integer"
+          },
+          "current_failed_connection_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Failed Connection Count"
+          },
+          "current_mean_setup_us": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Mean Setup Us"
+          },
+          "destination_port": {
+            "title": "Destination Port",
+            "type": "integer"
+          },
+          "edge_id": {
+            "title": "Edge Id",
+            "type": "string"
+          },
+          "id": {
+            "description": "`<edge_id>|<type>`; stable across identical requests.",
+            "title": "Id",
+            "type": "string"
+          },
+          "protocol": {
+            "const": "TCP",
+            "title": "Protocol",
+            "type": "string"
+          },
+          "reason": {
+            "description": "The comparison performed and the threshold applied, in words.",
+            "title": "Reason",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "critical",
+              "warning"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "CANARY_CONTACT",
+              "NEW_EXTERNAL_EGRESS",
+              "NEW_EDGE",
+              "FAILURE_SPIKE",
+              "SLOW_SETUP"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "edge_id",
+          "type",
+          "severity",
+          "source_id",
+          "target_id",
+          "protocol",
+          "destination_port",
+          "current_connection_count",
+          "baseline_connection_count",
+          "reason"
+        ],
+        "title": "Anomaly",
+        "type": "object"
+      },
+      "AnomalyResponse": {
+        "properties": {
+          "anomalies": {
+            "items": {
+              "$ref": "#/components/schemas/Anomaly"
+            },
+            "title": "Anomalies",
+            "type": "array"
+          },
+          "baseline": {
+            "$ref": "#/components/schemas/TimeWindow"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/EffectiveFilters"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "nodes": {
+            "description": "Every node an anomaly refers to, sorted by id.",
+            "items": {
+              "$ref": "#/components/schemas/GraphNode"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/AnomalySummary"
+          },
+          "window": {
+            "$ref": "#/components/schemas/TimeWindow"
+          }
+        },
+        "required": [
+          "generated_at",
+          "window",
+          "baseline",
+          "filters",
+          "anomalies",
+          "nodes",
+          "summary"
+        ],
+        "title": "AnomalyResponse",
+        "type": "object"
+      },
+      "AnomalySummary": {
+        "properties": {
+          "baseline_observed": {
+            "description": "False when the baseline held no edges; novelty rules are then not applied (D-16.2).",
+            "title": "Baseline Observed",
+            "type": "boolean"
+          },
+          "critical_count": {
+            "title": "Critical Count",
+            "type": "integer"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "warning_count": {
+            "title": "Warning Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "critical_count",
+          "warning_count",
+          "baseline_observed"
+        ],
+        "title": "AnomalySummary",
+        "type": "object"
+      },
       "DiffEdge": {
         "description": "One classified edge. A period with no observation contributes zero, not null.",
         "properties": {
@@ -504,6 +702,12 @@
             },
             "title": "Attributes",
             "type": "object"
+          },
+          "canary": {
+            "default": false,
+            "description": "A decoy named in the chart's backend.canaries; any inbound connection to it is an anomaly (ADR-016 D-16.4).",
+            "title": "Canary",
+            "type": "boolean"
           },
           "first_seen": {
             "format": "date-time",
@@ -1030,6 +1234,197 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/anomalies": {
+      "get": {
+        "description": "Rule-based anomalies in one window against the period just before it (ADR-016 D-16.1).\n\nThe baseline is `ANOMALY_BASELINE_HOURS` long and ends where the window starts. Every rule is\na stated threshold; each anomaly's `reason` gives the numbers compared.",
+        "operationId": "get_anomalies_api_v1_anomalies_get",
+        "parameters": [
+          {
+            "description": "Preset window. Mutually exclusive with from/to.",
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "1m",
+                    "5m",
+                    "15m",
+                    "1h",
+                    "6h",
+                    "24h"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Preset window. Mutually exclusive with from/to.",
+              "title": "Window"
+            }
+          },
+          {
+            "description": "RFC 3339 UTC, inclusive.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "RFC 3339 UTC, inclusive.",
+              "title": "From"
+            }
+          },
+          {
+            "description": "RFC 3339 UTC, exclusive.",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "RFC 3339 UTC, exclusive.",
+              "title": "To"
+            }
+          },
+          {
+            "description": "Repeatable.",
+            "in": "query",
+            "name": "namespace",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeatable.",
+              "title": "Namespace"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "Service",
+                    "Deployment",
+                    "StatefulSet",
+                    "DaemonSet",
+                    "Job",
+                    "Pod"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "description": "Case-insensitive substring match on label.",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Case-insensitive substring match on label.",
+              "title": "Query"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_external",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include External",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_unresolved",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Unresolved",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnomalyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Anomalies",
+        "tags": [
+          "topology"
+        ]
+      }
+    },
     "/api/v1/diff": {
       "get": {
         "description": "Deterministic comparison of two periods.\n\nA period with no observation contributes zero, not null. Percentage delta is undefined when\nthe baseline is zero, and the reason field says so.",

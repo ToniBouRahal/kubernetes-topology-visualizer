@@ -85,6 +85,8 @@ func fixtures(r *http.Request) (int, string) {
 		return 404, "edge.not-found.json"
 	case p == "/api/v1/diff":
 		return 200, "diff.json"
+	case p == "/api/v1/anomalies":
+		return 200, "anomalies.json"
 	}
 	return 500, ""
 }
@@ -170,6 +172,16 @@ func TestReadCommandsPrintTheExpectedLines(t *testing.T) {
 			"window 2026-08-10T11:00:00Z to 2026-08-10T12:00:00Z",
 			"Deployment/client  →  Service/backend  TCP:8080  (30, 2 failed/aborted)",
 			"first seen 2026-08-10T11:29:51Z, last seen 2026-08-10T11:30:00Z"}},
+		{[]string{"anomalies", "--since", "1h"}, []string{
+			"window 2026-08-10T11:00:00Z to 2026-08-10T12:00:00Z",
+			"baseline 2026-08-09T11:00:00Z to 2026-08-10T11:00:00Z",
+			"1 critical, 2 warning",
+			"critical  CANARY_CONTACT  Deployment/backend   →  Deployment/legacy-admin  TCP:22",
+			"    3 connection attempt(s) to a canary workload; nothing legitimate connects to one",
+			"warning   NEW_EDGE        Deployment/backend   →  Deployment/legacy-admin  TCP:22",
+			"    not observed in the previous 24 h",
+			"warning   NEW_EDGE        Deployment/reporter  →  Deployment/payment       TCP:6380",
+			"    not observed in the previous 24 h"}},
 	} {
 		r := run(t, fake.srv.URL, staticToken(testToken), tc.args...)
 		if r.code != ExitOK || !slices.Equal(lines(r.stdout), tc.want) {
@@ -195,6 +207,7 @@ func TestJSONOutputIsThePayloadUnchanged(t *testing.T) {
 		{[]string{"deps", "backend", "--kind", "Deployment"}, "node.deployment-backend.json"},
 		{[]string{"diff", "--from", "2h", "--to", "now"}, "diff.json"},
 		{[]string{"edge", "k8s:kind-topology:demo:Deployment:client|k8s:kind-topology:demo:Service:backend|TCP|8080"}, "edge.json"},
+		{[]string{"anomalies"}, "anomalies.json"},
 	} {
 		r := run(t, fake.srv.URL, nil, append(tc.args, "-o", "json")...)
 		if r.code != ExitOK || r.stdout != string(fixture(t, tc.fixture)) {
@@ -426,5 +439,39 @@ func TestRefreshWithIssuerDownExitsConnection(t *testing.T) {
 	}
 	if e := f.Servers[server]; e.IDToken != stored.IDToken || e.RefreshToken != stored.RefreshToken {
 		t.Errorf("the tokens were not kept after a refresh that could not be sent")
+	}
+}
+
+// ADR-016 D-16.7: graph -o mermaid prints the diagram of the response it was given.
+func TestGraphMermaidOutput(t *testing.T) {
+	fake := newFakeAPI(t, func(*http.Request) (int, string) { return 200, "graph.export.json" })
+	r := run(t, fake.srv.URL, nil, "graph", "-o", "mermaid")
+	if r.code != ExitOK || r.stdout != string(fixture(t, "graph.export.mmd")) {
+		t.Errorf("exit %d, stderr %q, stdout:\n%s", r.code, r.stderr, r.stdout)
+	}
+}
+
+// Only graph draws a diagram; asking another command for one is a usage error, not text.
+func TestMermaidIsRefusedOutsideGraph(t *testing.T) {
+	fake := newFakeAPI(t, fixtures)
+	r := run(t, fake.srv.URL, nil, "anomalies", "-o", "mermaid")
+	if r.code != ExitUsage || !strings.Contains(r.stderr, `want text or json`) {
+		t.Errorf("exit %d, stderr %q", r.code, r.stderr)
+	}
+	if n := len(fake.requests()); n != 0 {
+		t.Errorf("%d requests sent for a usage error", n)
+	}
+}
+
+// The anomalies request carries the graph's window and filters.
+func TestAnomaliesSendsTheGraphFilters(t *testing.T) {
+	fake := newFakeAPI(t, fixtures)
+	r := run(t, fake.srv.URL, nil, "anomalies", "--since", "15m", "-n", "demo", "--kind", "deployment", "--no-external")
+	if r.code != ExitOK {
+		t.Fatalf("exit %d, stderr %q", r.code, r.stderr)
+	}
+	q := fake.requests()[0].URL.Query()
+	if q.Get("window") != "15m" || q.Get("namespace") != "demo" || q.Get("kind") != "Deployment" || q.Get("include_external") != "false" {
+		t.Errorf("query = %v", q)
 	}
 }

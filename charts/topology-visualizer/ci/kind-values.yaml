@@ -20,6 +20,10 @@ backend:
     tag: dev
     pullPolicy: Never
   corsAllowedOrigins: "http://localhost:5173,http://localhost:8080"
+  # The decoy `make demo-canary` deploys (demo/demo-canary.yaml, ADR-016). Named here from the
+  # start, so the canary is armed before anything can touch it.
+  canaries:
+    - demo/legacy-admin
   resources:
     requests:
       cpu: 50m
