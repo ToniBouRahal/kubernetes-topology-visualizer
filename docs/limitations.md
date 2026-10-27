@@ -526,3 +526,18 @@ not verify addresses, should be paired with `allowedEmailDomains`.
 and its users are ephemeral, so the setting would admit nobody. Admission is by e-mail domain only.
 Mapping Entra ID groups into the token would need persistent users or per-sign-in group sync; it was
 considered and deferred (ADR-017 §4).
+
+### 6.19 Two images patch their base between upstream releases — **measured, temporary for one**
+
+The image-scan gate (ADR-014 D-14.11) failed on 2026-10-28 for findings that no newer base digest
+fixed yet, so two Dockerfiles patch their base image:
+
+- **Keycloak's Guava jar is replaced.** Keycloak 26.8.1 ships Guava 33.6.0 (CVE-2026-102554, HIGH);
+  `keycloak/Dockerfile` writes 33.7.2, checksum-pinned from Maven Central, over it under the same
+  file name, before `kc.sh build`. A compatible minor release, but not the combination Keycloak
+  tested. *Measured on kind:* the realm imports, the E2E suite passes (30, 1 skipped), and the CLI
+  signs in. Remove the step when a Keycloak release ships Guava 33.7.2 or later.
+- **The frontend upgrades its Alpine packages at build time** (`apk upgrade --no-cache`), because
+  the newest `nginx-unprivileged:1.30-alpine` digest lags Alpine 3.24's own fixes (brotli, curl).
+  The cost: two builds of the same commit can differ in patch-level packages. The base is still
+  pinned by digest, and the gate scans what was actually built.

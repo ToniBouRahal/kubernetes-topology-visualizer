@@ -53,8 +53,10 @@ for entry in "agent=topology-agent:$TAG" "backend=topology-backend:$TAG" "fronte
   # findings are all in the Go runtime it was built with (1.24.6). limitations.md §6.8.
   skip=()
   [[ "$name" == postgresql ]] && skip=(--skip-files usr/local/bin/gosu)
-  trivy image --quiet --scanners vuln --format cyclonedx --output "/sbom/$name.cdx.json" "$image"
-  if ! trivy image --quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "${skip[@]}" "$image"; then
+  # 15 minutes, not Trivy's default 5: Keycloak's image (ADR-017) is ~800 MB of jars, and its
+  # first walk timed out ("context deadline exceeded") with an SBOM and no verdict.
+  trivy image --quiet --timeout 15m --scanners vuln --format cyclonedx --output "/sbom/$name.cdx.json" "$image"
+  if ! trivy image --quiet --timeout 15m --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "${skip[@]}" "$image"; then
     failed+=("$name")
   fi
 done

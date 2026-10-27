@@ -215,7 +215,9 @@ which is why ADR-014 never needed it.
 
 - [x] **K17-1** This ADR, the index, the plan entry, amendment notes in ADR-014 and ADR-015.
 - [x] **K17-2** `keycloak/Dockerfile` (26.8.0 by digest, optimized, four features off),
-  `make image-keycloak`, `make images` builds four, `make scan-images` covers it.
+  `make image-keycloak`, `make images` builds four, `make scan-images` covers it. Moved to 26.8.1
+  on 2026-10-28, with Guava replaced by 33.7.2 to clear the scan gate (limitations §6.19); its first
+  Keycloak scan had timed out, so `scan-images.sh` gives Trivy 15 minutes.
 - [x] **K17-3** Chart: values, schema, realm, Deployment, Service, PKI, NetworkPolicy, oauth2-proxy
   args, NOTES, kind values — T-17.1 – T-17.5: `verify-chart.sh` 106/106. A mutation that drops PKCE
   from the clients or reads Entra's e-mail from `email` fails three checks.
