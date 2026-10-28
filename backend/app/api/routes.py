@@ -14,6 +14,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from fastapi.responses import PlainTextResponse
 
+from app.alerts.messages import describe
 from app.api.dependencies import ClockDep, RepositoryDep
 from app.domain import anomalies as anomaly_rules
 from app.domain import diff, graph
@@ -170,7 +171,13 @@ async def ingest_batch(
 
     request.app.state.metrics.record_ingest(deduplicated=outcome is IngestOutcome.ALREADY_INGESTED)
     if outcome is IngestOutcome.INGESTED:
-        _count_canary_contacts(batch, _canaries(request), request.app.state.metrics)
+        _count_canary_contacts(
+            batch,
+            _canaries(request),
+            request.app.state.metrics,
+            alerts=request.app.state.alerts,
+            now=request.app.state.clock(),
+        )
 
     logging.getLogger("api.ingest").info(
         "batch ingested",
@@ -189,8 +196,16 @@ async def ingest_batch(
     )
 
 
-def _count_canary_contacts(batch: IngestBatch, canaries: CanarySet, metrics) -> None:
-    """ADR-016 D-16.5: count and log contact at the earliest point the backend knows of it.
+def _count_canary_contacts(
+    batch: IngestBatch,
+    canaries: CanarySet,
+    metrics,
+    *,
+    alerts=None,
+    now: datetime | None = None,
+) -> None:
+    """ADR-016 D-16.5: count and log contact at the earliest point the backend knows of it, and
+    queue a chat alert for it (ADR-018 D-18.3) without waiting on the send.
 
     Only a newly stored batch reaches here, so an agent retry never counts twice.
     """
@@ -210,6 +225,14 @@ def _count_canary_contacts(batch: IngestBatch, canaries: CanarySet, metrics) -> 
                 "attempts": attempts,
             },
         )
+        if alerts is not None and now is not None:
+            alerts.notify_canary(
+                source=describe(edge.source.namespace, edge.source.kind, edge.source.name),
+                canary=describe(target.namespace, target.kind, target.name),
+                destination_port=edge.destination_port,
+                attempts=attempts,
+                at=now,
+            )
 
 
 # ── Graph ───────────────────────────────────────────────────────────────────────────────────

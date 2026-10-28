@@ -82,6 +82,22 @@ app.kubernetes.io/component: database
 The DSN the backend connects with. Derived in ONE place: an internal database points at the
 StatefulSet's headless Service, an external one comes from a Secret the operator provides.
 */}}
+{{/*
+The Secret holding the chat-alert credentials (ADR-018 D-18.2): the operator's own, or the one
+this chart creates from --set values. Enabled with neither fails the render, as the backend would
+refuse to start anyway and this says why sooner.
+*/}}
+{{- define "topology.alertsSecret" -}}
+{{- $a := .Values.alerts -}}
+{{- if $a.existingSecret -}}
+{{- $a.existingSecret -}}
+{{- else if or $a.slack.webhookUrl $a.teams.webhookUrl $a.telegram.botToken -}}
+{{- printf "%s-alerts" (include "topology.fullname" .) -}}
+{{- else -}}
+{{- fail "alerts.enabled=true needs a channel: --set alerts.slack.webhookUrl, alerts.teams.webhookUrl or alerts.telegram.botToken (with alerts.telegram.chatId), or name alerts.existingSecret" -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "topology.databaseSecret" -}}
 {{- if eq .Values.postgresql.mode "external" -}}
 {{- required "externalDatabaseUrlSecret is required when postgresql.mode=external" .Values.externalDatabaseUrlSecret -}}

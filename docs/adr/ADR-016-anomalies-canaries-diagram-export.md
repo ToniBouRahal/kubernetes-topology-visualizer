@@ -12,6 +12,8 @@
 - **Component path:** `backend/app/domain/anomalies.py`, `backend/app/api/`,
   `frontend/src/features/anomalies/`, `frontend/src/features/export/`, `cli/internal/`,
   `charts/topology-visualizer/`
+- **Amended by:** ADR-018 — the "nothing calls out of the cluster" rule (§1, §3) and the
+  rejection of webhooks (§4) no longer hold for chat alerts, which are opt-in and off by default
 - **Owning phase:** Post-Phase-5 extension
 
 ## 1. Context

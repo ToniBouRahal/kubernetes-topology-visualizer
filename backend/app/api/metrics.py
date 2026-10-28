@@ -12,6 +12,8 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass, field
 
+ALERT_OUTCOMES = ("sent", "failed", "dropped")
+
 
 @dataclass
 class Metrics:
@@ -28,6 +30,9 @@ class Metrics:
     # ADR-016 D-16.3: what the evaluator found on its last pass, per type. Seeded by the app with
     # every type at zero, so an alert expression never meets a missing series.
     active_anomalies: dict[str, int] = field(default_factory=dict)
+    # ADR-018 D-18.7: alert outcomes per (channel, outcome). Seeded with every configured
+    # channel's outcomes at zero, for the same reason.
+    alerts: dict[tuple[str, str], int] = field(default_factory=dict)
 
     # Query durations, kept as a running sum and count so an average is derivable without
     # carrying a histogram implementation.
@@ -62,6 +67,16 @@ class Metrics:
     def set_active_anomalies(self, counts: dict[str, int]) -> None:
         with self._lock:
             self.active_anomalies = dict(counts)
+
+    def seed_alert_channels(self, channels: list[str]) -> None:
+        with self._lock:
+            for channel in channels:
+                for outcome in ALERT_OUTCOMES:
+                    self.alerts.setdefault((channel, outcome), 0)
+
+    def record_alert(self, channel: str, outcome: str) -> None:
+        with self._lock:
+            self.alerts[(channel, outcome)] = self.alerts.get((channel, outcome), 0) + 1
 
     def record_retention(self, deleted: int) -> None:
         with self._lock:
@@ -127,6 +142,7 @@ class Metrics:
                 ),
             ]
             anomalies = sorted(self.active_anomalies.items())
+            alerts = sorted(self.alerts.items())
 
         lines: list[str] = []
         for name, help_text, metric_type, value in samples:
@@ -139,4 +155,13 @@ class Metrics:
             lines.append(f"# TYPE {name} gauge")
             # Type names are a fixed Literal set, never user input, so no label escaping needed.
             lines.extend(f'{name}{{type="{kind.lower()}"}} {count}' for kind, count in anomalies)
+        if alerts:
+            name = "topology_backend_alerts_total"
+            lines.append(f"# HELP {name} Alert messages by channel and outcome")
+            lines.append(f"# TYPE {name} counter")
+            # Channel and outcome names are fixed in code, never user input.
+            lines.extend(
+                f'{name}{{channel="{channel}",outcome="{outcome}"}} {count}'
+                for (channel, outcome), count in alerts
+            )
         return "\n".join(lines) + "\n"

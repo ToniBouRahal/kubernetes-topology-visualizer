@@ -383,6 +383,22 @@ required and brute-force lockout on. The CLI probes Keycloak then Dex for its de
 - [x] **K17-6** Docs: operator guide, limitations, demo script, README
 - [x] **K17-7** Verification on kind — T-17.7 – T-17.11
 - [ ] **K17-8** A real Google and Entra ID sign-in (needs the owner's app registrations)
+
+### ADR-018 — anomaly and canary alerts to Slack, Microsoft Teams, Telegram (backend, chart)
+
+ADR-016's findings delivered as chat messages, off by default: canary contact sent from ingest
+(per-contact cooldown), every other type from the evaluator on first activation (first pass after
+start-up silent, `critical` floor by default, one message per pass). One in-process queue and
+dispatcher, stdlib HTTP, three bounded retries, credentials in a Secret and never logged:
+[ADR-018](adr/ADR-018-chat-alerts.md).
+
+- [x] **N18-1** ADR-018, index and plan entry
+- [x] **N18-2** Backend: settings, channel formatters, dispatcher, metrics — D-18.1, D-18.2, D-18.5 – D-18.7, T-18.1, T-18.2, T-18.5 – T-18.7
+- [x] **N18-3** Backend: ingest and evaluator triggers, cooldown, first-pass seed, severity floor, batching — D-18.3, D-18.4, T-18.3, T-18.4
+- [x] **N18-4** `python -m app.alerts test`, `make alerts-test` — D-18.8
+- [x] **N18-5** Chart: values, schema, Secret, env, comments — D-18.2, T-18.8
+- [x] **N18-6** Docs: operator guide (setup per channel, egress rule), limitations, README, demo script
+- [ ] **N18-7** Verification on kind — T-18.9 · run 2026-10-29: ingest → Slack over verified HTTPS, cooldown, metrics, no credential logged, silent restart all met; open: delivery to a real channel (Telegram unreachable from the dev network)
 ---
 
 ## Definition of Done cross-check

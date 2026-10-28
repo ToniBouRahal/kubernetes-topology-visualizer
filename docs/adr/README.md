@@ -48,6 +48,12 @@ provider, through one issuer that both the browser and the CLI trust. Alongside 
 it; the kind demo moves to it. State is ephemeral and the realm is rendered from values; PKCE and
 password-guessing lockout are enforced by the provider, closing two of ADR-015's recorded gaps.
 
+`ADR-018` delivers ADR-016's findings outside the cluster, which ADR-016 had ruled out: a message
+to **Slack, Microsoft Teams or Telegram** when a canary is touched (sent at ingest, within seconds)
+or a critical anomaly first appears (sent by the evaluator). Off by default; credentials in a
+Secret; best-effort, bounded, at-most-once; no new dependency. The API, log and gauges remain the
+record.
+
 | ADR | Component | Repo path | ADR-001 source | Owning phases | Tracker |
 |---|---|---|---|---|---|
 | [ADR-002](ADR-002-ebpf-node-agent.md) | eBPF node agent (Go) | `agent/` | §5.1, §5.2 | 1, 2, 4 | §9 |
@@ -66,6 +72,7 @@ password-guessing lockout are enforced by the provider, closing two of ADR-015's
 | [ADR-015](ADR-015-cli-and-mcp-clients.md) | CLI (`kubectl topology`) and MCP clients, bearer-token sign-in | `cli/`, `charts/…/templates/{frontend-deployment,auth}.yaml`, `frontend/default.conf.template`, `frontend/nginx/`, `Makefile`, CI | §5.5, §6, §13 | post-5 | §8 |
 | [ADR-016](ADR-016-anomalies-canaries-diagram-export.md) | Rule-based anomalies, canary workloads, Mermaid diagram export | `backend/app/domain/anomalies.py`, `backend/app/api/`, `frontend/src/features/{anomalies,export}/`, `cli/internal/`, `charts/…/values*.yaml`, `demo/demo-canary.yaml` | §6, §13 | post-5 | §6 |
 | [ADR-017](ADR-017-keycloak-identity-broker.md) | Bundled Keycloak identity broker: SSO with Google, Microsoft Entra ID, other OIDC | `keycloak/`, `charts/…/templates/{keycloak,auth,pki,networkpolicies,frontend-deployment}.yaml`, `frontend/nginx/`, `cli/internal/auth/` | §6, §13 | post-5 | §6 |
+| [ADR-018](ADR-018-chat-alerts.md) | Anomaly and canary alerts to Slack, Microsoft Teams, Telegram | `backend/app/alerts/`, `backend/app/{main,settings}.py`, `backend/app/api/routes.py`, `charts/…/templates/{secrets,backend-deployment}.yaml`, `Makefile` | §6 | post-5 | §6 |
 
 **Progress tracking:** [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) is the master checklist —
 every task carries an ID like `P1-A2` (phase 1, agent, task 2). Each component ADR repeats its own

@@ -404,6 +404,48 @@ reject "canary with an unknown kind"    --set 'backend.canaries[0]=demo/ReplicaS
 reject "canary containing a comma"      --set 'backend.canaries[0]=demo/a\,b'
 reject "zero-hour anomaly baseline"     --set backend.anomalies.baselineHours=0
 
+echo "== ADR-018: chat alerts (T-18.8) =="
+# Off by default, and off means nothing: no Secret, no ALERT_* variables, no credential anywhere.
+if grep -qE 'ALERTS?_|name: topology-visualizer-alerts|checksum/alerts' <<<"$CHART_DEFAULT"; then
+  bad "alert configuration rendered with alerts off"
+else
+  ok "alerts off by default: no Secret, no ALERT_* variables"
+fi
+ALERTS_RENDERED="$(render --set alerts.enabled=true --set alerts.telegram.botToken=123:s3kr1ttok \
+  --set alerts.telegram.chatId=-1001 --set alerts.slack.webhookUrl=https://hooks.slack.com/services/T/B/s3kr1tslack)"
+if grep -q 'telegram-bot-token: "123:s3kr1ttok"' <<<"$ALERTS_RENDERED" \
+  && grep -q 'ALERT_TELEGRAM_CHAT_ID: "-1001"' <<<"$ALERTS_RENDERED" \
+  && grep -q 'key: slack-webhook-url' <<<"$ALERTS_RENDERED"; then
+  ok "credentials from --set land in the chart's Secret; the chat id in the ConfigMap"
+else
+  bad "alert credentials / chat id not rendered where expected"
+fi
+# The credential must be in the Secret and nowhere else: not in the ConfigMap, not in env values.
+if [[ "$(grep -c 's3kr1t' <<<"$ALERTS_RENDERED")" -eq 2 ]]; then
+  ok "credentials appear only in the Secret"
+else
+  bad "a credential appears outside the alerts Secret"
+fi
+EXISTING_RENDERED="$(render --set alerts.enabled=true --set alerts.existingSecret=my-alerts)"
+if grep -q 'name: my-alerts' <<<"$EXISTING_RENDERED" && ! grep -q 'name: topology-visualizer-alerts' <<<"$EXISTING_RENDERED"; then
+  ok "alerts.existingSecret is referenced and no Secret is created"
+else
+  bad "alerts.existingSecret not referenced, or a Secret was created anyway"
+fi
+if render --set alerts.enabled=true >/dev/null 2>&1; then
+  bad "alerts enabled with no channel should fail the render"
+else
+  ok "alerts enabled with no channel fails the render"
+fi
+if render --set alerts.enabled=true --set alerts.telegram.botToken=123:abc >/dev/null 2>&1; then
+  bad "a Telegram token without a chat id should fail the render"
+else
+  ok "a Telegram token without a chat id fails the render"
+fi
+reject "a Slack webhook that is not hooks.slack.com" --set alerts.slack.webhookUrl=https://evil.example/x
+reject "a plain-http Teams webhook"                  --set alerts.teams.webhookUrl=http://x.logic.azure.com/y
+reject "an unknown alert severity"                   --set alerts.minSeverity=info
+
 echo "== ADR-013: bundled observability =="
 # T-13.1 — off by default, and off means nothing: no subchart resources, no scrape annotations.
 if grep -qiE 'app.kubernetes.io/name: (prometheus|grafana|kube-state-metrics)' <<<"$RENDERED"; then
