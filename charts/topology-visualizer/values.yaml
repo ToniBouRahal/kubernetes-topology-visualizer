@@ -82,8 +82,9 @@ backend:
   canaries: []
 
   # Rule-based anomalies (ADR-016 D-16.1). Thresholds, not learned values — every anomaly states
-  # the numbers it compared. Nothing is sent anywhere: findings are an API response, a WARNING log
-  # line and the topology_backend_active_anomalies gauges, for your own alerting to pick up.
+  # the numbers it compared. Findings are an API response, a WARNING log line and the
+  # topology_backend_active_anomalies gauges, for your own alerting to pick up; nothing is sent
+  # anywhere unless `alerts` below is switched on.
   anomalies:
     # The period before a window that the window is compared against. Costs one query of this
     # length per anomaly request and per evaluation (once a minute).
@@ -351,6 +352,41 @@ grafana:
 # ── Network policy ──────────────────────────────────────────────────────────────────────────
 # Shipped for correctness on real clusters. kind's default CNI does NOT enforce these —
 # stated plainly in docs/limitations.md rather than implying protection that is not there.
+# Chat alerts (ADR-018). OFF by default.
+#
+# When on, the backend posts a message to Slack, Microsoft Teams and/or Telegram when a canary is
+# touched (within seconds of the agent's next flush) or a critical anomaly first appears (on the
+# next once-a-minute evaluation). A channel is active when its credential is set.
+#
+# THIS SENDS PART OF THE TOPOLOGY OUT OF THE CLUSTER: the names, namespaces, kinds and ports of the
+# workloads in each alert, and connection counts, go to the chat provider you configure. Never an
+# IP address. A Telegram bot chat is not end-to-end encrypted.
+#
+# Credentials never go in a values file: pass them with --set, or name an existing Secret with the
+# keys slack-webhook-url, teams-webhook-url and telegram-bot-token (each optional).
+# Delivery is best-effort: the API, the log and the gauges stay the record of every finding.
+alerts:
+  enabled: false
+  # critical: decoy touched, new connection out of the cluster, connections failing.
+  # warning:  also new connections inside the cluster and slower connection set-up — routine on a
+  #           busy cluster.
+  minSeverity: critical
+  # The same caller touching the same decoy on the same port sends one message per this period.
+  canaryCooldownSeconds: 300
+  # Shown at the end of each message, e.g. https://topology.example.com. Empty: no link.
+  uiUrl: ""
+  existingSecret: ""
+  slack:
+    # https://hooks.slack.com/services/... — an incoming webhook.
+    webhookUrl: ""
+  teams:
+    # A Workflows webhook: "Post to a channel when a webhook request is received".
+    webhookUrl: ""
+  telegram:
+    # From @BotFather. The chat id is not a secret: without the token it addresses nothing.
+    botToken: ""
+    chatId: ""
+
 networkPolicy:
   # ON by default, having been verified under a CNI that actually enforces (P5-K9).
   #

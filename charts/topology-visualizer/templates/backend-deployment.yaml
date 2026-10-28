@@ -21,6 +21,10 @@ spec:
         # running pod keeps serving the old one indefinitely. That is how a retention change from
         # 24 to 1440 hours was observed to take effect nowhere at all.
         checksum/config: {{ include (print $.Template.BasePath "/configmaps.yaml") . | sha256sum }}
+        {{- if .Values.alerts.enabled }}
+        # Roll onto changed alert credentials too; env from a Secret is also read only at start.
+        checksum/alerts: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+        {{- end }}
         {{- if .Values.tls.generate }}
         # Roll onto new certificates; uvicorn reads them once, at start-up.
         checksum/tls: {{ include "topology.pkiChecksum" (dict "root" . "role" "server") }}
@@ -57,6 +61,19 @@ spec:
                 secretKeyRef:
                   name: {{ include "topology.databaseSecret" . }}
                   key: database-url
+            {{- end }}
+            {{- if .Values.alerts.enabled }}
+            # Chat-alert credentials (ADR-018 D-18.2). Each key is optional: a channel whose key
+            # is absent is simply not configured.
+            {{- $alertsSecret := include "topology.alertsSecret" . }}
+            {{- range $env, $key := dict "ALERT_SLACK_WEBHOOK_URL" "slack-webhook-url" "ALERT_TEAMS_WEBHOOK_URL" "teams-webhook-url" "ALERT_TELEGRAM_BOT_TOKEN" "telegram-bot-token" }}
+            - name: {{ $env }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $alertsSecret }}
+                  key: {{ $key }}
+                  optional: true
+            {{- end }}
             {{- end }}
             # Three listeners (ADR-014 D-14.3). All four files set is what switches them on.
             - name: OPS_PORT

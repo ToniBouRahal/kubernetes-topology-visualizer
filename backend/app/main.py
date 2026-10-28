@@ -15,6 +15,7 @@ from datetime import timedelta
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.alerts import dispatch as alerts
 from app.api import errors
 from app.api.dependencies import utc_now
 from app.api.logging import RequestContextMiddleware, configure_logging
@@ -75,12 +76,23 @@ async def lifespan(app: FastAPI):
             log.warning("DATABASE_URL is unset; using the in-memory adapter (not durable)")
             app.state.repository = InMemoryRepository(cluster_id=settings.cluster_id)
 
-    retention = asyncio.create_task(_retention_loop(app))
-    evaluator = asyncio.create_task(_anomaly_loop(app))
+    tasks = [
+        asyncio.create_task(_retention_loop(app)),
+        asyncio.create_task(_anomaly_loop(app)),
+    ]
+    if app.state.alerts is not None:
+        log.info(
+            "chat alerts on",
+            extra={
+                "channels": [c.name for c in app.state.alerts.channels],
+                "min_severity": app.state.alerts.min_severity,
+            },
+        )
+        tasks.append(asyncio.create_task(app.state.alerts.run()))
     try:
         yield
     finally:
-        for task in (retention, evaluator):
+        for task in tasks:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
@@ -133,11 +145,14 @@ async def _retention_loop(app: FastAPI) -> None:
             log.exception("retention pass failed")
 
 
-async def evaluate_once(app: FastAPI, previous: set[str]) -> set[str]:
-    """One evaluator pass (ADR-016 D-16.3): set the gauges, log what is newly active.
+async def evaluate_once(app: FastAPI, previous: set[str] | None) -> set[str]:
+    """One evaluator pass (ADR-016 D-16.3): set the gauges, log what is newly active, and hand it
+    to the chat alerts (ADR-018 D-18.3).
 
     Returns the ids now active, which the next pass compares against so a standing anomaly is
-    logged once when it appears rather than once a minute for as long as it lasts.
+    logged once when it appears rather than once a minute for as long as it lasts. `previous` is
+    None on the first pass after start-up: what is active then is logged but not sent, or every
+    rolling update would re-announce every standing anomaly.
     """
     now = app.state.clock()
     window = ResolvedWindow(
@@ -157,9 +172,8 @@ async def evaluate_once(app: FastAPI, previous: set[str]) -> set[str]:
 
     labels = {n.id: n.label for n in result.nodes}
     log = logging.getLogger("app.anomalies")
-    for anomaly in result.anomalies:
-        if anomaly.id in previous:
-            continue
+    new = [a for a in result.anomalies if a.id not in (previous or set())]
+    for anomaly in new:
         log.warning(
             "anomaly detected",
             extra={
@@ -171,13 +185,15 @@ async def evaluate_once(app: FastAPI, previous: set[str]) -> set[str]:
                 "reason": anomaly.reason,
             },
         )
+    if previous is not None and app.state.alerts is not None:
+        app.state.alerts.notify_anomalies(new, {n.id: n for n in result.nodes}, at=now)
     return {a.id for a in result.anomalies}
 
 
 async def _anomaly_loop(app: FastAPI) -> None:
     """Evaluate the recent window periodically. Never takes the API down on failure."""
     log = logging.getLogger("app.anomalies")
-    active: set[str] = set()
+    active: set[str] | None = None
     while True:
         await asyncio.sleep(settings.anomaly_evaluation_seconds)
         try:
@@ -232,6 +248,9 @@ def create_app(repository: TopologyRepository | None = None) -> FastAPI:
     # Parsed at start-up so a malformed CANARY_WORKLOADS stops the process rather than silently
     # watching nothing (ADR-016 D-16.4).
     app.state.canaries = CanarySet.parse(settings.canary_workloads)
+    # Also validated here, for the same reason: alerts switched on but misconfigured must stop
+    # the deployment, not stay silent until the incident (ADR-018 D-18.1).
+    app.state.alerts = alerts.from_settings(settings, app.state.metrics)
 
     # Registered after the routers exist so handler lookup covers every route.
     errors.register(app)

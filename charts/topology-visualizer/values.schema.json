@@ -341,6 +341,70 @@
     "externalDatabaseUrlSecret": {
       "type": "string"
     },
+    "alerts": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Chat alerts (ADR-018). Off by default.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "minSeverity": {
+          "enum": [
+            "critical",
+            "warning"
+          ]
+        },
+        "canaryCooldownSeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "uiUrl": {
+          "type": "string",
+          "pattern": "^(https?://.+)?$"
+        },
+        "existingSecret": {
+          "type": "string"
+        },
+        "slack": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "webhookUrl": {
+              "type": "string",
+              "pattern": "^(https://hooks\\.slack\\.com/.+)?$"
+            }
+          }
+        },
+        "teams": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "webhookUrl": {
+              "type": "string",
+              "pattern": "^(https://.+)?$"
+            }
+          }
+        },
+        "telegram": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "botToken": {
+              "type": "string",
+              "pattern": "^([0-9]+:[A-Za-z0-9_-]+)?$"
+            },
+            "chatId": {
+              "type": [
+                "string",
+                "integer"
+              ],
+              "pattern": "^(-?[0-9]+|@[A-Za-z0-9_]+)?$"
+            }
+          }
+        }
+      }
+    },
     "networkPolicy": {
       "type": "object",
       "properties": {

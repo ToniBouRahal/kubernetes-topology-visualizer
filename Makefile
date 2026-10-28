@@ -472,6 +472,8 @@ demo-canary: ## Deploy a canary and touch it; the API then reports CANARY_CONTAC
 	@sleep $(DEMO_SETTLE)
 	@echo "the backend's WARNING lines for it:"
 	@$(KUBECTL) -n $(NAMESPACE) logs deploy/$(RELEASE)-visualizer-backend --since=5m | grep -i 'canary contacted' | tail -3 || true
+	@echo "with chat alerts on (make alerts-on), the message has already been sent; the backend's log of it:"
+	@$(KUBECTL) -n $(NAMESPACE) logs deploy/$(RELEASE)-visualizer-backend --since=5m | grep -E '"alert (sent|not delivered|rejected)' | tail -3 || true
 
 .PHONY: demo-verify
 demo-verify: ## Assert the expected edges through the API (T-7.10, T-7.11)
@@ -493,6 +495,15 @@ demo-observability: chart-deps ## Add the bundled Prometheus + Grafana to a runn
 	@echo "Open it (the UI's Metrics buttons point here):"
 	@echo "    $(KUBECTL) -n $(NAMESPACE) port-forward svc/$(RELEASE)-grafana 3000:80"
 	@echo "Dashboards: 'Topology Visualizer — pipeline health' and '— workload' appear within a minute."
+
+.PHONY: alerts-on
+alerts-on: ## Chat alerts on (ADR-018): TELEGRAM_BOT_TOKEN=… TELEGRAM_CHAT_ID=… and/or SLACK_WEBHOOK_URL / TEAMS_WEBHOOK_URL
+	@KUBECTL="$(KUBECTL)" HELM_K="$(HELM_K)" RELEASE=$(RELEASE) CHART=$(CHART) NAMESPACE=$(NAMESPACE) \
+	  bash scripts/alerts-on.sh
+
+.PHONY: alerts-test
+alerts-test: ## Send one test message to every configured chat channel (ADR-018 D-18.8)
+	$(KUBECTL) -n $(NAMESPACE) exec deploy/$(RELEASE)-visualizer-backend -- python -m app.alerts test
 
 .PHONY: demo-down
 demo-down: ## Remove ONLY what this project created

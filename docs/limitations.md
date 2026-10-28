@@ -326,6 +326,24 @@ it inherits every capture limit above — host-network callers (§2.3), IPv6, an
 connections (§2.1) are invisible here too. A canary that opens connections itself is drawn as a
 canary but raises nothing (D-16.6).
 
+### 4.9 Chat alerts send part of the topology out, and can miss a finding — **by design, stated**
+
+With `alerts.enabled` (ADR-018) the names, namespaces, kinds and ports of the workloads in each
+alert, and connection counts, go to Slack, Microsoft or Telegram. Never an IP address, never the
+whole graph, but it is the first path by which topology data leaves the cluster, and it is the
+operator's choice to open it. A Telegram bot chat is not end-to-end encrypted.
+
+Delivery is at most once. A full queue (100 messages), a channel down for longer than three tries,
+or a backend restart with messages queued loses them; they are counted and logged, not stored. The
+evaluator's first pass after start-up sends nothing, so that a rolling update does not re-announce
+every standing anomaly — and so an anomaly that first appears while the backend is restarting is
+never sent. Canary contact is sent from ingest and is not affected. In every case the finding is
+still in the API, the log and the gauge.
+
+Canary alerts are rate-limited per (caller, decoy, port), five minutes by default. A second caller
+is a new message; the same caller again inside the cooldown is not. The cooldown table lives in
+the backend process and restarts empty.
+
 ---
 
 ## 5. Not yet observed

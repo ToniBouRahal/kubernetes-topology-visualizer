@@ -5,9 +5,9 @@ Variable names are fixed by ADR-001 §5.7 and templated by the Helm chart (ADR-0
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import field_validator
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -75,6 +75,17 @@ class Settings(BaseSettings):
     # The background evaluator (D-16.3): how often, and over how recent a window.
     anomaly_evaluation_seconds: int = 60
     anomaly_evaluation_window_minutes: int = 5
+
+    # Chat alerts (ADR-018). Off by default; enabled with no channel configured refuses to start.
+    # The three credentials are SecretStr so they never appear in a repr or a validation error.
+    alerts_enabled: bool = False
+    alert_min_severity: Literal["critical", "warning"] = "critical"
+    alert_canary_cooldown_seconds: int = 300
+    alert_ui_url: str = ""
+    alert_slack_webhook_url: SecretStr = SecretStr("")
+    alert_teams_webhook_url: SecretStr = SecretStr("")
+    alert_telegram_bot_token: SecretStr = SecretStr("")
+    alert_telegram_chat_id: str = ""
 
     # The only schema version this release accepts. Anything else is 400, not 422.
     supported_schema_version: int = 1

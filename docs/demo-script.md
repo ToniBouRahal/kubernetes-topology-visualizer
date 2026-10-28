@@ -169,6 +169,39 @@ It now draws 2,000 edges with clicks under 100 ms. Relaying out after a topology
 
 Being able to say all four of these, with numbers, is the point of the evaluation work.
 
+## Optional · A decoy is touched, a phone buzzes (2 min)
+
+Check first that the demo network reaches `api.telegram.org` — the development network did not
+(2026-10-29), and Slack (`SLACK_WEBHOOK_URL=… make alerts-on`, Slack app on the phone) is the
+fallback. Set up before the audience arrives: a Telegram bot from `@BotFather`, a group with the bot and
+your phone in it, and its chat id (`https://api.telegram.org/bot<token>/getUpdates`). Then:
+
+```bash
+TELEGRAM_BOT_TOKEN=… TELEGRAM_CHAT_ID=… make alerts-on   # Secret + helm upgrade + restart
+make alerts-test                                         # "Alerts are working" arrives now
+```
+
+On stage, say what a canary is first: `legacy-admin` looks like a forgotten admin service, nothing
+legitimate ever calls it, so the first connection to it is the signal — and nothing in it runs
+detection code. Then:
+
+```bash
+make demo-canary
+```
+
+The `intruder` Job connects to it; within seconds of the agent's next flush the phone shows
+**🚨 Decoy touched: demo/legacy-admin (Deployment)**, naming `demo/intruder (Job)` as the caller.
+Run it again and nothing arrives: the same caller is quiet for five minutes, which is the point —
+a scanner hitting it 500 times is one message. In the UI the canary is marked and the Anomalies list
+has the same finding.
+
+Say the cost while the phone is still in hand: with this on, workload names leave the cluster for
+Telegram's servers. That is why it is off by default.
+
+If the message does not come, `make alerts-test` names the channel that failed and the backend log
+has an `alert not delivered` or `alert rejected` line with the status code. The finding is still in
+the UI.
+
 ## Optional · The pipeline's own health, and where a workload leads (2 min)
 
 Only if time allows; nothing above depends on it. Adds a bundled Prometheus and Grafana to the

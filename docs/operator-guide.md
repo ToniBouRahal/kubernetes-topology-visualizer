@@ -100,7 +100,8 @@ so it drops to 503 during a database outage and recovers without a restart.
 ### Anomalies and canaries (ADR-016)
 
 The backend checks the last 5 minutes against the 24 hours before them once a minute, with five
-fixed rules, and reports what it finds three ways — none of which leaves the cluster:
+fixed rules, and reports what it finds three ways — none of which leaves the cluster — plus a
+fourth, off by default, that does (chat alerts, below):
 
 - the **Anomalies** list in the UI and `kubectl topology anomalies` (both read
   `GET /api/v1/anomalies`, for whatever window is selected);
@@ -118,7 +119,7 @@ fixed rules, and reports what it finds three ways — none of which leaves the c
 
 To be told rather than look, alert on the gauge with your own Prometheus, for example
 `max(topology_backend_active_anomalies{type=~"canary_contact|new_external_egress"}) > 0`, or on the
-log line in your log pipeline. This tool sends no notifications itself.
+log line in your log pipeline. Or switch on the chat alerts below.
 
 **Canaries** are decoys: a plausible-looking workload nothing legitimate calls. Name them in
 `backend.canaries` as `namespace/name` (any kind) or `namespace/Kind/name`. Every connection
@@ -130,6 +131,77 @@ the kind demo and touches it.
 are the two values worth tuning. A longer baseline costs a longer query, once per request and once
 per minute. For the first day after an install the baseline is short and relationships that simply
 have not recurred yet show as new — see `limitations.md` §4.6 – §4.8.
+
+### Chat alerts: Slack, Microsoft Teams, Telegram (ADR-018)
+
+Off by default. When on, the backend posts a message when a canary is touched (sent from ingest,
+within seconds) or a critical anomaly first appears (sent by the once-a-minute evaluation). One
+message per evaluation however many findings it has: five listed, the rest counted.
+
+**This sends part of the topology out of the cluster**: the names, namespaces, kinds and ports of
+the workloads in each alert, and connection counts — never an IP address — to the provider you
+configure. Decide whether that is acceptable before switching it on.
+
+| Channel | What to create | Chart value |
+|---|---|---|
+| Slack | An app with an *incoming webhook* for the channel | `alerts.slack.webhookUrl` |
+| Microsoft Teams | In the channel: *Workflows* → "Post to a channel when a webhook request is received"; copy the URL it shows | `alerts.teams.webhookUrl` |
+| Telegram | A bot from `@BotFather` (its token), added to a group or messaged once; the chat id from `https://api.telegram.org/bot<token>/getUpdates` | `alerts.telegram.botToken`, `alerts.telegram.chatId` |
+
+A webhook URL is a credential — whoever has it can post to the channel — so none of these belongs
+in a values file. Either pass them with `--set`, or create a Secret with any of the keys
+`slack-webhook-url`, `teams-webhook-url`, `telegram-bot-token` and name it in
+`alerts.existingSecret` (the better choice: `--set` values are kept in Helm's release history).
+
+```bash
+kubectl -n topology create secret generic topology-chat-alerts \
+  --from-literal=telegram-bot-token="$TELEGRAM_BOT_TOKEN"
+helm upgrade topology charts/topology-visualizer -n topology --reuse-values \
+  --set alerts.enabled=true --set alerts.existingSecret=topology-chat-alerts \
+  --set-string alerts.telegram.chatId=-1001234567890 \
+  --set alerts.uiUrl=https://topology.example.com
+kubectl -n topology rollout restart deploy/topology-visualizer-backend   # a Secret change needs this
+make alerts-test      # or: kubectl exec deploy/…-backend -- python -m app.alerts test
+```
+
+On kind, `TELEGRAM_BOT_TOKEN=… TELEGRAM_CHAT_ID=… make alerts-on` does all of that. Then
+`make alerts-test` sends one "alerts are working" message to every channel and exits non-zero if
+any fails.
+
+`alerts.minSeverity` is `critical` by default — decoy touched, new connection out of the cluster,
+connections failing. `warning` adds new in-cluster connections and slower setup, which on a busy
+cluster is a message every time something deploys. `alerts.canaryCooldownSeconds` (300) is how
+long the same caller touching the same decoy on the same port stays quiet after its first message.
+
+Alerts switched on with no channel configured stop the backend at start-up with a message naming
+the setting; so does a Slack URL not on `hooks.slack.com`, a non-https URL, or a Telegram token
+without a chat id. Each send is logged as `alert sent`, `alert not delivered` (gave up after three
+tries on a timeout, 429 or 5xx) or `alert rejected by the channel` (any other status: a revoked
+webhook, a wrong chat id) — with the channel name and status, never the URL or token — and counted
+in `topology_backend_alerts_total{channel, outcome}`.
+
+**Egress.** The chart's NetworkPolicies restrict ingress only, so nothing more is needed unless the
+cluster enforces a default-deny egress policy. Then the backend needs DNS and HTTPS out, to
+`hooks.slack.com`, your Teams Workflows host, or `api.telegram.org`. NetworkPolicy cannot name
+hosts, so the usual rule is port 443 to anywhere, or your egress proxy (the backend honours
+`HTTPS_PROXY`):
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: topology-backend-alerts-egress, namespace: topology}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/component: backend}
+  policyTypes: [Egress]
+  egress:
+    - ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+    - ports: [{port: 443, protocol: TCP}]
+```
+
+Delivery is best-effort: a message that cannot be sent is counted and logged, not stored, and a
+finding that first appears while the backend is restarting is not sent at all. The API, the log
+and the gauge remain the record — see `limitations.md` §4.9.
 
 ### Prometheus and Grafana (optional)
 

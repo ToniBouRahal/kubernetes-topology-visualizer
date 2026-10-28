@@ -18,4 +18,15 @@ data:
   CANARY_WORKLOADS: {{ join "," .Values.backend.canaries | quote }}
   ANOMALY_BASELINE_HOURS: {{ .Values.backend.anomalies.baselineHours | quote }}
   ANOMALY_MIN_ATTEMPTS: {{ .Values.backend.anomalies.minAttempts | quote }}
+  {{- if .Values.alerts.enabled }}
+  {{- if and .Values.alerts.telegram.botToken (not .Values.alerts.telegram.chatId) }}
+  {{- fail "alerts.telegram.botToken needs alerts.telegram.chatId: the chat the bot posts to" }}
+  {{- end }}
+  # ADR-018. The credentials are in a Secret (backend-deployment.yaml), never here.
+  ALERTS_ENABLED: "true"
+  ALERT_MIN_SEVERITY: {{ .Values.alerts.minSeverity | quote }}
+  ALERT_CANARY_COOLDOWN_SECONDS: {{ .Values.alerts.canaryCooldownSeconds | quote }}
+  ALERT_UI_URL: {{ .Values.alerts.uiUrl | quote }}
+  ALERT_TELEGRAM_CHAT_ID: {{ .Values.alerts.telegram.chatId | toString | quote }}
+  {{- end }}
 {{- end }}

@@ -103,7 +103,11 @@ a relationship never seen before, new traffic leaving the cluster, a jump in fai
 or TCP setup suddenly much slower. Each is a fixed threshold, and each finding says the numbers it
 compared. A **canary** is a decoy workload named in `backend.canaries`; any connection to it is a
 finding the moment it arrives (`make demo-canary` shows one). Findings appear in the UI, in the
-backend log and as a Prometheus gauge for your own alerting — nothing is sent outside the cluster.
+backend log and as a Prometheus gauge for your own alerting. Optionally — off by default, because
+it sends workload names out of the cluster — the backend posts a message to **Slack, Microsoft
+Teams or Telegram** when a canary is touched or a critical anomaly appears
+([ADR-018](docs/adr/ADR-018-chat-alerts.md)); `make alerts-on` and `make alerts-test` set it up on
+kind.
 **Export diagram** saves the graph on screen as Mermaid text, which renders in GitHub and most
 documentation tools. See [ADR-016](docs/adr/ADR-016-anomalies-canaries-diagram-export.md).
 
