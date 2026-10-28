@@ -64,7 +64,7 @@ func Status(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 func run(stdout, stderr io.Writer, f func(*Commands) int) int {
 	c, err := NewCommands(stdout, stderr)
 	if err != nil {
-		fmt.Fprintln(stderr, "error:", err)
+		_, _ = fmt.Fprintln(stderr, "error:", err)
 		return exitOther
 	}
 	return f(c)
@@ -74,7 +74,7 @@ func (c *Commands) flags(name, usage string) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(c.Stderr)
 	fs.Usage = func() {
-		fmt.Fprintf(c.Stderr, "Usage: kubectl topology %s\n\n", usage)
+		_, _ = fmt.Fprintf(c.Stderr, "Usage: kubectl topology %s\n\n", usage)
 		fs.PrintDefaults()
 	}
 	return fs
@@ -88,7 +88,7 @@ func (c *Commands) parse(fs *flag.FlagSet, args []string) (ok bool, code int) {
 		return false, exitUsage
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(c.Stderr, "error: unexpected argument %q\n", fs.Arg(0))
+		_, _ = fmt.Fprintf(c.Stderr, "error: unexpected argument %q\n", fs.Arg(0))
 		fs.Usage()
 		return false, exitUsage
 	}
@@ -109,7 +109,7 @@ func (c *Commands) Login(ctx context.Context, args []string) int {
 	}
 	// Flag values SignIn would only reject later are usage errors (exit 1), not "not signed in".
 	if err := validateLoginFlags(*server, *issuer, *caFile); err != nil {
-		fmt.Fprintln(c.Stderr, "error:", err)
+		_, _ = fmt.Fprintln(c.Stderr, "error:", err)
 		return exitUsage
 	}
 
@@ -125,7 +125,7 @@ func (c *Commands) Login(ctx context.Context, args []string) int {
 		Prompt:      c.Stderr,
 	})
 	if err != nil {
-		fmt.Fprintln(c.Stderr, "error:", err)
+		_, _ = fmt.Fprintln(c.Stderr, "error:", err)
 		var ce *ConnectionError
 		switch {
 		case errors.As(err, &ce):
@@ -137,10 +137,10 @@ func (c *Commands) Login(ctx context.Context, args []string) int {
 		}
 	}
 	if res.NoAuth {
-		fmt.Fprintf(c.Stdout, "%s does not require sign-in; nothing was stored.\n", res.Server)
+		_, _ = fmt.Fprintf(c.Stdout, "%s does not require sign-in; nothing was stored.\n", res.Server)
 		return exitOK
 	}
-	fmt.Fprintf(c.Stdout, "Signed in to %s as %s; the token expires at %s and refreshes automatically.\n",
+	_, _ = fmt.Fprintf(c.Stdout, "Signed in to %s as %s; the token expires at %s and refreshes automatically.\n",
 		res.Server, orUnknown(res.Email), res.Expiry.Local().Format(time.RFC3339))
 	return exitOK
 }
@@ -156,7 +156,7 @@ func (c *Commands) Logout(ctx context.Context, args []string) int {
 	}
 	norm, err := NormalizeServer(*server)
 	if err != nil {
-		fmt.Fprintln(c.Stderr, "error:", err)
+		_, _ = fmt.Fprintln(c.Stderr, "error:", err)
 		return exitUsage
 	}
 	var removed []string
@@ -173,22 +173,22 @@ func (c *Commands) Logout(ctx context.Context, args []string) int {
 		return nil
 	})
 	if err != nil {
-		fmt.Fprintln(c.Stderr, "error:", err)
+		_, _ = fmt.Fprintln(c.Stderr, "error:", err)
 		return exitOther
 	}
 	if len(removed) == 0 {
 		if *all {
-			fmt.Fprintln(c.Stdout, "Not signed in to any server.")
+			_, _ = fmt.Fprintln(c.Stdout, "Not signed in to any server.")
 		} else {
-			fmt.Fprintf(c.Stdout, "Not signed in to %s.\n", norm)
+			_, _ = fmt.Fprintf(c.Stdout, "Not signed in to %s.\n", norm)
 		}
 		return exitOK
 	}
 	slices.Sort(removed)
 	for _, s := range removed {
-		fmt.Fprintf(c.Stdout, "Signed out of %s.\n", s)
+		_, _ = fmt.Fprintf(c.Stdout, "Signed out of %s.\n", s)
 	}
-	fmt.Fprintln(c.Stdout, "Tokens already issued stay valid until they expire (the provider has no revocation).")
+	_, _ = fmt.Fprintln(c.Stdout, "Tokens already issued stay valid until they expire (the provider has no revocation).")
 	return exitOK
 }
 
@@ -202,14 +202,14 @@ func (c *Commands) Status(_ context.Context, args []string) int {
 	}
 	f, err := c.Store.Load()
 	if err != nil {
-		fmt.Fprintln(c.Stderr, "error:", err)
+		_, _ = fmt.Fprintln(c.Stderr, "error:", err)
 		return exitOther
 	}
 	var servers []string
 	if *server != "" {
 		norm, err := NormalizeServer(*server)
 		if err != nil {
-			fmt.Fprintln(c.Stderr, "error:", err)
+			_, _ = fmt.Fprintln(c.Stderr, "error:", err)
 			return exitUsage
 		}
 		servers = []string{norm}
@@ -220,7 +220,7 @@ func (c *Commands) Status(_ context.Context, args []string) int {
 		slices.Sort(servers)
 	}
 	if len(servers) == 0 {
-		fmt.Fprintln(c.Stdout, "Not signed in to any server.")
+		_, _ = fmt.Fprintln(c.Stdout, "Not signed in to any server.")
 		return exitNotSigned
 	}
 
@@ -231,12 +231,12 @@ func (c *Commands) Status(_ context.Context, args []string) int {
 	code := exitOK
 	for i, s := range servers {
 		if i > 0 {
-			fmt.Fprintln(c.Stdout)
+			_, _ = fmt.Fprintln(c.Stdout)
 		}
 		e := f.Servers[s]
-		fmt.Fprintf(c.Stdout, "server:   %s\n", s)
+		_, _ = fmt.Fprintf(c.Stdout, "server:   %s\n", s)
 		if !e.SignedIn() {
-			fmt.Fprintf(c.Stdout, "status:   not signed in; run \"kubectl topology login --server %s\"\n", s)
+			_, _ = fmt.Fprintf(c.Stdout, "status:   not signed in; run \"kubectl topology login --server %s\"\n", s)
 			code = exitNotSigned
 			continue
 		}
@@ -244,15 +244,15 @@ func (c *Commands) Status(_ context.Context, args []string) int {
 		if cl, err := parseClaims(e.IDToken); err == nil {
 			email = cl.Email
 		}
-		fmt.Fprintf(c.Stdout, "user:     %s\n", orUnknown(email))
+		_, _ = fmt.Fprintf(c.Stdout, "user:     %s\n", orUnknown(email))
 		expiry := e.Expiry.Local().Format(time.RFC3339)
 		switch remaining := e.Expiry.Sub(now()); {
 		case remaining > 0:
-			fmt.Fprintf(c.Stdout, "expires:  %s (in %s)\n", expiry, remaining.Round(time.Second))
+			_, _ = fmt.Fprintf(c.Stdout, "expires:  %s (in %s)\n", expiry, remaining.Round(time.Second))
 		case e.RefreshToken != "":
-			fmt.Fprintf(c.Stdout, "expires:  %s (expired; refreshes on next use)\n", expiry)
+			_, _ = fmt.Fprintf(c.Stdout, "expires:  %s (expired; refreshes on next use)\n", expiry)
 		default:
-			fmt.Fprintf(c.Stdout, "expires:  %s (expired; run login again)\n", expiry)
+			_, _ = fmt.Fprintf(c.Stdout, "expires:  %s (expired; run login again)\n", expiry)
 			code = exitNotSigned
 		}
 	}

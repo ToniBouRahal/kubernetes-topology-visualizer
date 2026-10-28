@@ -42,7 +42,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	case "status":
 		return auth.Status(ctx, rest, stdout, stderr)
 	case "version", "--version":
-		fmt.Fprintln(stdout, version)
+		_, _ = fmt.Fprintln(stdout, version)
 		return commands.ExitOK
 	case "help", "-h", "--help":
 		usage(stdout)
@@ -52,7 +52,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if code, ok := commands.Run(ctx, env, name, rest); ok {
 		return code
 	}
-	fmt.Fprintf(stderr, "error: unknown command %q\n\n", name)
+	_, _ = fmt.Fprintf(stderr, "error: unknown command %q\n\n", name)
 	usage(stderr)
 	return commands.ExitUsage
 }
@@ -69,13 +69,13 @@ func client(_ context.Context, o commands.ClientOptions) (*api.Client, error) {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprint(w, "usage: kubectl topology COMMAND [flags]\n\ncommands:\n")
+	_, _ = fmt.Fprint(w, "usage: kubectl topology COMMAND [flags]\n\ncommands:\n")
 	for _, c := range commands.Commands {
-		fmt.Fprintf(w, "  %-11s %s\n", c.Name, c.Summary)
+		_, _ = fmt.Fprintf(w, "  %-11s %s\n", c.Name, c.Summary)
 	}
-	fmt.Fprintf(w, "  %-11s %s\n", "login", "sign in through the browser (OIDC, PKCE)")
-	fmt.Fprintf(w, "  %-11s %s\n", "logout", "forget a server's stored sign-in")
-	fmt.Fprintf(w, "  %-11s %s\n", "status", "show who is signed in to which server, and until when")
-	fmt.Fprintf(w, "  %-11s %s\n", "version", "print the version")
-	fmt.Fprint(w, "\nRun \"kubectl topology COMMAND -h\" for a command's flags.\n")
+	_, _ = fmt.Fprintf(w, "  %-11s %s\n", "login", "sign in through the browser (OIDC, PKCE)")
+	_, _ = fmt.Fprintf(w, "  %-11s %s\n", "logout", "forget a server's stored sign-in")
+	_, _ = fmt.Fprintf(w, "  %-11s %s\n", "status", "show who is signed in to which server, and until when")
+	_, _ = fmt.Fprintf(w, "  %-11s %s\n", "version", "print the version")
+	_, _ = fmt.Fprint(w, "\nRun \"kubectl topology COMMAND -h\" for a command's flags.\n")
 }

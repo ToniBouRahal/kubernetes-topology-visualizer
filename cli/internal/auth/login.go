@@ -139,10 +139,10 @@ func SignIn(ctx context.Context, store *Store, o SignInOptions) (*SignInResult, 
 	authURL := conf.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier), oauth2.SetAuthURLParam("nonce", nonce))
 
 	code, err := awaitCallback(ctx, ln, state, timeout, func() {
-		fmt.Fprintf(prompt, "Opening the browser to sign in to %s. If it does not open, visit:\n\n  %s\n\n", server, authURL)
+		_, _ = fmt.Fprintf(prompt, "Opening the browser to sign in to %s. If it does not open, visit:\n\n  %s\n\n", server, authURL)
 		if o.OpenBrowser != nil {
 			if err := o.OpenBrowser(authURL); err != nil {
-				fmt.Fprintln(prompt, "Could not open a browser; open the URL above by hand.")
+				_, _ = fmt.Fprintln(prompt, "Could not open a browser; open the URL above by hand.")
 			}
 		}
 	})
@@ -344,7 +344,7 @@ func awaitCallback(ctx context.Context, ln net.Listener, state string, timeout t
 func writePage(w http.ResponseWriter, status int, title, body string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	fmt.Fprintf(w, "<!doctype html><meta charset=utf-8><title>%s</title><h1>%s</h1><p>%s</p>\n",
+	_, _ = fmt.Fprintf(w, "<!doctype html><meta charset=utf-8><title>%s</title><h1>%s</h1><p>%s</p>\n",
 		html.EscapeString(title), html.EscapeString(title), html.EscapeString(body))
 }
 

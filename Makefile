@@ -8,7 +8,7 @@ SHELL := /bin/bash
 
 # ── Pinned toolchain (ADR-008 D-8.3) ────────────────────────────────────────────────────────
 # Keep in lockstep with docs/prerequisites.md and .github/workflows/ci.yml.
-GO_VERSION      := 1.26.7
+GO_VERSION      := 1.26.10
 NODE_VERSION    := 24.19.0
 PYTHON_VERSION  := 3.13
 HELM_VERSION    := 4.2.3

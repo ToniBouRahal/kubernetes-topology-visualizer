@@ -39,7 +39,7 @@ func discover(ctx context.Context, client *http.Client, issuer string) (*discove
 	if err != nil {
 		return nil, &ConnectionError{Target: "issuer " + issuer, Err: err}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("issuer %s: discovery answered %s; check --issuer", issuer, resp.Status)
 	}

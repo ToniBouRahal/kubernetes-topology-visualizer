@@ -59,7 +59,7 @@ func runGraph(ctx context.Context, env Env, args []string) int {
 	}
 	if c.output == "mermaid" {
 		// Built from the response, so it carries the window and filters asked for (D-16.7).
-		fmt.Fprint(env.Stdout, render.Mermaid(resp))
+		_, _ = fmt.Fprint(env.Stdout, render.Mermaid(resp))
 		return ExitOK
 	}
 	return emit(env, c.output, raw, render.Graph(resp, render.Options{}))

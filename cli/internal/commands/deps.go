@@ -60,13 +60,13 @@ func runDeps(ctx context.Context, env Env, args []string) int {
 	case errors.Is(err, query.ErrNotObserved):
 		return notObserved(env, c.output, name, namespace, kind, graph)
 	case errors.As(err, &ambiguous):
-		fmt.Fprintf(env.Stderr, "error: %v:\n", ambiguous)
+		_, _ = fmt.Fprintf(env.Stderr, "error: %v:\n", ambiguous)
 		for _, n := range ambiguous.Candidates {
 			ns := "(no namespace)"
 			if n.Namespace != nil {
 				ns = "-n " + *n.Namespace
 			}
-			fmt.Fprintf(env.Stderr, "  --kind %s %s\n", n.Kind, ns)
+			_, _ = fmt.Fprintf(env.Stderr, "  --kind %s %s\n", n.Kind, ns)
 		}
 		return ExitUsage
 	}
@@ -97,9 +97,9 @@ func notObserved(env Env, output, name, namespace, kind string, graph *api.Graph
 	}
 	if output == "json" {
 		// stdout stays empty: there is no node payload to print unchanged.
-		fmt.Fprintln(env.Stderr, msg)
+		_, _ = fmt.Fprintln(env.Stderr, msg)
 		return ExitOK
 	}
-	fmt.Fprintln(env.Stdout, msg)
+	_, _ = fmt.Fprintln(env.Stdout, msg)
 	return ExitOK
 }

@@ -118,7 +118,7 @@ func newFlagSet(env Env, name, usage string) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(env.Stderr)
 	fs.Usage = func() {
-		fmt.Fprintf(env.Stderr, "usage: kubectl topology %s\n\nflags:\n", usage)
+		_, _ = fmt.Fprintf(env.Stderr, "usage: kubectl topology %s\n\nflags:\n", usage)
 		fs.PrintDefaults()
 	}
 	return fs
@@ -150,7 +150,7 @@ func usageError(env Env, err error) int {
 	if errors.Is(err, flag.ErrHelp) {
 		return ExitOK
 	}
-	fmt.Fprintf(env.Stderr, "error: %v\n", err)
+	_, _ = fmt.Fprintf(env.Stderr, "error: %v\n", err)
 	return ExitUsage
 }
 
@@ -168,31 +168,31 @@ func apiFailure(env Env, server string, err error) int {
 	switch {
 	case errors.As(err, &notSignedIn):
 		// Its message already names the server and the login command.
-		fmt.Fprintf(env.Stderr, "error: %v\n", notSignedIn)
+		_, _ = fmt.Fprintf(env.Stderr, "error: %v\n", notSignedIn)
 		return ExitAuth
 	case errors.As(err, &issuerDown):
 		// A refresh that could not be sent: the tokens are kept, and the next call succeeds once
 		// the issuer is reachable again, so this is a connection failure, not a sign-out.
-		fmt.Fprintf(env.Stderr, "error: refreshing the sign-in: %v (is the port-forward to %s running?)\n",
+		_, _ = fmt.Fprintf(env.Stderr, "error: refreshing the sign-in: %v (is the port-forward to %s running?)\n",
 			issuerDown, server)
 		return ExitConnection
 	case errors.As(err, &tokenErr):
 		// The stored credential cannot be used (file permissions, lock timeout, a provider error
 		// that is not a refusal). Signing in again would not fix any of these, so no login hint.
-		fmt.Fprintf(env.Stderr, "error: cannot use the stored sign-in for %s: %v\n", server, tokenErr.Err)
+		_, _ = fmt.Fprintf(env.Stderr, "error: cannot use the stored sign-in for %s: %v\n", server, tokenErr.Err)
 		return ExitAuth
 	case api.IsUnauthorized(err):
-		fmt.Fprintf(env.Stderr, "error: %s refused the request: signed out, expired, or not admitted\n"+
+		_, _ = fmt.Fprintf(env.Stderr, "error: %s refused the request: signed out, expired, or not admitted\n"+
 			"run \"kubectl topology login --server %s\"\n", server, server)
 		return ExitAuth
 	case errors.As(err, &connErr):
-		fmt.Fprintf(env.Stderr, "error: %v (is the port-forward to %s running?)\n", connErr, server)
+		_, _ = fmt.Fprintf(env.Stderr, "error: %v (is the port-forward to %s running?)\n", connErr, server)
 		return ExitConnection
 	case errors.As(err, &statErr):
-		fmt.Fprintf(env.Stderr, "error: %v\n", statErr)
+		_, _ = fmt.Fprintf(env.Stderr, "error: %v\n", statErr)
 		return ExitAPI
 	default:
-		fmt.Fprintf(env.Stderr, "error: %v\n", err)
+		_, _ = fmt.Fprintf(env.Stderr, "error: %v\n", err)
 		return ExitAPI
 	}
 }
@@ -204,7 +204,7 @@ func connect(ctx context.Context, env Env, o ClientOptions) (*api.Client, int) {
 	case errors.As(err, &tokenErr):
 		return nil, apiFailure(env, o.Server, err)
 	case err != nil:
-		fmt.Fprintf(env.Stderr, "error: %v\n", err)
+		_, _ = fmt.Fprintf(env.Stderr, "error: %v\n", err)
 		return nil, ExitUsage
 	}
 	return c, ExitOK
@@ -217,11 +217,11 @@ func emit(env Env, output string, raw []byte, text render.Text) int {
 			return ExitAPI
 		}
 		if len(raw) > 0 && raw[len(raw)-1] != '\n' {
-			fmt.Fprintln(env.Stdout)
+			_, _ = fmt.Fprintln(env.Stdout)
 		}
 		return ExitOK
 	}
-	fmt.Fprint(env.Stdout, text.String())
+	_, _ = fmt.Fprint(env.Stdout, text.String())
 	return ExitOK
 }
 

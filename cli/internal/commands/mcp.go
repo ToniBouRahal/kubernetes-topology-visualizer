@@ -47,7 +47,7 @@ func runMCP(ctx context.Context, env Env, args []string) int {
 		transport = &mcp.StdioTransport{}
 	}
 	if err := mcpserver.Serve(ctx, cfg, transport); err != nil && !errors.Is(err, context.Canceled) {
-		fmt.Fprintf(env.Stderr, "error: mcp: %v\n", err)
+		_, _ = fmt.Fprintf(env.Stderr, "error: mcp: %v\n", err)
 		return ExitAPI
 	}
 	return ExitOK

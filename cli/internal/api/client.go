@@ -259,7 +259,7 @@ func (c *Client) do(ctx context.Context, target, token string) (int, []byte, err
 	if err != nil {
 		return 0, nil, &ConnectionError{Err: err}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if err != nil {
 		return 0, nil, &ConnectionError{Err: err}

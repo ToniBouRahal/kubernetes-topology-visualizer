@@ -2,7 +2,7 @@ module github.com/fyp/kubernetes-topology-visualizer/cli
 
 go 1.26.0
 
-toolchain go1.26.7
+toolchain go1.26.10
 
 require (
 	github.com/modelcontextprotocol/go-sdk v1.8.0

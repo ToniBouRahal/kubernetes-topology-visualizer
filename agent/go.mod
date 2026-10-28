@@ -2,7 +2,7 @@ module github.com/fyp/kubernetes-topology-visualizer/agent
 
 go 1.26.0
 
-toolchain go1.26.7
+toolchain go1.26.10
 
 tool github.com/cilium/ebpf/cmd/bpf2go
 

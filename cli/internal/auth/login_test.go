@@ -113,7 +113,7 @@ func TestCallbackListenerIsLoopbackOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	addr := ln.Addr().(*net.TCPAddr)
 	if !addr.IP.Equal(net.IPv4(127, 0, 0, 1)) {
 		t.Fatalf("listener bound to %s, want 127.0.0.1 only", addr)

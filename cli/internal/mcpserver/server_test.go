@@ -287,6 +287,9 @@ func TestOnlyToolsAreAdvertised(t *testing.T) {
 	fake := newFakeAPI(t)
 	cs, _ := connect(t, apiConfig(fake.srv.URL, nil))
 	caps := cs.InitializeResult().Capabilities
+	// Logging is deprecated in the protocol (SEP-2577) but still negotiable, so the assertion that
+	// the server never advertises it stays.
+	//nolint:staticcheck // SA1019: checking the deprecated capability is absent is the point.
 	if caps.Tools == nil || caps.Resources != nil || caps.Prompts != nil || caps.Logging != nil || caps.Completions != nil {
 		t.Errorf("capabilities %+v, want tools only", caps)
 	}
