@@ -4,6 +4,29 @@
  */
 
 export interface paths {
+    "/api/v1/anomalies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Anomalies
+         * @description Rule-based anomalies in one window against the period just before it (ADR-016 D-16.1).
+         *
+         *     The baseline is `ANOMALY_BASELINE_HOURS` long and ends where the window starts. Every rule is
+         *     a stated threshold; each anomaly's `reason` gives the numbers compared.
+         */
+        get: operations["get_anomalies_api_v1_anomalies_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/diff": {
         parameters: {
             query?: never;
@@ -179,6 +202,93 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * Anomaly
+         * @description One rule that fired for one edge. An edge may appear once per rule (D-16.1).
+         */
+        Anomaly: {
+            /** Baseline Connection Count */
+            baseline_connection_count: number;
+            /** Baseline Failed Connection Count */
+            baseline_failed_connection_count?: number | null;
+            /** Baseline Mean Setup Us */
+            baseline_mean_setup_us?: number | null;
+            /** Current Connection Count */
+            current_connection_count: number;
+            /** Current Failed Connection Count */
+            current_failed_connection_count?: number | null;
+            /** Current Mean Setup Us */
+            current_mean_setup_us?: number | null;
+            /** Destination Port */
+            destination_port: number;
+            /** Edge Id */
+            edge_id: string;
+            /**
+             * Id
+             * @description `<edge_id>|<type>`; stable across identical requests.
+             */
+            id: string;
+            /**
+             * Protocol
+             * @constant
+             */
+            protocol: "TCP";
+            /**
+             * Reason
+             * @description The comparison performed and the threshold applied, in words.
+             */
+            reason: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "critical" | "warning";
+            /** Source Id */
+            source_id: string;
+            /** Target Id */
+            target_id: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "CANARY_CONTACT" | "NEW_EXTERNAL_EGRESS" | "NEW_EDGE" | "FAILURE_SPIKE" | "SLOW_SETUP";
+        };
+        /** AnomalyResponse */
+        AnomalyResponse: {
+            /** Anomalies */
+            anomalies: components["schemas"]["Anomaly"][];
+            baseline: components["schemas"]["TimeWindow"];
+            filters: components["schemas"]["EffectiveFilters"];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Nodes
+             * @description Every node an anomaly refers to, sorted by id.
+             */
+            nodes: components["schemas"]["GraphNode"][];
+            summary: components["schemas"]["AnomalySummary"];
+            window: components["schemas"]["TimeWindow"];
+        };
+        /** AnomalySummary */
+        AnomalySummary: {
+            /**
+             * Baseline Observed
+             * @description False when the baseline held no edges; novelty rules are then not applied (D-16.2).
+             */
+            baseline_observed: boolean;
+            /** Critical Count */
+            critical_count: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated?: boolean;
+            /** Warning Count */
+            warning_count: number;
+        };
         /**
          * DiffEdge
          * @description One classified edge. A period with no observation contributes zero, not null.
@@ -393,6 +503,12 @@ export interface components {
             attributes?: {
                 [key: string]: string;
             };
+            /**
+             * Canary
+             * @description A decoy named in the chart's backend.canaries; any inbound connection to it is an anomaly (ADR-016 D-16.4).
+             * @default false
+             */
+            canary?: boolean;
             /**
              * First Seen
              * Format: date-time
@@ -619,6 +735,58 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_anomalies_api_v1_anomalies_get: {
+        parameters: {
+            query?: {
+                /** @description Preset window. Mutually exclusive with from/to. */
+                window?: ("1m" | "5m" | "15m" | "1h" | "6h" | "24h") | null;
+                /** @description RFC 3339 UTC, inclusive. */
+                from?: string | null;
+                /** @description RFC 3339 UTC, exclusive. */
+                to?: string | null;
+                /** @description Repeatable. */
+                namespace?: string[] | null;
+                kind?: ("Service" | "Deployment" | "StatefulSet" | "DaemonSet" | "Job" | "Pod") | null;
+                /** @description Case-insensitive substring match on label. */
+                query?: string | null;
+                include_external?: boolean;
+                include_unresolved?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnomalyResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_diff_api_v1_diff_get: {
         parameters: {
             query: {

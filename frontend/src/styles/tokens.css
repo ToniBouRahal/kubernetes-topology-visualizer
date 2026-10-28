@@ -72,6 +72,9 @@
   --ok: #1f7a4c;
   --warn: #a85a10;
   --danger: #a3332b;
+  /* Canary workloads (ADR-016 D-16.4): a stroke, not a fill, so namespace keeps every hue. Deeper
+     and redder than --danger so the two marks are not mistaken for one another. */
+  --canary: #8f1d2c;
   /* The mode accent (DESIGN.md "Signal"): cyan-green while the reading is live, amber once it is
      historical or comparative. A separate token from --ok on purpose — whether the backend is
      reachable does not depend on which period is being viewed. Swapped only by .app[data-mode]

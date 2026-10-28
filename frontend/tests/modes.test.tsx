@@ -35,7 +35,14 @@ beforeEach(() => {
     const url = new URL(input, "http://localhost");
     requests.push(url);
     if (url.pathname === "/config.json") return new Response("", { status: 404 });
-    const body = url.pathname === "/api/v1/namespaces" ? { namespaces: ["demo"], window } : graph;
+    const anomalies = {
+      generated_at: window.end, window, baseline: window, filters: graph.filters, anomalies: [], nodes: [],
+      summary: { critical_count: 0, warning_count: 0, baseline_observed: true, truncated: false },
+    };
+    const body =
+      url.pathname === "/api/v1/namespaces" ? { namespaces: ["demo"], window }
+      : url.pathname === "/api/v1/anomalies" ? anomalies
+      : graph;
     return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
   }));
 });

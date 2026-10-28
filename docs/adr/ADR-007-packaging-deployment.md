@@ -7,7 +7,8 @@
   — D-7.5 (`frontend.grafana.*`, delivered to the browser as a ConfigMap-mounted `/config.json`) ·
   [ADR-013](ADR-013-bundled-observability.md) — D-7.1 (the chart gains two optional dependencies,
   fetched by `scripts/chart-deps.sh`), D-7.4 (digest pinning extends to subchart images; one more
-  opt-in ingress rule), D-7.5 (`observability.*`)
+  opt-in ingress rule), D-7.5 (`observability.*`) · [ADR-015](ADR-015-cli-and-mcp-clients.md) — D-7.5
+  (`auth.cli.*`)
 - **Parent:** ADR-001 §5.7 · Source of truth §17, §18, §19
 - **Component path:** `charts/`, `kind/`, `demo/`, `scripts/`, `Makefile`
 - **Owning phases:** Phase 0 (skeleton), Phase 1 (agent DaemonSet), Phase 5 (complete chart, multi-node)
@@ -352,6 +353,13 @@ Decisions and costs in [ADR-013](ADR-013-bundled-observability.md).
 - [x] **P6-K13** Grafana datasource + sidecar wiring; NetworkPolicy rule for the in-namespace Prometheus — D-13.4, D-13.7
 - [x] **P6-K14** `make demo-observability`; `verify-chart.sh` T-13.1 – T-13.6; `verify-image-pinning.sh` T-13.7
 - [x] **P6-K15** Docs: operator guide, prerequisites, limitations, ADR-011/012 cross-references, index and plan
+
+### Post-Phase-5 — amended by ADR-015 (CLI and MCP clients)
+
+`auth.cli.enabled` (default `false`, `true` in the kind values), `auth.cli.clientId` and
+`auth.cli.refreshHours`, validated by the schema; the CLI itself is built on the user's machine
+(`make cli`) and never deployed. Boxes in [ADR-015](ADR-015-cli-and-mcp-clients.md) §8 (C15-6) and
+`IMPLEMENTATION-PLAN.md`.
 
 ### Standing invariants — re-verify at every phase gate
 

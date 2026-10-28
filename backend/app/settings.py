@@ -55,6 +55,27 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
 
+    # Canary workloads (ADR-016 D-16.4): `namespace/name` or `namespace/Kind/name`, comma-separated
+    # in the environment for the same reason as the origins above.
+    canary_workloads: Annotated[list[str], NoDecode] = []
+
+    @field_validator("canary_workloads", mode="before")
+    @classmethod
+    def _split_canaries(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [entry.strip() for entry in value.split(",") if entry.strip()]
+        return value
+
+    # Anomaly rules (ADR-016 D-16.1). Thresholds, not learned values: each anomaly's reason
+    # states the numbers compared against these.
+    anomaly_baseline_hours: int = 24
+    anomaly_min_attempts: int = 10
+    anomaly_failure_ratio: float = 0.2
+    anomaly_setup_factor: float = 3.0
+    # The background evaluator (D-16.3): how often, and over how recent a window.
+    anomaly_evaluation_seconds: int = 60
+    anomaly_evaluation_window_minutes: int = 5
+
     # The only schema version this release accepts. Anything else is 400, not 422.
     supported_schema_version: int = 1
 

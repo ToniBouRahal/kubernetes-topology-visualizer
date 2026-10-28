@@ -5,7 +5,7 @@
 # Regenerating them is a separate, explicit step: `make generate`, which uses the pinned builder
 # in build/Dockerfile.bpf-builder.
 
-FROM golang:1.26-bookworm@sha256:6ef6e30f0ea5c384f6d111cf856e024e3086bbdcb1779da3f3b3fbba0aea53d2 AS builder
+FROM golang:1.26-bookworm@sha256:632dff7351799a5a9954a48dc06670ade72ee44e8c351cdc0e5a57af2fea21af AS builder
 
 WORKDIR /src
 
@@ -25,7 +25,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 # a node genuinely benefits from a shell being available, and this container is already
 # privileged, so removing the shell buys very little. Documented as a deliberate trade in
 # docs/limitations.md.
-FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
+FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \

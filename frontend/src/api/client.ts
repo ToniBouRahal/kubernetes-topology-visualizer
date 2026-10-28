@@ -4,7 +4,15 @@
  * Thin by design: query construction, cancellation, and error normalisation. Everything else is
  * the generated schema's job.
  */
-import type { DiffQuery, DiffResponse, GraphQuery, GraphResponse, NamespaceList, NodeDetail } from "./types";
+import type {
+  AnomalyResponse,
+  DiffQuery,
+  DiffResponse,
+  GraphQuery,
+  GraphResponse,
+  NamespaceList,
+  NodeDetail,
+} from "./types";
 
 /** Same-origin in production; Vite proxies to the port-forwarded backend in development. */
 const BASE = import.meta.env.VITE_API_BASE ?? "";
@@ -115,6 +123,11 @@ async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
 
 export function fetchGraph(query: GraphQuery, signal?: AbortSignal): Promise<GraphResponse> {
   return request<GraphResponse>(`/api/v1/graph${buildQuery(query)}`, signal);
+}
+
+/** The graph's own window and filters, so the anomalies describe exactly what is drawn (ADR-016). */
+export function fetchAnomalies(query: GraphQuery, signal?: AbortSignal): Promise<AnomalyResponse> {
+  return request<AnomalyResponse>(`/api/v1/anomalies${buildQuery(query)}`, signal);
 }
 
 export function fetchNamespaces(query: GraphQuery, signal?: AbortSignal): Promise<NamespaceList> {

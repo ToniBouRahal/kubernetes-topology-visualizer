@@ -3,7 +3,7 @@
 # Runs as a non-root user with a read-only root filesystem in the chart (ADR-001 §6), so
 # everything it needs must be baked in at build time — nothing is written at runtime.
 
-FROM python:3.13-slim-bookworm@sha256:2325bb286ec344af3e5898cc224b5844e2707ac6e26b1632516fd3edc84a5e26 AS builder
+FROM python:3.13-slim-bookworm@sha256:93498f36dc7e24ef233bfdf6cc17d4b8bd32d94ee737143e906460d5f5a914c5 AS builder
 
 # uv resolves and installs far faster than pip, and is already the documented local toolchain,
 # so the image and the developer environment stay in step.
@@ -24,7 +24,7 @@ COPY migrations ./migrations
 RUN uv venv /opt/venv && VIRTUAL_ENV=/opt/venv uv pip install --no-cache .
 
 # ── Runtime ─────────────────────────────────────────────────────────────────────────────────
-FROM python:3.13-slim-bookworm@sha256:2325bb286ec344af3e5898cc224b5844e2707ac6e26b1632516fd3edc84a5e26
+FROM python:3.13-slim-bookworm@sha256:93498f36dc7e24ef233bfdf6cc17d4b8bd32d94ee737143e906460d5f5a914c5
 
 # A fixed uid so the chart's runAsUser matches, and no shell for the account.
 #

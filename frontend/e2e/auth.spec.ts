@@ -1,20 +1,22 @@
 import { expect, test } from "@playwright/test";
 
 /**
- * Sign-in (ADR-014 T-14.5, T-14.6), against the real nginx, oauth2-proxy and bundled Dex.
+ * Sign-in (ADR-014 T-14.5, T-14.6), against the real nginx, oauth2-proxy and the bundled Dex or
+ * Keycloak (ADR-017) — whichever the release has; the two differ only in their form's field names.
  *
  * Every other spec runs signed in (global-setup.ts). These start from a fresh browser context
  * with no session, which is what someone who can reach the Service but has no account sees.
  */
 
 const BASE = process.env.E2E_BASE_URL ?? "http://localhost:18080";
+const PROVIDER = /\/(dex|keycloak)\//;
 
 test.describe("without a session", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test("the UI sends you to sign in, and shows nothing of the topology — T-14.5", async ({ page }) => {
     await page.goto(BASE);
-    await expect(page).toHaveURL(/\/dex\//);
+    await expect(page).toHaveURL(PROVIDER);
     await expect(page.locator(".react-flow__node")).toHaveCount(0);
   });
 
@@ -40,10 +42,11 @@ test.describe("without a session", () => {
 
   test("a wrong password is refused", async ({ page }) => {
     await page.goto(BASE);
-    await page.locator('input[name="login"]').fill("admin@topology.local");
+    const dex = page.url().includes("/dex/");
+    await page.locator(dex ? 'input[name="login"]' : 'input[name="username"]').fill("admin@topology.local");
     await page.locator('input[name="password"]').fill("not-the-password");
-    await page.locator('button[type="submit"]').click();
-    await expect(page).toHaveURL(/\/dex\//);
+    await page.locator(dex ? 'button[type="submit"]' : "#kc-login").click();
+    await expect(page).toHaveURL(PROVIDER);
     await expect(page.getByText(/invalid/i)).toBeVisible();
   });
 });

@@ -158,6 +158,11 @@ class GraphNode(BaseModel):
     first_seen: AwareDatetime
     last_seen: AwareDatetime
     attributes: dict[str, str] = Field(default_factory=dict)
+    canary: bool = Field(
+        default=False,
+        description="A decoy named in the chart's backend.canaries; any inbound connection to it "
+        "is an anomaly (ADR-016 D-16.4).",
+    )
 
 
 class GraphEdge(BaseModel):
@@ -258,6 +263,57 @@ class DiffResponse(BaseModel):
     include_unchanged: bool
     edges: list[DiffEdge]
     summary: DiffSummary
+
+
+# ── Anomalies (ADR-016) ─────────────────────────────────────────────────────────────────────
+
+AnomalyType = Literal[
+    "CANARY_CONTACT", "NEW_EXTERNAL_EGRESS", "NEW_EDGE", "FAILURE_SPIKE", "SLOW_SETUP"
+]
+AnomalySeverity = Literal["critical", "warning"]
+
+
+class Anomaly(BaseModel):
+    """One rule that fired for one edge. An edge may appear once per rule (D-16.1)."""
+
+    id: str = Field(description="`<edge_id>|<type>`; stable across identical requests.")
+    edge_id: str
+    type: AnomalyType
+    severity: AnomalySeverity
+    source_id: str
+    target_id: str
+    protocol: Protocol
+    destination_port: int
+
+    current_connection_count: int
+    current_failed_connection_count: int | None = None
+    baseline_connection_count: int
+    baseline_failed_connection_count: int | None = None
+    # Null when no timing sample exists in that period — not zero latency.
+    current_mean_setup_us: float | None = None
+    baseline_mean_setup_us: float | None = None
+
+    reason: str = Field(description="The comparison performed and the threshold applied, in words.")
+
+
+class AnomalySummary(BaseModel):
+    critical_count: int
+    warning_count: int
+    baseline_observed: bool = Field(
+        description="False when the baseline held no edges; novelty rules are then not applied "
+        "(D-16.2)."
+    )
+    truncated: bool = False
+
+
+class AnomalyResponse(BaseModel):
+    generated_at: AwareDatetime
+    window: TimeWindow
+    baseline: TimeWindow
+    filters: EffectiveFilters
+    anomalies: list[Anomaly]
+    nodes: list[GraphNode] = Field(description="Every node an anomaly refers to, sorted by id.")
+    summary: AnomalySummary
 
 
 # ── Detail views ────────────────────────────────────────────────────────────────────────────

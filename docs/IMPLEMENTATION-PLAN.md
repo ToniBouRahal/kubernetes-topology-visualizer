@@ -322,6 +322,67 @@ Threat model, decisions and what is declined (image signing, cert-manager as a r
 - [x] **S14-5** OIDC sign-in and bundled Dex — D-14.6, D-14.7
 - [x] **S14-6** Agent least privilege and namespace Pod Security — D-14.9, D-14.12
 - [x] **S14-7** Verification on the kind demo, security review (no findings), CI green on PR #5; `limitations.md` and the operator guide updated
+
+### ADR-015 — CLI and MCP clients, bearer-token sign-in (new `cli/` module, chart)
+
+One binary, `kubectl-topology`: read commands over the existing API (`namespaces`, `graph`,
+`deps`, `diff`, `edge`) printing the README's line format, and `kubectl topology mcp`, a local stdio
+MCP server with five read-only tools whose descriptions carry the measurement caveats. Sign-in is
+the authorisation-code flow with PKCE and one of three fixed loopback redirects against a public
+`topology-cli` client; oauth2-proxy accepts the resulting ID token (`--skip-jwt-bearer-tokens`,
+`--oidc-extra-audience`), so the request path, admission rules and audit log are the browser's.
+Off by default (`auth.cli.enabled`), on in the kind values. Whenever Dex is bundled, nginx
+now returns 404 on Dex's device-flow paths and gives Dex's pages a CSP whose `form-action` adds
+the three callback origins (amends D-14.10). Threat-model delta, token lifetimes,
+verification items and what is declined (write tools, an in-cluster MCP endpoint, device flow,
+per-user RBAC, new endpoints): [ADR-015](adr/ADR-015-cli-and-mcp-clients.md).
+
+- [x] **C15-1** ADR-015, index and plan entry; cross-references in ADR-003, ADR-007, ADR-008, ADR-014
+- [x] **C15-2** `cli/` module, pinned dependencies, hand-written read client with struct and fixture conformance tests in `contracts-check` — D-15.2, D-15.3, V-15.1, T-15.8
+- [x] **C15-3** Read commands, time handling, name resolution, shared renderer — D-15.4, T-15.1 – T-15.3
+- [x] **C15-4** Login, locked refresh, credential store, logout, auth-off and transport rules — D-15.8 – D-15.14, T-15.4 – T-15.6
+- [x] **C15-5** MCP server — D-15.5, T-15.7
+- [x] **C15-6** Chart and frontend image: `auth.cli.*`, oauth2-proxy bearer flags, Dex public client with three redirect URIs, expiry and grant types, nginx strips `Authorization`, 404 on `/dex/device*`, Dex CSP — D-15.6, D-15.7, D-15.8, D-15.10, T-15.9 · `verify-chart.sh` 87/87; `nginx -t` passes in the running image
+- [ ] **C15-7** Make targets, CI job, `make audit` over `cli/` — D-15.15, V-15.6 · open: govulncheck reports the pinned toolchain's standard-library findings until the repo-wide Go bump (V-15.6)
+- [ ] **C15-8** Verification on kind (T-15.10 with a Chromium-driven CLI login, T-15.11, V-15.2 – V-15.5, V-15.7) and `/security-review` · run 2026-10-26: T-15.10, T-15.11, V-15.2 – V-15.4 met; open: V-15.5 negative half, V-15.7, `/security-review`
+- [x] **C15-9** Docs: operator guide, README, `limitations.md` §6.3, §6.9 – §6.14, demo script
+
+### ADR-016 — rule-based anomalies, canaries, diagram export (backend, frontend, CLI, chart)
+
+ADR-001 §13's deferred anomaly detection, as five deterministic rules against the preceding
+period (`CANARY_CONTACT`, `NEW_EXTERNAL_EGRESS`, `NEW_EDGE`, `FAILURE_SPIKE`, `SLOW_SETUP`), served
+by `GET /api/v1/anomalies` and a once-a-minute evaluator that sets
+`topology_backend_active_anomalies{type}` and logs new findings. Canary workloads named in
+`backend.canaries` are counted at ingest. The graph on screen exports as Mermaid from the browser
+and `kubectl topology graph -o mermaid`, both checked against one golden file. No external calls:
+[ADR-016](adr/ADR-016-anomalies-canaries-diagram-export.md).
+
+- [x] **A16-1** ADR-016, index and plan entry
+- [x] **A16-2** Backend: canary matching, `GraphNode.canary`, ingest counter — D-16.4 – D-16.6, T-16.4, T-16.5
+- [x] **A16-3** Backend: `anomalies.detect`, route, evaluator, gauges — D-16.1 – D-16.3, T-16.1 – T-16.3, T-16.6
+- [x] **A16-4** Contract regenerated; TS client; CLI structs and fixtures
+- [x] **A16-5** Frontend: anomaly panel, canary marking, Mermaid export — D-16.7, T-16.7, T-16.8
+- [x] **A16-6** CLI: `graph -o mermaid`, `anomalies` — D-16.8, T-16.7
+- [x] **A16-7** Chart values, schema, ConfigMap; `make demo-canary` — T-16.9 · `verify-chart.sh` 93/93
+- [x] **A16-8** Docs: operator guide, limitations §4.6 – §4.8, README
+- [ ] **A16-9** Verification on kind: `make demo-canary` raises `CANARY_CONTACT` in the UI, API, log and gauge
+
+### ADR-017 — bundled Keycloak identity broker (chart, frontend nginx, CLI, new `keycloak/` image)
+
+A second bundled sign-in provider, mutually exclusive with Dex: Keycloak with an ephemeral store
+and a realm rendered from values, brokering to Google, one Microsoft Entra ID tenant, and any other
+OIDC provider. Served under `/keycloak` through the frontend behind an nginx allowlist; PKCE S256
+required and brute-force lockout on. The CLI probes Keycloak then Dex for its default issuer:
+[ADR-017](adr/ADR-017-keycloak-identity-broker.md).
+
+- [x] **K17-1** ADR-017, index and plan entry, amendment notes in ADR-014 and ADR-015
+- [x] **K17-2** `keycloak/Dockerfile`, `make image-keycloak`, pinning and scan scripts
+- [x] **K17-3** Chart: values, schema, realm, Deployment, Service, PKI, NetworkPolicy, oauth2-proxy args — T-17.1 – T-17.5
+- [x] **K17-4** Frontend nginx allowlist and Keycloak CSP
+- [x] **K17-5** CLI issuer probe — T-17.6
+- [x] **K17-6** Docs: operator guide, limitations, demo script, README
+- [x] **K17-7** Verification on kind — T-17.7 – T-17.11
+- [ ] **K17-8** A real Google and Entra ID sign-in (needs the owner's app registrations)
 ---
 
 ## Definition of Done cross-check

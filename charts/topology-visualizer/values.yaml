@@ -76,6 +76,21 @@ backend:
   diffChangeThresholdPercent: 20
   corsAllowedOrigins: "http://localhost:5173,http://localhost:8080"
 
+  # Canary workloads (ADR-016 D-16.4): decoys nothing legitimate ever connects to, so any inbound
+  # connection is an anomaly, counted at ingest and logged. `namespace/name` matches any kind;
+  # `namespace/Kind/name` one kind. Matched on node fields, never by parsing ids. Empty: none.
+  canaries: []
+
+  # Rule-based anomalies (ADR-016 D-16.1). Thresholds, not learned values — every anomaly states
+  # the numbers it compared. Nothing is sent anywhere: findings are an API response, a WARNING log
+  # line and the topology_backend_active_anomalies gauges, for your own alerting to pick up.
+  anomalies:
+    # The period before a window that the window is compared against. Costs one query of this
+    # length per anomaly request and per evaluation (once a minute).
+    baselineHours: 24
+    # Fewer attempts (or timing samples) than this never raise a failure or setup-time anomaly.
+    minAttempts: 10
+
   resources:
     requests:
       cpu: 100m
@@ -381,7 +396,7 @@ auth:
   # this plus /oauth2/callback — register exactly that with your provider.
   externalUrl: ""
   oidc:
-    # Your provider's issuer. Ignored when dex.enabled (the bundled Dex is the issuer).
+    # Your provider's issuer. Ignored with the bundled Dex or Keycloak, which is then the issuer.
     issuerUrl: ""
     clientId: ""
     # The client secret, from a Secret you create: never a value in this file.
@@ -391,7 +406,8 @@ auth:
     scopes: "openid email profile"
     # Who may sign in. "*" admits any account the provider authenticates.
     allowedEmailDomains: ["*"]
-    # If set, only members of these groups (the provider's `groups` claim) are admitted.
+    # If set, only members of these groups (the provider's `groups` claim) are admitted. Not with
+    # the bundled Keycloak, whose realm has no groups: the chart refuses that combination.
     allowedGroups: []
   sessionHours: 8
   # A Dex for clusters with no identity provider — the kind demo first. One static user whose
@@ -399,6 +415,78 @@ auth:
   dex:
     enabled: false
     email: admin@topology.local
+  # A Keycloak for clusters with no identity provider, which brokers to the ones people already
+  # have — Google, one Microsoft Entra ID tenant, any other OIDC provider (ADR-017). Never with
+  # dex.enabled. State is ephemeral: the realm below is re-imported on every start, so a restart
+  # signs everyone out and there is no admin console to change it in — change these values instead.
+  keycloak:
+    enabled: false
+    image:
+      # Built by this project (`make image-keycloak`): the upstream image, pre-built so it runs with
+      # a read-only root filesystem. Its base is pinned by digest in keycloak/Dockerfile.
+      repository: topology-keycloak
+      tag: dev
+      pullPolicy: IfNotPresent
+    # A password user, as with Dex: the password is generated into the <fullname>-auth Secret
+    # (demo-password). Turn it off once people sign in through an upstream provider.
+    demoUser:
+      enabled: true
+      email: admin@topology.local
+    # Each provider appears as a button on the sign-in page once enabled. Register this redirect
+    # URI with it: <externalUrl>/keycloak/realms/topology/broker/<alias>/endpoint, where the alias
+    # is google, microsoft, or the oidc entry's own. Client secrets come from Secrets you create.
+    identityProviders:
+      # Google accounts, Gmail or Workspace. hostedDomain, if set, admits only that Workspace domain.
+      google:
+        enabled: false
+        clientId: ""
+        clientSecret:
+          existingSecret: ""
+          key: client-secret
+        hostedDomain: ""
+      # Microsoft Entra ID, pinned to ONE tenant: its Directory (tenant) ID, a GUID — tokens name
+      # it in `iss`, so neither a domain nor the multi-tenant common, organizations or consumers
+      # endpoints are accepted. The e-mail is the user's UPN (preferred_username), not the email
+      # claim, which Entra lets users set.
+      microsoft:
+        enabled: false
+        tenantId: ""
+        clientId: ""
+        clientSecret:
+          existingSecret: ""
+          key: client-secret
+      # Any other OIDC provider (corporate SSO). Endpoints are given explicitly: the realm is
+      # imported before anything could fetch a discovery document. Each entry:
+      #   alias: okta                     # [a-z0-9-], used in the redirect URI
+      #   displayName: Okta
+      #   issuer: https://example.okta.com
+      #   authorizationUrl: https://example.okta.com/oauth2/v1/authorize
+      #   tokenUrl: https://example.okta.com/oauth2/v1/token
+      #   jwksUrl: https://example.okta.com/oauth2/v1/keys
+      #   clientId: ...
+      #   clientSecret: {existingSecret: topology-idp-okta, key: client-secret}
+      #   scopes: openid email profile
+      oidc: []
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        # The JVM sizes its heap from this limit.
+        memory: 1Gi
+  # The kubectl-topology CLI and its MCP server (ADR-015). oauth2-proxy also accepts the
+  # provider's ID token as `Authorization: Bearer`, for this client's audience and the browser's;
+  # nginx strips the header before the backend. Ignored when auth.enabled is false.
+  cli:
+    enabled: false
+    # The CLI's public (PKCE, no secret) client. Required with an external provider: register it
+    # with redirect URIs http://127.0.0.1:38085/callback, :38086 and :38087. With the bundled Dex
+    # or Keycloak, empty means topology-cli, which the chart registers.
+    clientId: ""
+    # Bundled Dex or Keycloak: how long a CLI stays signed in without a new browser login. ID tokens
+    # become 1 h tokens when this block is on, for browser sign-ins too, which does not shorten
+    # a browser session (that is sessionHours).
+    refreshHours: 8
   proxy:
     image:
       repository: quay.io/oauth2-proxy/oauth2-proxy

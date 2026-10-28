@@ -1,0 +1,74 @@
+# A canary and something that touches it (ADR-016 D-16.4, D-16.5).
+#
+# `legacy-admin` is a decoy: a plausible name, a real listener, and no legitimate client. The kind
+# values name it in backend.canaries, so the moment anything connects to it the backend counts
+# the attempts, logs a WARNING naming the caller, and the UI raises a CANARY_CONTACT anomaly.
+#
+# `intruder` is the caller — a Job that connects five times and exits, standing in for a
+# compromised workload looking around. Nothing in either pod runs detection code; the agent sees
+# the TCP connections like any other.
+#
+#   make demo-canary   applies this, waits, and shows the anomaly through the API
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: legacy-admin
+  namespace: demo
+spec:
+  selector: {app: legacy-admin}
+  ports:
+    - {name: admin, port: 2222, targetPort: 6379}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legacy-admin
+  namespace: demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: legacy-admin}
+  template:
+    metadata:
+      labels: {app: legacy-admin}
+    spec:
+      containers:
+        - name: legacy-admin
+          image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+          args: ["--save", "", "--appendonly", "no"]
+          ports:
+            - {name: redis, containerPort: 6379}
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {memory: 128Mi}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: intruder
+  namespace: demo
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels: {app: intruder}
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: intruder
+          image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+          command: ["/bin/sh", "-c"]
+          # Settle first, for the same reason demo-traffic does: a pod's first connections can
+          # precede the agent learning its address (docs/limitations.md §2.1).
+          args:
+            - |
+              sleep 20
+              for i in 1 2 3 4 5; do
+                redis-cli -h legacy-admin.demo.svc.cluster.local -p 2222 PING || true
+                sleep 1
+              done
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 64Mi}

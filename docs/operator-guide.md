@@ -97,6 +97,40 @@ curl -s localhost:9090/metrics
 The backend exposes `/health/live` and `/health/ready`. Readiness reflects migrations *and* storage,
 so it drops to 503 during a database outage and recovers without a restart.
 
+### Anomalies and canaries (ADR-016)
+
+The backend checks the last 5 minutes against the 24 hours before them once a minute, with five
+fixed rules, and reports what it finds three ways — none of which leaves the cluster:
+
+- the **Anomalies** list in the UI and `kubectl topology anomalies` (both read
+  `GET /api/v1/anomalies`, for whatever window is selected);
+- a `WARNING` log line, `anomaly detected`, when a finding first appears (not every minute it lasts);
+- the gauge `topology_backend_active_anomalies{type="…"}` on the backend's `/metrics`, one series
+  per rule, zero included.
+
+| `type` | severity | means |
+|---|---|---|
+| `canary_contact` | critical | something connected to a workload named in `backend.canaries` |
+| `new_external_egress` | critical | a workload reached outside the cluster on a port it did not use in the baseline |
+| `new_edge` | warning | a relationship absent from the baseline |
+| `failure_spike` | critical | ≥ 20 % of ≥ 10 attempts failed, ≥ 20 points above the baseline |
+| `slow_setup` | warning | mean TCP setup ≥ 3× the baseline and ≥ 1 ms slower |
+
+To be told rather than look, alert on the gauge with your own Prometheus, for example
+`max(topology_backend_active_anomalies{type=~"canary_contact|new_external_egress"}) > 0`, or on the
+log line in your log pipeline. This tool sends no notifications itself.
+
+**Canaries** are decoys: a plausible-looking workload nothing legitimate calls. Name them in
+`backend.canaries` as `namespace/name` (any kind) or `namespace/Kind/name`. Every connection
+attempt to one adds to `topology_backend_canary_connections_total` the moment it is ingested, logs
+`canary contacted` with the caller, and is marked on the graph. `make demo-canary` deploys one on
+the kind demo and touches it.
+
+`backend.anomalies.baselineHours` (default 24) and `backend.anomalies.minAttempts` (default 10)
+are the two values worth tuning. A longer baseline costs a longer query, once per request and once
+per minute. For the first day after an install the baseline is short and relationships that simply
+have not recurred yet show as new — see `limitations.md` §4.6 – §4.8.
+
 ### Prometheus and Grafana (optional)
 
 The port-forward above is the zero-dependency way to read the metrics, and it stays the default.
@@ -217,7 +251,9 @@ between components is TLS (mutual, where one side is ours), and the agent holds 
 instead of privilege.
 
 - **Sign-in on every path.** oauth2-proxy in the frontend pod; nginx asks it before every request.
-  A page without a session is sent to sign in, an API call gets `401`.
+  A page without a session is sent to sign in, an API call gets `401`. With `auth.cli.enabled`, an
+  ID token from the same provider is accepted as a bearer credential too
+  ([Reaching the API outside the UI](#reaching-the-api-outside-the-ui)).
 - **Mutual TLS inside the cluster.** Agent → backend and frontend → backend present client
   certificates from two different CAs, and each backend listener trusts only one of them. Backend →
   PostgreSQL is TLS with `verify-full`; PostgreSQL rejects any connection without TLS.
@@ -248,12 +284,184 @@ helm upgrade --install topology charts/topology-visualizer -n topology \
 everything (the application is read-only). Sessions last `auth.sessionHours` (8). Serve the UI
 over HTTPS: the session cookie is `Secure`, which a browser honours on `http://` only for localhost.
 
-The kind demo instead sets `auth.dex.enabled` — a bundled Dex with one user
-(`admin@topology.local`, password in the `topology-visualizer-auth` Secret). It is for the demo;
-see `limitations.md` §6.2.
+For a cluster with no provider of its own, the chart bundles two, never both at once:
+`auth.dex.enabled` — a bundled Dex with one user (`admin@topology.local`, password in the
+`topology-visualizer-auth` Secret), for trials; see `limitations.md` §6.2 — and
+`auth.keycloak.enabled`, a bundled Keycloak that brokers sign-in to Google, Microsoft Entra ID or
+another OIDC provider ([below](#the-bundled-keycloak-sign-in-with-google-entra-id-or-another-oidc-provider)).
+The kind demo uses Keycloak.
 
 `auth.enabled: false` turns sign-in off. The topology is then readable by anyone who reaches the
 frontend Service, and the install notes say so every time.
+
+### The bundled Keycloak: sign-in with Google, Entra ID or another OIDC provider
+
+[ADR-017](adr/ADR-017-keycloak-identity-broker.md). Keycloak is one issuer that the browser and the
+CLI both trust, and it *brokers* to upstream providers: people sign in with the Google, Entra ID or
+corporate account they already have. Nothing about oauth2-proxy, nginx or the backend changes; they
+see a Keycloak ID token either way.
+
+```bash
+make image-keycloak     # builds the optimized image and side-loads it into kind
+helm upgrade --install topology charts/topology-visualizer -n topology \
+  --set auth.externalUrl=https://topology.example.com \
+  --set auth.keycloak.enabled=true
+```
+
+`auth.keycloak.enabled` and `auth.dex.enabled` are mutually exclusive: the chart fails rendering
+when both are true. With neither, `auth.oidc.*` is required as before. `make image-keycloak` builds
+`keycloak/Dockerfile` — the upstream image pinned by digest, pre-built (`kc.sh build`) so that it
+runs with a read-only root filesystem — and `make demo-up` does it for you.
+
+```yaml
+auth:
+  keycloak:
+    enabled: false
+    image: {repository: topology-keycloak, tag: dev, pullPolicy: IfNotPresent}
+    demoUser: {enabled: true, email: admin@topology.local}   # password generated into <fullname>-auth, key demo-password
+    identityProviders:
+      google:    {enabled: false, clientId: "", clientSecret: {existingSecret: "", key: client-secret}, hostedDomain: ""}
+      microsoft: {enabled: false, tenantId: "", clientId: "", clientSecret: {existingSecret: "", key: client-secret}}
+      oidc: []   # each: {alias, displayName, issuer, authorizationUrl, tokenUrl, jwksUrl, clientId, clientSecret: {existingSecret, key}, scopes}
+```
+
+**The demo user.** With `demoUser.enabled` (the default), the realm has one local user,
+`admin@topology.local`, whose password is generated into the `<fullname>-auth` Secret under
+`demo-password` — the same Secret and key as Dex's:
+
+```bash
+kubectl -n topology get secret topology-visualizer-auth -o jsonpath='{.data.demo-password}' | base64 -d
+```
+
+Repeated wrong passwords lock it out for a while: five failures, then a wait that grows by 60 s per
+failure up to 15 minutes, never permanently. When people sign in only through upstream providers,
+turn the demo user off.
+
+**What it is and is not.**
+
+- **The realm is code.** It is rendered from values on every start, and Keycloak's state lives in
+  an `emptyDir`. A restart of the Keycloak pod — a rollout, a rescheduled pod —
+  signs everyone out, browser and CLI; brokered users are re-created at their next sign-in
+  (`limitations.md` §6.15).
+- **No admin console.** There is no admin account, and nginx returns `404` for `/keycloak/admin/`,
+  the `master` realm and everything else under `/keycloak/` that sign-in does not use (the account
+  console, dynamic client registration, the device and CIBA endpoints, SAML, token introspection).
+  Change configuration in values and run `helm upgrade`.
+- **Admission is oauth2-proxy's, as before.** `auth.oidc.allowedEmailDomains` applies to every
+  account, local or brokered. `auth.oidc.allowedGroups` is refused — the chart fails — because the
+  realm has no groups (`limitations.md` §6.18).
+- **Both clients require PKCE (S256)** and allow the authorisation-code flow only; the CLI's
+  device flow is off. ID tokens last one hour.
+- **Upstream providers are reached over the Internet** from the Keycloak pod. On an air-gapped
+  cluster only the demo user works (`limitations.md` §6.16).
+
+#### Upstream providers
+
+Each provider is enabled only when configured. Its client secret comes from a Secret you create;
+the chart passes it to Keycloak as an environment variable, so it never appears in a rendered
+manifest. The redirect URI to register with every provider is
+
+```
+<externalUrl>/keycloak/realms/topology/broker/<alias>/endpoint
+```
+
+where `<alias>` is `google`, `microsoft`, or the `alias` you give an `oidc` entry. Keycloak trusts
+the e-mail each provider returns as verified — oauth2-proxy refuses an unverified one — so that
+trust is bounded by the pinning described for each (`limitations.md` §6.17). After the upgrade,
+the sign-in page shows one button per provider.
+
+| Values key | Pinned to | E-mail taken from |
+|---|---|---|
+| `identityProviders.google` | optionally one Workspace domain (`hostedDomain`) | `email` |
+| `identityProviders.microsoft` | exactly one Entra tenant (`tenantId`) | `preferred_username` (the UPN) |
+| `identityProviders.oidc[]` | the given `issuer`, signatures checked against `jwksUrl` | `email` |
+
+**Google (Gmail or Workspace).**
+
+1. In the Google Cloud Console, open *APIs & Services → OAuth consent screen* and configure it
+   first: Google will not issue a client without one. An *Internal* audience limits sign-in to
+   your Workspace organisation; *External* admits any Google account, subject to the values below.
+2. *APIs & Services → Credentials → Create credentials → OAuth client ID*, application type
+   **Web application**.
+3. Under *Authorised redirect URIs*, add
+   `<externalUrl>/keycloak/realms/topology/broker/google/endpoint` — on kind,
+   `http://localhost:8080/keycloak/realms/topology/broker/google/endpoint`. Google accepts `http`
+   only for `localhost`; anywhere else the URI must be `https`.
+4. Copy the client ID and client secret, then:
+
+```bash
+kubectl -n topology create secret generic topology-idp-google --from-literal=client-secret='…'
+helm upgrade topology charts/topology-visualizer -n topology --reuse-values \
+  --set auth.keycloak.identityProviders.google.enabled=true \
+  --set auth.keycloak.identityProviders.google.clientId='…apps.googleusercontent.com' \
+  --set auth.keycloak.identityProviders.google.clientSecret.existingSecret=topology-idp-google \
+  --set auth.keycloak.identityProviders.google.hostedDomain=example.com
+```
+
+`hostedDomain` restricts sign-in to accounts of one Workspace domain: Google returns it as the
+`hd` claim and Keycloak checks it. Leave it empty to admit any Google account, Gmail included —
+then `auth.oidc.allowedEmailDomains` is the only filter, so set it.
+
+**Microsoft Entra ID.**
+
+1. In the Entra admin center (or the Azure portal), *App registrations → New registration*.
+2. *Supported account types*: **Accounts in this organizational directory only (single tenant)**.
+3. *Redirect URI*: platform **Web**, `<externalUrl>/keycloak/realms/topology/broker/microsoft/endpoint`.
+4. *Certificates & secrets → New client secret*; copy its **Value** (shown once), not its ID.
+5. From *Overview*, copy the **Directory (tenant) ID** and the **Application (client) ID**.
+
+```bash
+kubectl -n topology create secret generic topology-idp-microsoft --from-literal=client-secret='…'
+helm upgrade topology charts/topology-visualizer -n topology --reuse-values \
+  --set auth.keycloak.identityProviders.microsoft.enabled=true \
+  --set auth.keycloak.identityProviders.microsoft.tenantId='<directory-tenant-id>' \
+  --set auth.keycloak.identityProviders.microsoft.clientId='<application-client-id>' \
+  --set auth.keycloak.identityProviders.microsoft.clientSecret.existingSecret=topology-idp-microsoft
+```
+
+Two things differ from what you might expect:
+
+- **One tenant, always.** `tenantId` is required and must be the Directory (tenant) ID, a GUID —
+  not a domain, which never matches the issuer Entra's tokens carry, and not `common`,
+  `organizations` or `consumers`, which would admit other tenants; the schema refuses all of
+  these. Keycloak checks the issuer `https://login.microsoftonline.com/<tenant>/v2.0` on
+  every token, so neither another organisation's accounts nor personal Microsoft accounts can sign
+  in. This is also why the chart uses Keycloak's generic OIDC provider rather than its built-in
+  `microsoft` one, which signs in through the multi-tenant `common` endpoint.
+- **The e-mail is the user principal name.** It is taken from `preferred_username` — the UPN, in a
+  domain the tenant has verified — not from the `email` claim, which Entra lets users and guests
+  set to an address they do not own (the "nOAuth" problem). A user whose UPN differs from their
+  mail address signs in as the UPN, so `allowedEmailDomains` must list the UPN's domain.
+
+**Any other OIDC provider** — Okta, Auth0, ADFS, another Keycloak, a corporate SSO. Register a
+confidential web client with the redirect URI above (`<alias>` being the alias you choose), create
+the Secret, and add an entry to `oidc`:
+
+```yaml
+auth:
+  keycloak:
+    identityProviders:
+      oidc:
+        - alias: corp                 # also the last-but-one segment of the redirect URI
+          displayName: Corporate SSO  # the button label
+          issuer: https://sso.example.com
+          authorizationUrl: https://sso.example.com/oauth2/authorize
+          tokenUrl: https://sso.example.com/oauth2/token
+          jwksUrl: https://sso.example.com/oauth2/keys
+          clientId: topology
+          clientSecret: {existingSecret: topology-idp-corp, key: client-secret}
+          scopes: openid email profile
+```
+
+The endpoints are the ones in the provider's `/.well-known/openid-configuration`. Tokens must come
+from `issuer` and verify against `jwksUrl`; the e-mail is the `email` claim, trusted as verified.
+Add only a provider that verifies the e-mail addresses it issues, and restrict
+`allowedEmailDomains` accordingly.
+
+**The CLI.** With `auth.cli.enabled`, the realm also registers the public `topology-cli` client.
+`kubectl topology login` with no `--issuer` probes `<server>/keycloak/realms/topology`, then
+`<server>/dex`, and uses the first whose discovery document is valid; the choice is saved with the
+credential. The user signs in on the same Keycloak page, with any of its buttons.
 
 ### Certificates
 
@@ -262,7 +470,7 @@ upgrades. The CA private keys are never stored. To rotate — before the 365-day
 suspected leak:
 
 ```bash
-kubectl -n topology delete secret topology-visualizer-tls-{server,postgresql,agent,frontend,client-cas} topology-dex-tls
+kubectl -n topology delete secret topology-visualizer-tls-{server,postgresql,agent,frontend,keycloak,client-cas} topology-dex-tls
 helm upgrade topology charts/topology-visualizer -n topology --reuse-values
 ```
 
@@ -272,15 +480,131 @@ instead, set `tls.generate: false` and create Secrets with the same names and ke
 
 ### Reaching the API outside the UI
 
-The API answers only a client presenting the frontend's certificate, so reading it needs Secret
-access in the namespace — the same boundary as the rest of the release:
+People read the topology from a terminal with `kubectl topology`, a kubectl plugin in `cli/`
+([ADR-015](adr/ADR-015-cli-and-mcp-clients.md)). It signs in through the same identity provider
+as the browser and sends the resulting ID token as `Authorization: Bearer`. The request takes the
+browser's path: nginx, then oauth2-proxy, which verifies the token and applies the same
+`allowedEmailDomains` and `allowedGroups`, then mTLS to the backend. nginx removes the
+`Authorization` header before the backend, so the backend never sees a token. The request log
+records the user's e-mail as it does for the browser (`limitations.md` §6.7). The CLI runs on the
+user's machine. It is not deployed in the cluster and never talks to the Kubernetes API.
+
+It is off until the chart allows it:
+
+```bash
+helm upgrade topology charts/topology-visualizer -n topology --reuse-values \
+  --set auth.cli.enabled=true
+```
+
+| value | default | |
+|---|---|---|
+| `auth.cli.enabled` | `false` (`true` in the kind values) | oauth2-proxy accepts bearer ID tokens (`--skip-jwt-bearer-tokens`, `--oidc-extra-audience`). Ignored when `auth.enabled` is false. |
+| `auth.cli.clientId` | `""` | The CLI's public client. With the bundled Dex, empty means `topology-cli`, which the chart registers. **Required** with an external provider; may not be `topology` with the bundled Dex. |
+| `auth.cli.refreshHours` | `8` | Bundled Dex or Keycloak only: the refresh-token lifetime, i.e. how long a CLI stays signed in without opening the browser again (1 – 168). |
+
+Then, on the user's machine, with the same port-forward or URL the browser uses:
+
+```bash
+make cli                                   # builds bin/kubectl-topology; put it on PATH
+kubectl topology login --server https://topology.example.com
+kubectl topology deps backend -n shop --since 1h
+kubectl topology status
+kubectl topology logout --server https://topology.example.com
+```
+
+`--server` must be `auth.externalUrl` exactly: the issuer the tokens carry is built from it, so on
+kind it is `http://localhost:8080` (the default), not `127.0.0.1`. `login` opens the browser,
+listens on the first free of `127.0.0.1:38085`, `38086` and `38087` for the callback, and gives up
+after five minutes; it prints the URL when it cannot open a browser. The credentials are stored in
+`~/.config/kubectl-topology/credentials.json` (`~/Library/Application Support/…` on macOS), mode
+`0600`. The CLI refuses a file or directory that other users can read and prints the `chmod` that
+fixes it. With sign-in off (`auth.enabled: false`), the commands need no login, and `login` says
+the server does not require sign-in.
+
+Exit codes, for scripts: `0` success, including an empty result; `1` usage error or an ambiguous
+name; `2` not signed in, or the token was refused; `3` another API error; `4` the server or issuer
+could not be reached.
+
+The CLI sends a token, code or refresh token over `http://` only to a loopback host, which covers
+a port-forward. A plain-HTTP ingress or issuer is refused, so serve both over HTTPS. `--ca-file`
+adds a private CA for the server and the issuer. No flag turns TLS verification off.
+
+**An external provider.** Register a second client next to the browser one: public (also called
+"native" or "no secret"), authorisation-code flow with PKCE, redirect URIs exactly
+`http://127.0.0.1:38085/callback`, `http://127.0.0.1:38086/callback` and
+`http://127.0.0.1:38087/callback` (or the provider's rule for any loopback port). Set its ID as
+`auth.cli.clientId`, and pass the issuer and client ID once at login; they are saved with the
+credential:
+
+```bash
+helm upgrade topology charts/topology-visualizer -n topology --reuse-values \
+  --set auth.cli.enabled=true --set auth.cli.clientId=topology-cli
+kubectl topology login --server https://topology.example.com \
+  --issuer https://login.example.com --client-id topology-cli
+```
+
+The CLI requests `openid email profile offline_access`, plus `groups` when the provider's discovery
+document lists it. If admission depends on a claim that comes from another scope (whatever
+`auth.oidc.scopes` requests for the browser), pass `--scopes` with that scope included. A token
+without an e-mail, or without the groups `allowedGroups` needs, is refused with `401` like a
+browser sign-in would be. oauth2-proxy accepts ID tokens for exactly two audiences: the browser
+client and `auth.cli.clientId`. A token the same provider issued to any other client is refused.
+
+**Lifetimes.** With the bundled Dex and `auth.cli.enabled`, ID tokens last one hour (Dex's default
+is 24 hours) and the CLI refreshes them on its own. Refresh tokens last `auth.cli.refreshHours`,
+and expire sooner after eight hours unused. The one-hour lifetime applies to browser sign-ins too,
+but it does not shorten a browser session, which lasts `auth.sessionHours` as before. With an
+external provider the lifetimes are the provider's: keep ID tokens short, because they are what a
+stolen token is good for. The bundled Keycloak sets the same bounds: one-hour ID tokens, and a
+session — which every refresh token belongs to — that ends after eight hours unused or
+`auth.cli.refreshHours` in all. The CLI's `offline_access` request is granted — Keycloak refuses a
+request naming a scope the client lacks, so the CLI's client has that one scope — but the realm
+bounds offline sessions by the same eight hours unused and `auth.cli.refreshHours` in all, instead
+of Keycloak's default 30 days.
+
+**No revocation, and cutting a user off.** `kubectl topology logout` deletes the local credential
+and nothing else (`--all` deletes every server's credential). Neither Dex nor oauth2-proxy can
+revoke an ID token already issued, so a copied token stays valid until it expires: at most one hour
+with the bundled Dex (`limitations.md` §6.9). To cut a user off sooner, remove the user at the
+provider. With the bundled Dex, restart it: refresh tokens live only in its memory, so every CLI
+must sign in again at its next refresh. An ID token issued before the restart is still accepted
+until its `exp` (measured, §6.10), so a restart cuts a user off within the hour, not at once.
+
+```bash
+kubectl -n topology rollout restart deployment/topology-dex
+```
+
+The bundled Keycloak is cut off the same way, with the same caveat for issued ID tokens: its
+sessions live only in the pod, so a restart ends every one
+(`kubectl -n topology rollout restart deployment/topology-visualizer-keycloak`). A `helm upgrade`
+that changes the realm restarts it too, with the same effect: the pod rolls when the rendered realm
+changes.
+
+**The MCP server.** `kubectl topology mcp` serves five read-only tools (`list_namespaces`,
+`get_topology`, `get_dependencies`, `diff_topology`, `get_edge`) over stdio to an AI agent on the
+user's machine. It reads the stored credential on every call and never opens a browser itself. When
+it reports that the user is not signed in, the user runs `kubectl topology login` once. Before you
+enable `auth.cli`, know two things and tell your users:
+
+- **The agent can read everything the user can**: which workloads talk to which, namespaces, ports,
+  and connection and failure counts. An agent backed by a hosted model may send all of it to the
+  model's provider. That map is the sensitive artefact ADR-014 protects.
+- **Tool output is cluster data, not instructions.** Workload and namespace names are chosen by
+  whoever can create workloads, and reach the agent's context verbatim (`limitations.md` §6.11).
+  Every tool description says so; an agent with write access to the user's code and shell should
+  not act on text that appears in a name.
+
+**Operators with Secret access** can still read the API directly as the frontend, which needs no
+sign-in and no `auth.cli`:
 
 ```bash
 make api-get API_PATH='/api/v1/graph?window=5m'   # the kind demo
 ```
 
-`scripts/lib/mtls.sh` is what that uses: it fetches the certificate from the Secret into a private
-temporary directory, port-forwards the API port, and verifies the backend by its Service name.
+`scripts/lib/mtls.sh` is what that uses: it fetches the frontend's client certificate from the
+Secret into a private temporary directory, port-forwards the API port, and verifies the backend by
+its Service name. That is one shared identity with no user in the log, which is why it is not the
+route for people.
 
 ### Checking it
 

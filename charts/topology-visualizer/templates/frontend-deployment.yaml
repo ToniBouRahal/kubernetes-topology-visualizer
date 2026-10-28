@@ -63,6 +63,13 @@ spec:
               value: {{ printf "topology-dex.%s.svc.cluster.local" .Release.Namespace | quote }}
             - name: DEX_PORT
               value: "5554"
+            # The bundled Keycloak (ADR-017 D-17.6), served under /keycloak behind an allowlist.
+            - name: KEYCLOAK_MODE
+              value: {{ ternary "on" "off" (and .Values.auth.enabled .Values.auth.keycloak.enabled) | quote }}
+            - name: KEYCLOAK_HOST
+              value: {{ printf "%s.%s.svc.cluster.local" (include "topology.keycloakService" .) .Release.Namespace | quote }}
+            - name: KEYCLOAK_PORT
+              value: "8443"
           readinessProbe:
             httpGet:
               path: /
@@ -92,6 +99,9 @@ spec:
         {{- if .Values.auth.enabled }}
         {{- $externalUrl := trimSuffix "/" .Values.auth.externalUrl }}
         {{- $dexInCluster := printf "https://topology-dex.%s.svc.cluster.local:5554/dex" .Release.Namespace }}
+        {{- $kcPath := printf "/keycloak/realms/%s" (include "topology.keycloakRealm" .) }}
+        {{- $kcInCluster := printf "https://%s.%s.svc.cluster.local:8443%s" (include "topology.keycloakService" .) .Release.Namespace $kcPath }}
+        {{- $bundled := or .Values.auth.dex.enabled .Values.auth.keycloak.enabled }}
         # oauth2-proxy (ADR-014 D-14.6), on loopback only: nginx is its one client, so nothing else
         # in the cluster can reach it. Auth-only mode (static upstream): nginx serves the app.
         - name: oauth2-proxy
@@ -123,6 +133,15 @@ spec:
             {{- range .Values.auth.oidc.allowedGroups }}
             - --allowed-group={{ . }}
             {{- end }}
+            {{- if .Values.auth.cli.enabled }}
+            # The CLI's ID token as `Authorization: Bearer` (ADR-015 D-15.6), verified by the same
+            # provider settings as a sign-in and admitted by the same domain and group rules. The
+            # audiences are this proxy's client-id plus the CLI's. Never pass a token on: no
+            # --pass-authorization-header, --set-authorization-header or --pass-access-token,
+            # so the browser never holds one, and nginx strips the header before the backend.
+            - --skip-jwt-bearer-tokens=true
+            - --oidc-extra-audience={{ include "topology.cliClientId" . }}
+            {{- end }}
             {{- if .Values.auth.dex.enabled }}
             # The bundled Dex has two addresses: the browser reaches it through this pod at
             # externalUrl/dex, oauth2-proxy reaches it in-cluster over TLS. Discovery would hand
@@ -136,6 +155,21 @@ spec:
             - --redeem-url={{ $dexInCluster }}/token
             - --oidc-jwks-url={{ $dexInCluster }}/keys
             - --provider-ca-file=/etc/oauth2-proxy/tls/ca.crt
+            {{- else if .Values.auth.keycloak.enabled }}
+            # The bundled Keycloak, split the same way (ADR-017 D-17.6): the browser-facing issuer
+            # its tokens carry and its sign-in page; in-cluster token and key endpoints over TLS.
+            - --client-id=topology
+            - --scope=openid email profile
+            - --oidc-issuer-url={{ $externalUrl }}{{ $kcPath }}
+            - --skip-oidc-discovery=true
+            - --login-url={{ $externalUrl }}{{ $kcPath }}/protocol/openid-connect/auth
+            - --redeem-url={{ $kcInCluster }}/protocol/openid-connect/token
+            - --oidc-jwks-url={{ $kcInCluster }}/protocol/openid-connect/certs
+            - --provider-ca-file=/etc/oauth2-proxy/tls/ca.crt
+            # Signing out must end Keycloak's own session too (D-17.10). Otherwise its SSO cookie
+            # answers the next sign-in redirect at once and /oauth2/sign_out signs you straight back
+            # in — measured on kind. Called server-side with the session's ID token.
+            - --backend-logout-url={{ $kcInCluster }}/protocol/openid-connect/logout?id_token_hint={id_token}
             {{- else }}
             - --client-id={{ .Values.auth.oidc.clientId }}
             - --scope={{ .Values.auth.oidc.scopes }}
@@ -150,7 +184,7 @@ spec:
             - name: OAUTH2_PROXY_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  {{- if .Values.auth.dex.enabled }}
+                  {{- if $bundled }}
                   name: {{ include "topology.fullname" . }}-auth
                   key: client-secret
                   {{- else }}
@@ -169,16 +203,16 @@ spec:
               type: RuntimeDefault
           resources:
             {{- toYaml .Values.auth.proxy.resources | nindent 12 }}
-          {{- if .Values.auth.dex.enabled }}
+          {{- if $bundled }}
           volumeMounts:
-            # The server CA only, to verify the bundled Dex.
+            # The server CA only, to verify the bundled Dex or Keycloak.
             - name: tls-server-ca
               mountPath: /etc/oauth2-proxy/tls
               readOnly: true
           {{- end }}
         {{- end }}
       volumes:
-        {{- if and .Values.auth.enabled .Values.auth.dex.enabled }}
+        {{- if and .Values.auth.enabled (or .Values.auth.dex.enabled .Values.auth.keycloak.enabled) }}
         - name: tls-server-ca
           secret:
             secretName: {{ include "topology.fullname" . }}-tls-frontend

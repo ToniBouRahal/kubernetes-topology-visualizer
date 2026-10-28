@@ -1,0 +1,19 @@
+%% Runtime topology observed from 2026-08-10T11:00:00Z to 2026-08-10T12:00:00Z
+%% Edge labels count TCP connections, not requests.
+flowchart LR
+  subgraph ns1["data"]
+    n2["redis<br/>StatefulSet"]
+  end
+  subgraph ns2["demo"]
+    n3["backend<br/>Deployment"]
+    n4["client<br/>Deployment"]
+    n5["legacy-admin<br/>Deployment"]
+    n6["evil#quot;]; click n1 #quot;javascript:alert(1)<br/>Pod"]
+  end
+  n1(["EXTERNAL"])
+  n3 -->|"TCP:443 · 4"| n1
+  n3 -->|"TCP:6379 · 143"| n2
+  n4 -->|"TCP:8080 · 30 · 2 failed"| n3
+  n6 -.->|"TCP:22 · 0 · 5 failed"| n5
+  classDef canary fill:#fde2e2,stroke:#c62828,stroke-width:3px
+  class n5 canary

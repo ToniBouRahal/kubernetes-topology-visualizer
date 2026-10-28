@@ -31,6 +31,10 @@ kubectl -n topology get secret topology-visualizer-auth -o jsonpath='{.data.demo
 
 Everything is behind that sign-in, all traffic between components is mutual TLS, and the eBPF agent
 runs on two capabilities rather than `privileged` — see [ADR-014](docs/adr/ADR-014-security-hardening.md).
+The sign-in page is a bundled Keycloak, which can broker to Google, Microsoft Entra ID or any other
+OIDC provider so people use the accounts they already have — see
+[the operator guide](docs/operator-guide.md#the-bundled-keycloak-sign-in-with-google-entra-id-or-another-oidc-provider)
+and [ADR-017](docs/adr/ADR-017-keycloak-identity-broker.md).
 
 [`docs/demo-script.md`](docs/demo-script.md) is a fifteen-minute walkthrough.
 
@@ -54,6 +58,54 @@ view. Grouped edges sum connection counts by direction, protocol, and destinatio
 represent traffic within a collapsed namespace. External nodes stay separate. These views use only
 the API's returned observation window and filters, and the display cap still applies after grouping
 or focusing. Comparison mode retains its existing workload view.
+
+## From a terminal or an AI agent
+
+`kubectl topology` asks the same questions without a browser, through the same sign-in
+([ADR-015](docs/adr/ADR-015-cli-and-mcp-clients.md)). The kind demo allows it; elsewhere it needs
+`auth.cli.enabled` (operator guide). With the port-forward above running:
+
+```bash
+make cli                                    # builds bin/kubectl-topology
+export PATH="$PWD/bin:$PATH"                # kubectl finds plugins on PATH
+kubectl topology login                      # opens the browser; sign in as above
+kubectl topology deps backend --kind Deployment --since 15m
+kubectl topology diff --from 10m --to now   # the last 5 minutes against the 5 before
+```
+
+```
+Deployment/backend in namespace demo
+window 2026-10-26T09:45:00Z to 2026-10-26T10:00:00Z
+Deployment/backend   →  StatefulSet/redis   TCP:6379  (344)
+Deployment/backend   →  EXTERNAL            TCP:80    (57)
+Deployment/frontend  →  Deployment/backend  TCP:8080  (586)
+```
+
+`-o json` prints the API response instead, and `kubectl topology --help` lists the other commands.
+`kubectl topology anomalies --since 15m` lists rule-based findings, and `kubectl topology graph -o
+mermaid` writes the graph as a Mermaid diagram — the same text the UI's **Export diagram** button
+downloads. The same binary is an MCP server for an AI coding agent
+on your machine, with five read-only tools. For Claude Code:
+
+```bash
+claude mcp add topology -- kubectl-topology mcp
+```
+
+Other agents take the equivalent `{"command": "kubectl-topology", "args": ["mcp"]}`. **The agent
+can read everything you can**, and may pass it to its model provider. **What the tools return is
+data from the cluster, not instructions**: workload names are chosen by whoever can create
+workloads. See [`docs/limitations.md`](docs/limitations.md) §6.9 – §6.14.
+
+## Anomalies, canaries and export
+
+The backend compares the selected window with the 24 hours before it and lists what stands out:
+a relationship never seen before, new traffic leaving the cluster, a jump in failed connections,
+or TCP setup suddenly much slower. Each is a fixed threshold, and each finding says the numbers it
+compared. A **canary** is a decoy workload named in `backend.canaries`; any connection to it is a
+finding the moment it arrives (`make demo-canary` shows one). Findings appear in the UI, in the
+backend log and as a Prometheus gauge for your own alerting — nothing is sent outside the cluster.
+**Export diagram** saves the graph on screen as Mermaid text, which renders in GitHub and most
+documentation tools. See [ADR-016](docs/adr/ADR-016-anomalies-canaries-diagram-export.md).
 
 ## How it works
 
@@ -120,6 +172,7 @@ Reproduce with `make experiments`. Raw results and method in [`docs/evaluation/`
 | `agent/` | Go + eBPF DaemonSet: capture, identity resolution, aggregation, delivery |
 | `backend/` | FastAPI ingest, graph and diff API over PostgreSQL |
 | `frontend/` | React topology UI |
+| `cli/` | Go `kubectl topology` plugin and its MCP server, run on the user's machine |
 | `charts/` | Helm chart |
 | `contracts/` | Normative identity rules and the OpenAPI schema both sides are generated from |
 | `demo/` | Uninstrumented demo workloads and the controlled change |

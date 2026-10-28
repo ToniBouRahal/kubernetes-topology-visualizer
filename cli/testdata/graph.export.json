@@ -1,0 +1,151 @@
+{
+  "generated_at": "2026-08-10T12:01:00Z",
+  "window": {
+    "start": "2026-08-10T11:00:00Z",
+    "end": "2026-08-10T12:00:00Z"
+  },
+  "filters": {
+    "namespaces": [],
+    "kind": null,
+    "query": null,
+    "include_external": true,
+    "include_unresolved": false
+  },
+  "nodes": [
+    {
+      "id": "external:EXTERNAL",
+      "kind": "External",
+      "namespace": null,
+      "name": "EXTERNAL",
+      "label": "EXTERNAL",
+      "first_seen": "2026-08-10T11:00:00Z",
+      "last_seen": "2026-08-10T11:59:00Z",
+      "attributes": {},
+      "canary": false
+    },
+    {
+      "id": "k8s:kind-topology:data:StatefulSet:redis",
+      "kind": "StatefulSet",
+      "namespace": "data",
+      "name": "redis",
+      "label": "redis",
+      "first_seen": "2026-08-10T11:00:00Z",
+      "last_seen": "2026-08-10T11:59:00Z",
+      "attributes": {},
+      "canary": false
+    },
+    {
+      "id": "k8s:kind-topology:demo:Deployment:backend",
+      "kind": "Deployment",
+      "namespace": "demo",
+      "name": "backend",
+      "label": "backend",
+      "first_seen": "2026-08-10T11:00:00Z",
+      "last_seen": "2026-08-10T11:59:00Z",
+      "attributes": {},
+      "canary": false
+    },
+    {
+      "id": "k8s:kind-topology:demo:Deployment:client",
+      "kind": "Deployment",
+      "namespace": "demo",
+      "name": "client",
+      "label": "client",
+      "first_seen": "2026-08-10T11:00:00Z",
+      "last_seen": "2026-08-10T11:59:00Z",
+      "attributes": {},
+      "canary": false
+    },
+    {
+      "id": "k8s:kind-topology:demo:Deployment:legacy-admin",
+      "kind": "Deployment",
+      "namespace": "demo",
+      "name": "legacy-admin",
+      "label": "legacy-admin",
+      "first_seen": "2026-08-10T11:00:00Z",
+      "last_seen": "2026-08-10T11:59:00Z",
+      "attributes": {},
+      "canary": true
+    },
+    {
+      "id": "k8s:kind-topology:demo:Pod:evil",
+      "kind": "Pod",
+      "namespace": "demo",
+      "name": "evil",
+      "label": "evil\"]; click n1 \"javascript:alert(1)",
+      "first_seen": "2026-08-10T11:00:00Z",
+      "last_seen": "2026-08-10T11:59:00Z",
+      "attributes": {},
+      "canary": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "k8s:kind-topology:demo:Deployment:backend|external:EXTERNAL|TCP|443",
+      "source_id": "k8s:kind-topology:demo:Deployment:backend",
+      "target_id": "external:EXTERNAL",
+      "protocol": "TCP",
+      "destination_port": 443,
+      "connection_count": 4,
+      "failed_connection_count": 0,
+      "connect_latency_count": 0,
+      "connect_latency_sum_us": 0,
+      "bytes_sent": null,
+      "bytes_received": null,
+      "first_seen": "2026-08-10T11:00:00Z",
+      "last_seen": "2026-08-10T11:59:00Z"
+    },
+    {
+      "id": "k8s:kind-topology:demo:Deployment:backend|k8s:kind-topology:data:StatefulSet:redis|TCP|6379",
+      "source_id": "k8s:kind-topology:demo:Deployment:backend",
+      "target_id": "k8s:kind-topology:data:StatefulSet:redis",
+      "protocol": "TCP",
+      "destination_port": 6379,
+      "connection_count": 143,
+      "failed_connection_count": 0,
+      "connect_latency_count": 0,
+      "connect_latency_sum_us": 0,
+      "bytes_sent": null,
+      "bytes_received": null,
+      "first_seen": "2026-08-10T11:00:00Z",
+      "last_seen": "2026-08-10T11:59:00Z"
+    },
+    {
+      "id": "k8s:kind-topology:demo:Deployment:client|k8s:kind-topology:demo:Deployment:backend|TCP|8080",
+      "source_id": "k8s:kind-topology:demo:Deployment:client",
+      "target_id": "k8s:kind-topology:demo:Deployment:backend",
+      "protocol": "TCP",
+      "destination_port": 8080,
+      "connection_count": 30,
+      "failed_connection_count": 2,
+      "connect_latency_count": 0,
+      "connect_latency_sum_us": 0,
+      "bytes_sent": null,
+      "bytes_received": null,
+      "first_seen": "2026-08-10T11:00:00Z",
+      "last_seen": "2026-08-10T11:59:00Z"
+    },
+    {
+      "id": "k8s:kind-topology:demo:Pod:evil|k8s:kind-topology:demo:Deployment:legacy-admin|TCP|22",
+      "source_id": "k8s:kind-topology:demo:Pod:evil",
+      "target_id": "k8s:kind-topology:demo:Deployment:legacy-admin",
+      "protocol": "TCP",
+      "destination_port": 22,
+      "connection_count": 0,
+      "failed_connection_count": 5,
+      "connect_latency_count": 0,
+      "connect_latency_sum_us": 0,
+      "bytes_sent": null,
+      "bytes_received": null,
+      "first_seen": "2026-08-10T11:00:00Z",
+      "last_seen": "2026-08-10T11:59:00Z"
+    }
+  ],
+  "summary": {
+    "node_count": 6,
+    "edge_count": 4,
+    "total_connections": 177,
+    "truncated": false,
+    "truncation_reason": null
+  }
+}

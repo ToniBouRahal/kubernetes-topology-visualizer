@@ -1,0 +1,123 @@
+{
+  "generated_at": "2026-08-10T12:00:05Z",
+  "window": {
+    "start": "2026-08-10T11:00:00Z",
+    "end": "2026-08-10T12:00:00Z"
+  },
+  "baseline": {
+    "start": "2026-08-09T11:00:00Z",
+    "end": "2026-08-10T11:00:00Z"
+  },
+  "filters": {
+    "namespaces": [],
+    "kind": null,
+    "query": null,
+    "include_external": true,
+    "include_unresolved": false
+  },
+  "anomalies": [
+    {
+      "id": "k8s:kind-topology:demo:Deployment:backend|k8s:kind-topology:demo:Deployment:legacy-admin|TCP|22|CANARY_CONTACT",
+      "edge_id": "k8s:kind-topology:demo:Deployment:backend|k8s:kind-topology:demo:Deployment:legacy-admin|TCP|22",
+      "type": "CANARY_CONTACT",
+      "severity": "critical",
+      "source_id": "k8s:kind-topology:demo:Deployment:backend",
+      "target_id": "k8s:kind-topology:demo:Deployment:legacy-admin",
+      "protocol": "TCP",
+      "destination_port": 22,
+      "current_connection_count": 3,
+      "current_failed_connection_count": 0,
+      "baseline_connection_count": 0,
+      "baseline_failed_connection_count": 0,
+      "current_mean_setup_us": null,
+      "baseline_mean_setup_us": null,
+      "reason": "3 connection attempt(s) to a canary workload; nothing legitimate connects to one"
+    },
+    {
+      "id": "k8s:kind-topology:demo:Deployment:backend|k8s:kind-topology:demo:Deployment:legacy-admin|TCP|22|NEW_EDGE",
+      "edge_id": "k8s:kind-topology:demo:Deployment:backend|k8s:kind-topology:demo:Deployment:legacy-admin|TCP|22",
+      "type": "NEW_EDGE",
+      "severity": "warning",
+      "source_id": "k8s:kind-topology:demo:Deployment:backend",
+      "target_id": "k8s:kind-topology:demo:Deployment:legacy-admin",
+      "protocol": "TCP",
+      "destination_port": 22,
+      "current_connection_count": 3,
+      "current_failed_connection_count": 0,
+      "baseline_connection_count": 0,
+      "baseline_failed_connection_count": 0,
+      "current_mean_setup_us": null,
+      "baseline_mean_setup_us": null,
+      "reason": "not observed in the previous 24 h"
+    },
+    {
+      "id": "k8s:kind-topology:demo:Deployment:reporter|k8s:kind-topology:demo:Deployment:payment|TCP|6380|NEW_EDGE",
+      "edge_id": "k8s:kind-topology:demo:Deployment:reporter|k8s:kind-topology:demo:Deployment:payment|TCP|6380",
+      "type": "NEW_EDGE",
+      "severity": "warning",
+      "source_id": "k8s:kind-topology:demo:Deployment:reporter",
+      "target_id": "k8s:kind-topology:demo:Deployment:payment",
+      "protocol": "TCP",
+      "destination_port": 6380,
+      "current_connection_count": 443,
+      "current_failed_connection_count": 0,
+      "baseline_connection_count": 0,
+      "baseline_failed_connection_count": 0,
+      "current_mean_setup_us": null,
+      "baseline_mean_setup_us": null,
+      "reason": "not observed in the previous 24 h"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "k8s:kind-topology:demo:Deployment:backend",
+      "kind": "Deployment",
+      "namespace": "demo",
+      "name": "backend",
+      "label": "backend",
+      "first_seen": "2026-08-10T11:40:00Z",
+      "last_seen": "2026-08-10T11:58:00Z",
+      "attributes": {},
+      "canary": false
+    },
+    {
+      "id": "k8s:kind-topology:demo:Deployment:legacy-admin",
+      "kind": "Deployment",
+      "namespace": "demo",
+      "name": "legacy-admin",
+      "label": "legacy-admin",
+      "first_seen": "2026-08-10T11:40:00Z",
+      "last_seen": "2026-08-10T11:58:00Z",
+      "attributes": {},
+      "canary": true
+    },
+    {
+      "id": "k8s:kind-topology:demo:Deployment:payment",
+      "kind": "Deployment",
+      "namespace": "demo",
+      "name": "payment",
+      "label": "payment",
+      "first_seen": "2026-08-10T11:40:00Z",
+      "last_seen": "2026-08-10T11:58:00Z",
+      "attributes": {},
+      "canary": false
+    },
+    {
+      "id": "k8s:kind-topology:demo:Deployment:reporter",
+      "kind": "Deployment",
+      "namespace": "demo",
+      "name": "reporter",
+      "label": "reporter",
+      "first_seen": "2026-08-10T11:40:00Z",
+      "last_seen": "2026-08-10T11:58:00Z",
+      "attributes": {},
+      "canary": false
+    }
+  ],
+  "summary": {
+    "critical_count": 1,
+    "warning_count": 2,
+    "baseline_observed": true,
+    "truncated": false
+  }
+}

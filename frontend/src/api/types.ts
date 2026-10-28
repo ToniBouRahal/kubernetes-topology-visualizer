@@ -24,6 +24,10 @@ export type DiffEdge = Schemas["DiffEdge"];
 export type DiffSummary = Schemas["DiffSummary"];
 export type DiffClassification = DiffEdge["classification"];
 export type ErrorResponse = Schemas["ErrorResponse"];
+export type AnomalyResponse = Schemas["AnomalyResponse"];
+export type Anomaly = Schemas["Anomaly"];
+export type AnomalySummary = Schemas["AnomalySummary"];
+export type AnomalyType = Anomaly["type"];
 
 /** The six workload kinds plus the external node's presentation kind. */
 export type NodeKind = GraphNode["kind"];

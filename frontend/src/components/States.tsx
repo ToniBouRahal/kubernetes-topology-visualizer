@@ -92,3 +92,17 @@ export function TruncationBanner({ reason }: { reason: string }) {
     </div>
   );
 }
+
+/**
+ * A canary was reached (ADR-016 D-16.4). The one finding that needs no baseline and no judgement:
+ * nothing legitimate connects to a canary, so it is stated above the graph, not only in the list.
+ */
+export function CanaryBanner({ contacts }: { contacts: Array<[string, string]> }) {
+  return (
+    <div className="banner banner--error" role="alert">
+      <span className="banner__text">
+        Canary contacted: {contacts.map(([source, target]) => `${source} → ${target}`).join("; ")}
+      </span>
+    </div>
+  );
+}

@@ -20,6 +20,10 @@ backend:
     tag: dev
     pullPolicy: Never
   corsAllowedOrigins: "http://localhost:5173,http://localhost:8080"
+  # The decoy `make demo-canary` deploys (demo/demo-canary.yaml, ADR-016). Named here from the
+  # start, so the canary is armed before anything can touch it.
+  canaries:
+    - demo/legacy-admin
   resources:
     requests:
       cpu: 50m
@@ -54,10 +58,19 @@ networkPolicy:
   # verified for real on a Calico cluster (kind/networkpolicy-cluster.yaml) — see P5-K9.
   enabled: false
 
-# Sign-in for the demo (ADR-014 D-14.7): the bundled Dex, reached through the same port-forward
-# as the UI. The password is generated at install; `make demo-up` prints how to read it.
+# Sign-in for the demo (ADR-017): the bundled Keycloak, reached through the same port-forward as
+# the UI. The demo user's password is generated at install; `make demo-up` prints how to read it.
+# Upstream providers (Google, Entra ID) need real app registrations, so none is enabled here;
+# docs/operator-guide.md shows how. Dex (ADR-014 D-14.7) remains: swap the two flags to use it.
 auth:
   enabled: true
   externalUrl: http://localhost:8080
   dex:
+    enabled: false
+  keycloak:
+    enabled: true
+    image:
+      pullPolicy: Never    # side-loaded by `make images`
+  # `kubectl topology login` through the same port-forward (ADR-015 D-15.8).
+  cli:
     enabled: true

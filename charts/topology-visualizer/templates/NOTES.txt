@@ -22,7 +22,15 @@ Cluster ID: {{ .Values.clusterId }}
    Sign in with the bundled Dex (ADR-014 D-14.7):
      user:     {{ .Values.auth.dex.email }}
      password: kubectl -n {{ .Release.Namespace }} get secret {{ include "topology.fullname" . }}-auth -o jsonpath='{.data.demo-password}' | base64 -d; echo
-{{- else if .Values.auth.enabled }}
+{{- else if and .Values.auth.enabled .Values.auth.keycloak.enabled }}
+
+   Sign in with the bundled Keycloak (ADR-017){{ if .Values.auth.keycloak.demoUser.enabled }}:
+     user:     {{ .Values.auth.keycloak.demoUser.email }}
+     password: kubectl -n {{ .Release.Namespace }} get secret {{ include "topology.fullname" . }}-auth -o jsonpath='{.data.demo-password}' | base64 -d; echo
+{{- else }}, through an upstream provider.{{ end }}
+   Register this redirect URI with each upstream provider you enable:
+     {{ trimSuffix "/" .Values.auth.externalUrl }}/keycloak/realms/{{ include "topology.keycloakRealm" . }}/broker/<google|microsoft|alias>/endpoint
+   Keycloak keeps no state: restarting it signs everyone out.
 
    Sign in through {{ .Values.auth.oidc.issuerUrl }}. The redirect URI registered with it must be
    exactly: {{ trimSuffix "/" .Values.auth.externalUrl }}/oauth2/callback

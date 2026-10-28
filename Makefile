@@ -8,7 +8,7 @@ SHELL := /bin/bash
 
 # ── Pinned toolchain (ADR-008 D-8.3) ────────────────────────────────────────────────────────
 # Keep in lockstep with docs/prerequisites.md and .github/workflows/ci.yml.
-GO_VERSION      := 1.26.7
+GO_VERSION      := 1.26.10
 NODE_VERSION    := 24.19.0
 PYTHON_VERSION  := 3.13
 HELM_VERSION    := 4.2.3
@@ -18,6 +18,7 @@ KUBECTL_VERSION := 1.31.1
 REPO_ROOT   := $(shell pwd)
 BACKEND     := $(REPO_ROOT)/backend
 AGENT       := $(REPO_ROOT)/agent
+CLI         := $(REPO_ROOT)/cli
 FRONTEND    := $(REPO_ROOT)/frontend
 CHART       := $(REPO_ROOT)/charts/topology-visualizer
 KIND_VALUES := $(CHART)/ci/kind-values.yaml
@@ -59,13 +60,13 @@ help: ## Show available targets
 verify: lint test contracts-check ## Everything CI runs
 
 .PHONY: lint
-lint: lint-go lint-python lint-frontend lint-helm ## Lint every component
+lint: lint-go lint-cli lint-python lint-frontend lint-helm ## Lint every component
 
 .PHONY: test
-test: test-go test-python test-frontend ## Unit + integration tests (no cluster, no root)
+test: test-go test-cli test-python test-frontend ## Unit + integration tests (no cluster, no root)
 
 .PHONY: test-unit
-test-unit: test-go test-python ## Fast tests only — no containers, no cluster
+test-unit: test-go test-cli test-python ## Fast tests only — no containers, no cluster
 
 # ── Go agent ────────────────────────────────────────────────────────────────────────────────
 
@@ -81,6 +82,36 @@ lint-go: ## go vet + golangci-lint
 .PHONY: test-go
 test-go: ## Agent unit tests
 	cd $(AGENT) && go test ./... -count=1
+
+# ── Go CLI and MCP server (ADR-015) ─────────────────────────────────────────────────────────
+
+# The version stamped into the binary; "dev" outside a git checkout.
+CLI_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+
+.PHONY: cli
+cli: ## Build bin/kubectl-topology for this machine; put it on PATH for `kubectl topology` (ADR-015 D-15.15)
+	cd $(CLI) && CGO_ENABLED=0 go build -trimpath \
+	  -ldflags "-s -w -X main.version=$(CLI_VERSION)" \
+	  -o $(REPO_ROOT)/bin/kubectl-topology ./cmd/kubectl-topology
+
+.PHONY: lint-cli
+lint-cli: ## go vet + golangci-lint over cli/
+	cd $(CLI) && go vet ./...
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+	  cd $(CLI) && golangci-lint run ./...; \
+	else \
+	  echo "  golangci-lint not on PATH — skipped (install: see docs/prerequisites.md)"; \
+	fi
+
+.PHONY: test-cli
+test-cli: ## CLI and MCP server unit tests
+	cd $(CLI) && go test ./... -count=1
+
+# Part of contracts-check: a contract change that breaks the CLI's hand-written structs fails the
+# same target that catches the contract drifting from the app (ADR-015 D-15.3, T-15.8).
+.PHONY: cli-contract-check
+cli-contract-check: ## The CLI's structs and response fixtures against contracts/openapi.json (T-15.8)
+	cd $(CLI) && go test ./internal/api -run '^TestContract' -count=1 -v
 
 BPF_BUILDER := topology-bpf-builder:$(GO_VERSION)
 
@@ -178,7 +209,7 @@ contracts: require-venv ## Regenerate contracts/openapi.json from the FastAPI ap
 	$(VENV_PY) scripts/export_openapi.py
 
 .PHONY: contracts-check
-contracts-check: require-venv ## Fail if the committed contract drifts from the app (T-3.6)
+contracts-check: require-venv cli-contract-check ## Fail if the committed contract drifts from the app or the CLI (T-3.6, T-15.8)
 	$(VENV_PY) scripts/export_openapi.py --check
 
 # ── Frontend ────────────────────────────────────────────────────────────────────────────────
@@ -207,6 +238,11 @@ image-frontend: ## Build the frontend image and side-load it into kind
 image-backend: ## Build the backend image and side-load it into kind
 	docker build -t topology-backend:dev backend
 	kind load docker-image topology-backend:dev --name $(KIND_CLUSTER)
+
+.PHONY: image-keycloak
+image-keycloak: ## Build the bundled Keycloak (optimized, read-only root) and side-load it into kind (ADR-017 D-17.2)
+	docker build -t topology-keycloak:dev keycloak
+	kind load docker-image topology-keycloak:dev --name $(KIND_CLUSTER)
 
 # ── Helm / Kubernetes (ADR-007) ─────────────────────────────────────────────────────────────
 
@@ -363,12 +399,13 @@ agent-edges: ## Print the service-level edges the agents currently report
 # demo-down for why that matters.
 
 .PHONY: images
-images: ## Build all three images and side-load them into kind
+images: ## Build all four images and side-load them into kind
 	docker build -t topology-agent:dev $(AGENT)
 	docker build -t topology-backend:dev backend
 	docker build -t topology-frontend:dev $(FRONTEND)
+	docker build -t topology-keycloak:dev keycloak
 	kind load docker-image topology-agent:dev topology-backend:dev topology-frontend:dev \
-	  --name $(KIND_CLUSTER)
+	  topology-keycloak:dev --name $(KIND_CLUSTER)
 
 .PHONY: demo-up
 demo-up: ## Cluster + images + install + demo workloads, ready to observe
@@ -424,6 +461,17 @@ demo-change: ## Apply the controlled topology change (a new dependency appears)
 	$(KUBECTL) -n demo rollout status deploy/reporter --timeout=180s
 	@echo "waiting $(DEMO_SETTLE)s for the new edge to be observed..."
 	@sleep $(DEMO_SETTLE)
+
+.PHONY: demo-canary
+demo-canary: ## Deploy a canary and touch it; the API then reports CANARY_CONTACT (ADR-016)
+	-$(KUBECTL) delete job intruder -n demo --ignore-not-found --now
+	$(KUBECTL) apply -f demo/demo-canary.yaml
+	$(KUBECTL) -n demo rollout status deploy/legacy-admin --timeout=180s
+	$(KUBECTL) wait --for=condition=complete job/intruder -n demo --timeout=180s
+	@echo "waiting $(DEMO_SETTLE)s for the contact to be observed..."
+	@sleep $(DEMO_SETTLE)
+	@echo "the backend's WARNING lines for it:"
+	@$(KUBECTL) -n $(NAMESPACE) logs deploy/$(RELEASE)-visualizer-backend --since=5m | grep -i 'canary contacted' | tail -3 || true
 
 .PHONY: demo-verify
 demo-verify: ## Assert the expected edges through the API (T-7.10, T-7.11)

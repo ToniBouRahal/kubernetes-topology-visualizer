@@ -20,6 +20,7 @@ export function Header({
   windowPreset,
   onWindowChange,
   presets,
+  onExport,
 }: {
   mode: Mode;
   onModeChange: (mode: Mode) => void;
@@ -31,6 +32,8 @@ export function Header({
   windowPreset: string;
   onWindowChange: (preset: string) => void;
   presets: readonly WindowPreset[];
+  /** Download the shown graph as Mermaid (ADR-016 D-16.7); absent when there is nothing to export. */
+  onExport?: () => void;
 }) {
   return (
     <header className="header">
@@ -69,6 +72,14 @@ export function Header({
       )}
 
       <div className="header__spacer" />
+
+      {mode !== "compare" && (
+        // Compare mode draws a classification of two periods, not a graph of one; exporting it as
+        // a topology would mislabel it, so the button is not offered there at all.
+        <button type="button" onClick={onExport} disabled={!onExport}>
+          Export diagram
+        </button>
+      )}
 
       <button type="button" onClick={onRefresh} disabled={refreshing}>
         {refreshing ? "Refreshing…" : "Refresh"}

@@ -122,4 +122,30 @@ spec:
         - protocol: TCP
           port: 5554
 {{- end }}
+{{- if and .Values.auth.enabled .Values.auth.keycloak.enabled }}
+---
+# The bundled Keycloak (ADR-017 D-17.9): HTTPS from the frontend pods only — nginx for the
+# browser's and the CLI's sign-in pages, oauth2-proxy for the token exchange. It trusts
+# X-Forwarded-* headers, which is safe only because nginx is the one client that can connect.
+# The management port is left to kubelet probes, which policy does not govern.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "topology.keycloakService" . }}
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "topology.keycloak.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "topology.frontend.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 8443
+{{- end }}
 {{- end }}

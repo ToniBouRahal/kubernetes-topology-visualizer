@@ -1,0 +1,342 @@
+{{- /*
+The bundled Keycloak identity broker (ADR-017).
+
+One replica, ephemeral state (D-17.3): the realm below is imported fresh on every start, so this
+file IS the configuration — there is no admin user and no console to change it in. The realm is
+a Secret because it carries the browser client's secret and the demo user's password, both
+generated into <fullname>-auth (auth.yaml) and kept across upgrades. Upstream providers' secrets
+are never rendered: the realm names them as ${KC_IDP_<ALIAS>_SECRET}, which Keycloak substitutes
+at import from env vars filled by secretKeyRef (measured, ADR-017 §1).
+*/ -}}
+{{- if and .Values.auth.enabled .Values.auth.keycloak.enabled }}
+{{- $full := include "topology.fullname" . }}
+{{- $kc := .Values.auth.keycloak }}
+{{- $svc := include "topology.keycloakService" . }}
+{{- $realm := include "topology.keycloakRealm" . }}
+{{- $externalUrl := trimSuffix "/" .Values.auth.externalUrl }}
+{{- /* Shared with auth.yaml, which stores them (_helpers.tpl). */}}
+{{- include "topology.authSecrets" . }}
+{{- $secrets := .Values.__authSecrets }}
+{{- /* Lifetimes (D-17.4): 1 h ID tokens, as ADR-015 D-15.10; refresh bounded by the session. */}}
+{{- $maxHours := ternary .Values.auth.cli.refreshHours .Values.auth.sessionHours .Values.auth.cli.enabled }}
+{{- $clientAttrs := dict
+      "pkce.code.challenge.method" "S256"
+      "oauth2.device.authorization.grant.enabled" "false"
+      "oidc.ciba.grant.enabled" "false"
+      "use.refresh.tokens" "true" }}
+{{- $clientBase := dict
+      "enabled" true
+      "protocol" "openid-connect"
+      "standardFlowEnabled" true
+      "implicitFlowEnabled" false
+      "directAccessGrantsEnabled" false
+      "serviceAccountsEnabled" false
+      "frontchannelLogout" false
+      "fullScopeAllowed" false
+      "webOrigins" (list)
+      "attributes" $clientAttrs
+      "defaultClientScopes" (list "basic" "profile" "email")
+      "optionalClientScopes" (list) }}
+{{- $clients := list (merge (dict
+      "clientId" "topology"
+      "name" "Runtime Topology"
+      "publicClient" false
+      "clientAuthenticatorType" "client-secret"
+      "secret" $secrets.client
+      "redirectUris" (list (printf "%s/oauth2/callback" $externalUrl))) (deepCopy $clientBase)) }}
+{{- if .Values.auth.cli.enabled }}
+{{- /* ADR-015 D-15.7's public client, with PKCE now required by the provider (D-17.4). The CLI asks
+   for offline_access by default, and Keycloak refuses the whole request over a scope the client
+   lacks (measured: invalid_scope), so it has that one optional scope — and the realm bounds
+   offline sessions exactly as it bounds ordinary ones. */}}
+{{- $clients = append $clients (merge (dict
+      "clientId" (include "topology.cliClientId" .)
+      "name" "Runtime Topology CLI"
+      "publicClient" true
+      "redirectUris" (list "http://127.0.0.1:38085/callback" "http://127.0.0.1:38086/callback" "http://127.0.0.1:38087/callback")
+      "optionalClientScopes" (list "offline_access")) (deepCopy $clientBase)) }}
+{{- end }}
+{{- /* fullScopeAllowed is off, so an offline token also needs the role in the client's scope
+   (measured: "Offline tokens not allowed for the user or client"). That one role, that one client. */}}
+{{- $scopeMappings := list }}
+{{- if .Values.auth.cli.enabled }}
+{{- $scopeMappings = append $scopeMappings (dict "client" (include "topology.cliClientId" .) "roles" (list "offline_access")) }}
+{{- end }}
+{{- $users := list }}
+{{- if $kc.demoUser.enabled }}
+{{- /* An imported user gets only the roles it lists, unlike one created at sign-in, so the realm's
+   default roles — offline_access among them — are named (measured: without them, not_allowed). */}}
+{{- $users = append $users (dict
+      "username" "admin"
+      "email" $kc.demoUser.email
+      "emailVerified" true
+      "enabled" true
+      "firstName" "Demo"
+      "lastName" "Admin"
+      "realmRoles" (list (printf "default-roles-%s" $realm))
+      "credentials" (list (dict "type" "password" "value" $secrets.password "temporary" false))) }}
+{{- end }}
+{{- /* Upstream providers (D-17.5): FORCE sync, trusted e-mail (oauth2-proxy refuses an unverified
+   one), each pinned as the table in D-17.5 says. */}}
+{{- $idps := list }}
+{{- $mappers := list }}
+{{- $idpEnv := list }}
+{{- $common := dict "syncMode" "FORCE" "defaultScope" "openid email profile" }}
+{{- with $kc.identityProviders.google }}
+{{- if .enabled }}
+{{- $cfg := merge (dict "clientId" .clientId "clientSecret" "${KC_IDP_GOOGLE_SECRET}" "guiOrder" "1") $common }}
+{{- if .hostedDomain }}{{- $_ := set $cfg "hostedDomain" .hostedDomain }}{{- end }}
+{{- $idps = append $idps (dict "alias" "google" "providerId" "google" "displayName" "Google" "enabled" true "trustEmail" true "storeToken" false "config" $cfg) }}
+{{- $idpEnv = append $idpEnv (dict "name" "KC_IDP_GOOGLE_SECRET" "secret" .clientSecret) }}
+{{- end }}
+{{- end }}
+{{- with $kc.identityProviders.microsoft }}
+{{- if .enabled }}
+{{- /* The generic OIDC provider pinned to one tenant: the built-in `microsoft` one signs in through
+   the multi-tenant endpoint. Entra's v2 issuer names the tenant's GUID. */}}
+{{- $ms := printf "https://login.microsoftonline.com/%s" .tenantId }}
+{{- $cfg := merge (dict
+      "clientId" .clientId
+      "clientSecret" "${KC_IDP_MICROSOFT_SECRET}"
+      "issuer" (printf "%s/v2.0" $ms)
+      "authorizationUrl" (printf "%s/oauth2/v2.0/authorize" $ms)
+      "tokenUrl" (printf "%s/oauth2/v2.0/token" $ms)
+      "jwksUrl" (printf "%s/discovery/v2.0/keys" $ms)
+      "useJwksUrl" "true"
+      "validateSignature" "true"
+      "clientAuthMethod" "client_secret_post"
+      "pkceEnabled" "true"
+      "pkceMethod" "S256"
+      "guiOrder" "2") $common }}
+{{- $idps = append $idps (dict "alias" "microsoft" "providerId" "oidc" "displayName" "Microsoft" "enabled" true "trustEmail" true "storeToken" false "config" $cfg) }}
+{{- /* The UPN, in a domain the tenant has verified — not `email`, which Entra lets users set. */}}
+{{- $mappers = append $mappers (dict
+      "name" "email-from-upn"
+      "identityProviderAlias" "microsoft"
+      "identityProviderMapper" "oidc-user-attribute-idp-mapper"
+      "config" (dict "claim" "preferred_username" "user.attribute" "email" "syncMode" "INHERIT")) }}
+{{- $idpEnv = append $idpEnv (dict "name" "KC_IDP_MICROSOFT_SECRET" "secret" .clientSecret) }}
+{{- end }}
+{{- end }}
+{{- range $i, $p := $kc.identityProviders.oidc }}
+{{- $env := printf "KC_IDP_%s_SECRET" ($p.alias | upper | replace "-" "_") }}
+{{- $cfg := merge (dict
+      "clientId" $p.clientId
+      "clientSecret" (printf "${%s}" $env)
+      "issuer" $p.issuer
+      "authorizationUrl" $p.authorizationUrl
+      "tokenUrl" $p.tokenUrl
+      "jwksUrl" $p.jwksUrl
+      "useJwksUrl" "true"
+      "validateSignature" "true"
+      "clientAuthMethod" "client_secret_post"
+      "pkceEnabled" "true"
+      "pkceMethod" "S256"
+      "defaultScope" ($p.scopes | default "openid email profile")
+      "guiOrder" (toString (add 3 $i))) $common }}
+{{- $idps = append $idps (dict "alias" $p.alias "providerId" "oidc" "displayName" ($p.displayName | default $p.alias) "enabled" true "trustEmail" true "storeToken" false "config" $cfg) }}
+{{- $idpEnv = append $idpEnv (dict "name" $env "secret" $p.clientSecret) }}
+{{- end }}
+{{- $realmDoc := dict
+      "realm" $realm
+      "displayName" "Runtime Topology"
+      "enabled" true
+      "sslRequired" "external"
+      "registrationAllowed" false
+      "resetPasswordAllowed" false
+      "rememberMe" false
+      "editUsernameAllowed" false
+      "loginWithEmailAllowed" true
+      "duplicateEmailsAllowed" false
+      "verifyEmail" false
+      "bruteForceProtected" true
+      "permanentLockout" false
+      "failureFactor" 5
+      "waitIncrementSeconds" 60
+      "maxFailureWaitSeconds" 900
+      "minimumQuickLoginWaitSeconds" 60
+      "quickLoginCheckMilliSeconds" 1000
+      "maxDeltaTimeSeconds" 43200
+      "accessTokenLifespan" 3600
+      "ssoSessionIdleTimeout" 28800
+      "ssoSessionMaxLifespan" (mul (int $maxHours) 3600)
+      "offlineSessionIdleTimeout" 28800
+      "offlineSessionMaxLifespanEnabled" true
+      "offlineSessionMaxLifespan" (mul (int $maxHours) 3600)
+      "revokeRefreshToken" true
+      "refreshTokenMaxReuse" 0
+      "clients" $clients
+      "scopeMappings" $scopeMappings
+      "users" $users
+      "identityProviders" $idps
+      "identityProviderMappers" $mappers }}
+{{- $realmJson := toPrettyJson $realmDoc }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $svc }}-realm
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: keycloak
+type: Opaque
+data:
+  {{ $realm }}-realm.json: {{ $realmJson | b64enc | quote }}
+---
+# Keycloak never calls the Kubernetes API, so its pods get no token.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $svc }}
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: keycloak
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svc }}
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: keycloak
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "topology.keycloak.selectorLabels" . | nindent 4 }}
+  # HTTPS only. The management port (health) is not in the Service: only kubelet probes use it.
+  ports:
+    - name: https
+      port: 8443
+      targetPort: https
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $svc }}
+  labels:
+    {{- include "topology.labels" . | nindent 4 }}
+    app.kubernetes.io/component: keycloak
+spec:
+  # One replica: local caches, no clustering (D-17.2). Recreate, so an upgrade never runs two
+  # realms that disagree about who is signed in.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "topology.keycloak.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        # The realm is read once, at start: a changed realm needs a new pod.
+        checksum/realm: {{ $realmJson | sha256sum }}
+        {{- if .Values.tls.generate }}
+        checksum/tls: {{ include "topology.pkiChecksum" (dict "root" . "role" "keycloak") }}
+        {{- end }}
+      labels:
+        {{- include "topology.keycloak.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $svc }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        # The certificate key is group-readable by this group only.
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: keycloak
+          image: "{{ $kc.image.repository }}:{{ $kc.image.tag }}"
+          imagePullPolicy: {{ $kc.image.pullPolicy }}
+          # The image is pre-built (`start --optimized`); only run-time options here. The hostname
+          # is the browser-facing URL, so the issuer in every token is the one oauth2-proxy and
+          # the CLI expect, while oauth2-proxy itself reaches this pod in-cluster (D-17.6).
+          args:
+            - start
+            - --optimized
+            - --import-realm
+            - --http-enabled=false
+            - --https-port=8443
+            - --https-certificate-file=/etc/keycloak/tls/tls.crt
+            - --https-certificate-key-file=/etc/keycloak/tls/tls.key
+            - --https-protocols=TLSv1.3
+            - --hostname={{ $externalUrl }}/keycloak
+            # nginx in the frontend pod is the only client that reaches 8443 (NetworkPolicy).
+            - --proxy-headers=xforwarded
+            - --cache=local
+          {{- with $idpEnv }}
+          env:
+            {{- range . }}
+            - name: {{ .name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secret.existingSecret }}
+                  key: {{ .secret.key | default "client-secret" }}
+            {{- end }}
+          {{- end }}
+          ports:
+            - name: https
+              containerPort: 8443
+            - name: management
+              containerPort: 9000
+          # The management port inherits the main TLS; kubelet does not verify the certificate.
+          startupProbe:
+            httpGet:
+              path: /keycloak/health/started
+              port: management
+              scheme: HTTPS
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /keycloak/health/ready
+              port: management
+              scheme: HTTPS
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /keycloak/health/live
+              port: management
+              scheme: HTTPS
+            periodSeconds: 20
+            failureThreshold: 3
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml $kc.resources | nindent 12 }}
+          volumeMounts:
+            # dev-file database and transaction logs: ephemeral by design (D-17.3).
+            - name: data
+              mountPath: /opt/keycloak/data
+            - name: realm
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            - name: tls
+              mountPath: /etc/keycloak/tls
+              readOnly: true
+      volumes:
+        - name: data
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: realm
+          secret:
+            secretName: {{ $svc }}-realm
+            defaultMode: 0440
+        - name: tls
+          secret:
+            secretName: {{ $full }}-tls-keycloak
+            defaultMode: 0440
+            items:
+              - { key: tls.crt, path: tls.crt }
+              - { key: tls.key, path: tls.key }
+{{- end }}

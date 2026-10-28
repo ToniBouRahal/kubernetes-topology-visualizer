@@ -9,7 +9,7 @@ and keys to exist already — for example issued by cert-manager.
 {{- include "topology.pki" . }}
 {{- $pki := .Values.__pki }}
 {{- $full := include "topology.fullname" . }}
-{{- range $role := list "server" "postgresql" "agent" "frontend" "dex" }}
+{{- range $role := list "server" "postgresql" "agent" "frontend" "dex" "keycloak" }}
 {{- $leaf := index $pki $role }}
 ---
 apiVersion: v1

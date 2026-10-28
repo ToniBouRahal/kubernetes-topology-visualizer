@@ -7,7 +7,7 @@ import { chromium, type FullConfig } from "@playwright/test";
  * Sign in once, before any test, and keep the session for all of them (ADR-014 D-14.6).
  *
  * Every page and API call is behind sign-in, so without this every spec would start on the login
- * page. The bundled Dex's demo user is used; its password is read from the cluster Secret unless
+ * page. The bundled Dex's or Keycloak's demo user is used; its password is read from the cluster Secret unless
  * E2E_PASSWORD is set, so nothing is committed. A deployment with sign-in off simply never
  * redirects, and the empty session saved here changes nothing.
  */
@@ -21,11 +21,15 @@ export default async function globalSetup(config: FullConfig) {
   const page = await browser.newPage();
   await page.goto(base);
 
-  if (page.url().includes("/dex/")) {
-    await page.locator('input[name="login"]').fill(process.env.E2E_USER ?? "admin@topology.local");
+  // The bundled Dex (ADR-014 D-14.7) or Keycloak (ADR-017, T-17.7): the same demo user and
+  // password, different field names.
+  const provider = page.url().includes("/dex/") ? "dex" : page.url().includes("/keycloak/") ? "keycloak" : null;
+  if (provider) {
+    const user = provider === "dex" ? 'input[name="login"]' : 'input[name="username"]';
+    await page.locator(user).fill(process.env.E2E_USER ?? "admin@topology.local");
     await page.locator('input[name="password"]').fill(process.env.E2E_PASSWORD ?? demoPassword());
-    await page.locator('button[type="submit"]').click();
-    await page.waitForURL((url) => !url.pathname.startsWith("/dex/") && !url.pathname.startsWith("/oauth2/"), {
+    await page.locator(provider === "dex" ? 'button[type="submit"]' : "#kc-login").click();
+    await page.waitForURL((url) => !url.pathname.startsWith(`/${provider}/`) && !url.pathname.startsWith("/oauth2/"), {
       timeout: 30_000,
     });
   }
