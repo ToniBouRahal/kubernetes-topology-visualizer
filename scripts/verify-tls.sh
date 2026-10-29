@@ -26,7 +26,20 @@ cleanup() { $K delete pod "${PODS[@]}" --ignore-not-found --wait=false >/dev/nul
 trap cleanup EXIT INT TERM
 $K run tls-probe-curl --restart=Never --image=topology-frontend:dev --image-pull-policy=IfNotPresent \
   --command -- sleep 600 >/dev/null
-$K run tls-probe-psql --restart=Never --image=postgres:17-alpine --image-pull-policy=IfNotPresent \
+# The psql probe runs the database's own image, read from the running StatefulSet, on the
+# database's own node: pinned by digest (ADR-007 D-7.4) and already present there, so nothing is
+# pulled. A bare `postgres:17-alpine` was neither — the node holds that image only under its
+# digest, so IfNotPresent went to Docker Hub for the tag, and a slow pull outlasted the timeout.
+PG_STS="${RELEASE}-visualizer-postgresql"
+PG_IMAGE="$($K get sts "$PG_STS" -o jsonpath='{.spec.template.spec.containers[?(@.name=="postgresql")].image}' 2>/dev/null)"
+PG_NODE="$($K get pod "${PG_STS}-0" -o jsonpath='{.spec.nodeName}' 2>/dev/null)"
+if [[ "$PG_IMAGE" != *@sha256:* || -z "$PG_NODE" ]]; then
+  echo "cannot find the database's digest-pinned image and node (StatefulSet $NAMESPACE/$PG_STS)" >&2
+  echo "the database checks need the in-cluster PostgreSQL: postgresql.enabled=true, as make demo-up sets" >&2
+  exit 1
+fi
+$K run tls-probe-psql --restart=Never --image="$PG_IMAGE" --image-pull-policy=IfNotPresent \
+  --overrides="{\"apiVersion\":\"v1\",\"spec\":{\"nodeName\":\"$PG_NODE\"}}" \
   --command -- sleep 600 >/dev/null
 $K wait --for=condition=Ready pod "${PODS[@]}" --timeout=120s >/dev/null || { echo "probe pods did not start" >&2; exit 1; }
 

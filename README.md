@@ -38,6 +38,16 @@ and [ADR-017](docs/adr/ADR-017-keycloak-identity-broker.md).
 
 [`docs/demo-script.md`](docs/demo-script.md) is a fifteen-minute walkthrough.
 
+For a graph the size of a real system, and a check of every feature against it:
+
+```bash
+make mesh-up        # a ~30-service shop across five namespaces (~40 pods); MESH_SCALE=100 adds load
+make test-features  # every feature end to end, scenarios included, with a summary  (~15 min)
+make cli-login      # once, in a browser, so the CLI and MCP phase runs instead of skipping
+```
+
+Each phase is also its own target (`make ft-anomalies`, `make ft-diff`, …); `make help` lists them.
+
 ## Explore the topology
 
 **Live** shows the last few minutes and refreshes every 5 seconds; the strip under the header says
