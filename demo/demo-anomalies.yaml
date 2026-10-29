@@ -1,0 +1,41 @@
+# A workload nobody has seen before, for the anomaly phase of `make test-features` (ADR-016).
+#
+# `rogue-crawler` stands in for a compromised or unreviewed deployment: it reads the shop's
+# database directly and sends data out of the cluster over HTTPS. Against a baseline that holds
+# the mesh's normal traffic, that raises:
+#   NEW_EDGE             shop/rogue-crawler -> shop-data/postgres TCP:5432
+#   NEW_EXTERNAL_EGRESS  shop/rogue-crawler -> EXTERNAL TCP:443   (needs outbound internet)
+#
+# The other three rules are triggered by the phase itself, not by a manifest: FAILURE_SPIKE by
+# pointing the elasticsearch Service at a closed port, SLOW_SETUP by adding latency in front of
+# postgres-0, CANARY_CONTACT by demo/demo-canary.yaml. All are undone when the phase ends.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rogue-crawler
+  namespace: shop
+  labels: {app: rogue-crawler, topology-ft: anomalies}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: rogue-crawler}
+  template:
+    metadata:
+      labels: {app: rogue-crawler, topology-demo: "true"}
+    spec:
+      containers:
+        - name: crawler
+          image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              sleep 15
+              while true; do
+                nc -w 2 postgres.shop-data.svc.cluster.local 5432 </dev/null >/dev/null 2>&1 || true
+                nc -w 2 example.com 443 </dev/null >/dev/null 2>&1 || true
+                sleep 4
+              done
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 64Mi}

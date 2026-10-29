@@ -1,0 +1,34 @@
+# A controlled change to the shop mesh, for the diff phase of `make test-features`.
+#
+# One new service with one new dependency, so compare mode has an unambiguous expected answer:
+#   shop/Deployment:loyalty -> shop-data/StatefulSet:postgres TCP:5432   NEW
+# The same phase removes shop-edge/synthetic-users for the REMOVED half, and restores it after.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loyalty
+  namespace: shop
+  labels: {app: loyalty, topology-ft: diff}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: loyalty}
+  template:
+    metadata:
+      labels: {app: loyalty, topology-demo: "true"}
+    spec:
+      containers:
+        - name: loyalty
+          image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              sleep 15
+              while true; do
+                nc -w 2 postgres.shop-data.svc.cluster.local 5432 </dev/null >/dev/null 2>&1 || true
+                sleep 5
+              done
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 64Mi}

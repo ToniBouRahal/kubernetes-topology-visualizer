@@ -522,6 +522,10 @@ demo-down: ## Remove ONLY what this project created
 	  echo "no kind cluster named '$(KIND_CLUSTER)' — nothing to delete"; \
 	fi
 
+# ── End-to-end feature tests and the shop mesh ─────────────────────────────────────────────
+
+include features.mk
+
 # ── Tooling report ──────────────────────────────────────────────────────────────────────────
 
 .PHONY: tools
